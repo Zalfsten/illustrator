@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+echo "OpenSpec version: $(openspec --version)"
+
+if [[ ! -d openspec ]]; then
+  echo "Initializing OpenSpec for Cursor..."
+  openspec init --tools cursor --no-animation
+else
+  echo "Refreshing OpenSpec tool integrations..."
+  openspec update --no-animation || true
+fi
+
+echo "Dev container ready. Use /opsx-propose in Cursor Agent chat."

@@ -1,0 +1,59 @@
+schema: spec-driven
+
+# Project context — durable product and process principles for all changes.
+# Applied when creating OpenSpec artifacts; do not copy verbatim into them.
+context: |
+  Product goal:
+  Build 2D illustration software for scientific publications and teaching.
+  Figures combine durable geometric relationships (right angles, parallels,
+  tangents, and similar constructions that survive later edits) with free
+  illustration styling (line weight, dash, color, fill, arrows) and, later,
+  full mathematical labels (LaTeX). This resolves the split between tools
+  like xfig/tgif (flexible drawing, relationships break on edit) and CAD
+  sketchers / SmartSketch-like tools (persistent constraints, rigid drafting
+  output unsuitable for teaching schematics).
+
+  Long-term figure examples (not all in the first change): coordinate axes
+  with a function curve and a constrained tangent plus angle/formula labels;
+  freeform "potato" bodies with infinitesimal elements; geometric primitives,
+  arrows, and labels under persistent constraints.
+
+  Spec vs design (one spec, many implementations):
+  Shared OpenSpec capabilities define functionality and overarching software
+  architecture (domain ontology, constraint semantics, interaction contracts).
+  Programming language, libraries, operating system, GUI toolkit, packaging,
+  and concrete numerical algorithms are design decisions of each
+  implementation. Multiple parallel implementations may live in this repo,
+  all conforming to the same specs while differing in design.md (and code).
+
+  First slice:
+  Early work proves the constraint runtime (Model E IR, small catalog,
+  drag-under-invariants, owned swappable solver). Illustration features
+  (styles, LaTeX, export, function graphs) arrive in later changes under
+  the same principles.
+
+# Per-artifact rules
+rules:
+  proposal:
+    - Ground the change in the product goal from project context; state how it advances or deliberately narrows that goal.
+    - Include an explicit Non-goals (or equivalent deferrals) section relative to the long-term product vision when scope is a slice.
+    - Do not treat a single implementation stack as the product; note that specs stay shared across implementations.
+  specs:
+    - Keep requirements implementation-agnostic: no mandated programming language, OS, GUI toolkit, or library.
+    - Do not require a specific solver algorithm by name; specify observable solve/interaction behavior and replaceable backends instead.
+    - Express overarching architecture as domain contracts (e.g. Model E, hard vs soft conditions), not as code module layouts of one impl.
+  design:
+    - Record language, libraries, OS/GUI, repo layout, and solver algorithm choices here for the target implementation.
+    - Assume other implementations may exist later under the same specs; prefer clear backend/UI boundaries.
+  tasks:
+    - Scope tasks to the implementation(s) named in design.md; do not invent parallel impls unless the change asks for them.
+    - Prefer proving the shared runtime contracts with tests before expanding illustration UI features.
+
+# Per-operation guidance
+operations:
+  apply:
+    guidance:
+      - Implement against the shared specs; keep impl-specific choices aligned with design.md.
+  archive:
+    guidance:
+      - Summarize what became shared capability truth versus what remained impl-specific design.
