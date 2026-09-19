@@ -33,8 +33,14 @@
 
   "postCreateCommand": "bash .devcontainer/post-create.sh",
 
+  "runArgs": [
+    "--env",
+    "DISPLAY=${localEnv:DISPLAY}"
+  ],
+
   "mounts": [
-    "source=${localEnv:HOME}${localEnv:USERPROFILE}/.ssh,target=/home/node/.ssh,readonly,type=bind,consistency=cached"
+    "source=${localEnv:HOME}${localEnv:USERPROFILE}/.ssh,target=/home/node/.ssh,readonly,type=bind,consistency=cached",
+    "source=/tmp/.X11-unix,target=/tmp/.X11-unix,type=bind"
   ],
 
   "remoteUser": "node"
