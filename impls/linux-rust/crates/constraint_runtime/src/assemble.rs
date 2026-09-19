@@ -53,7 +53,7 @@ impl<'a> AssembledSystem<'a> {
             row += c.residual_arity();
         }
         let soft_row0 = row;
-        row += soft.len();
+        row += soft.iter().map(SoftContribution::residual_arity).sum::<usize>();
         Self {
             segments: doc.segments(),
             constraints: doc.constraints(),
