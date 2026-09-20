@@ -2,6 +2,10 @@
 set -euo pipefail
 
 echo "OpenSpec version: $(openspec --version)"
+echo "Rust: $(rustc --version)"
+echo "Cargo: $(cargo --version)"
+echo "Node: $(node --version)"
+echo "gh: $(gh --version | head -n1)"
 
 if [[ ! -d openspec ]]; then
   echo "Initializing OpenSpec for Cursor..."
@@ -9,12 +13,6 @@ if [[ ! -d openspec ]]; then
 else
   echo "Refreshing OpenSpec tool integrations..."
   openspec update --no-animation || true
-fi
-
-if command -v rustc >/dev/null 2>&1; then
-  echo "Rust: $(rustc --version)"
-else
-  echo "Rust not found on PATH; rebuild the Dev Container to pick up the Dockerfile Rust install."
 fi
 
 echo "Dev container ready. Use /opsx-propose in Cursor Agent chat."

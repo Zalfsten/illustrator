@@ -1,7 +1,7 @@
 //! FEM-style assembly of global residual and Jacobian from local contributions.
 
 use crate::constraint::Constraint;
-use crate::document::Document;
+use crate::document::{Document, DocumentStructure};
 use crate::geom::Segment;
 use crate::solver::SystemEval;
 use crate::SOLVE_TOL;
@@ -45,24 +45,33 @@ pub struct AssembledSystem<'a> {
 }
 
 impl<'a> AssembledSystem<'a> {
-    pub fn from_document(doc: &'a Document, soft: &'a [SoftContribution]) -> Self {
-        let mut structural_row0 = Vec::with_capacity(doc.constraints().len());
+    pub fn from_structure(
+        structure: &'a DocumentStructure,
+        n_params: usize,
+        soft: &'a [SoftContribution],
+    ) -> Self {
+        debug_assert_eq!(n_params, structure.parameter_count());
+        let mut structural_row0 = Vec::with_capacity(structure.constraints().len());
         let mut row = 0usize;
-        for c in doc.constraints() {
+        for c in structure.constraints() {
             structural_row0.push(row);
             row += c.residual_arity();
         }
         let soft_row0 = row;
         row += soft.iter().map(SoftContribution::residual_arity).sum::<usize>();
         Self {
-            segments: doc.segments(),
-            constraints: doc.constraints(),
+            segments: structure.segments(),
+            constraints: structure.constraints(),
             soft,
-            n_params: doc.state().len(),
+            n_params,
             n_res: row,
             structural_row0,
             soft_row0,
         }
+    }
+
+    pub fn from_document(doc: &'a Document, soft: &'a [SoftContribution]) -> Self {
+        Self::from_structure(&doc.structure, doc.state().len(), soft)
     }
 }
 
@@ -124,10 +133,14 @@ impl SystemEval for AssembledSystem<'_> {
 }
 
 pub fn structural_residual_norm(doc: &Document) -> f64 {
+    structural_residual_norm_at(&doc.structure, doc.state())
+}
+
+pub fn structural_residual_norm_at(structure: &DocumentStructure, p: &[f64]) -> f64 {
     let soft: [SoftContribution; 0] = [];
-    let sys = AssembledSystem::from_document(doc, &soft);
+    let sys = AssembledSystem::from_structure(structure, p.len(), &soft);
     let mut r = vec![0.0; sys.n_residuals()];
-    sys.residual(doc.state(), &mut r);
+    sys.residual(p, &mut r);
     r.iter().map(|x| x * x).sum::<f64>().sqrt()
 }
 
@@ -188,7 +201,7 @@ mod tests {
         });
 
         let soft: [SoftContribution; 0] = [];
-        let sys = AssembledSystem::from_document(&doc, &soft);
+        let sys = AssembledSystem::from_structure(&doc.structure, doc.state().len(), &soft);
         let p = doc.state().to_vec();
         let m = sys.n_residuals();
         let n = sys.n_params();

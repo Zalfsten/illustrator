@@ -93,7 +93,7 @@ fn soft_for_drag(
 #[allow(dead_code)]
 fn structural_norm_at(doc: &Document, p: &[f64]) -> f64 {
     let soft: [SoftContribution; 0] = [];
-    let sys = AssembledSystem::from_document(doc, &soft);
+    let sys = AssembledSystem::from_structure(&doc.structure, p.len(), &soft);
     let mut r = vec![0.0; sys.n_residuals()];
     sys.residual(p, &mut r);
     r.iter().map(|x| x * x).sum::<f64>().sqrt()
@@ -116,27 +116,26 @@ impl Default for InteractiveSolve<LmSolver> {
 }
 
 impl<S: SolverPort> InteractiveSolve<S> {
+    /// Solve on a working copy of State; commit only if structural residuals pass.
     pub fn solve_commit(
         &mut self,
         doc: &mut Document,
         soft: &[SoftContribution],
         fallback: &[f64],
     ) -> Result<(), SolveError> {
-        let sys = AssembledSystem::from_document(doc, soft);
-        let mut p = doc.state().to_vec();
+        let sys = AssembledSystem::from_structure(&doc.structure, doc.state().len(), soft);
+        let mut working = doc.clone_state();
         let n_struct: usize = doc.constraints().iter().map(|c| c.residual_arity()).sum();
 
-        // Custom eval that reports structural success using full system for steps
-        // but we check structural norm after.
-        let outcome = self.solver.solve(&sys, &mut p, &self.opts);
+        let outcome = self.solver.solve(&sys, &mut working, &self.opts);
         match outcome {
             SolveOutcome::Success { .. } | SolveOutcome::Failure { .. } => {
-                // Prefer accepting when structural residuals are satisfied even if soft remains.
                 let s_norm = {
                     let soft0: [SoftContribution; 0] = [];
-                    let sys0 = AssembledSystem::from_document(doc, &soft0);
+                    let sys0 =
+                        AssembledSystem::from_structure(&doc.structure, working.len(), &soft0);
                     let mut r = vec![0.0; sys0.n_residuals()];
-                    sys0.residual(&p, &mut r);
+                    sys0.residual(&working, &mut r);
                     r[..n_struct.min(r.len())]
                         .iter()
                         .map(|x| x * x)
@@ -144,7 +143,7 @@ impl<S: SolverPort> InteractiveSolve<S> {
                         .sqrt()
                 };
                 if s_norm <= self.opts.tol {
-                    doc.restore_state(&p);
+                    doc.commit_state(&working);
                     Ok(())
                 } else {
                     doc.restore_state(fallback);

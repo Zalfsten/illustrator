@@ -1,4 +1,4 @@
-//! Minimal egui front-end for the constraint runtime.
+//! Minimal egui front-end for the constraint runtime (App + Canvas).
 
 use constraint_runtime::{
     Constraint, Document, DragSession, EndpointRef, InteractiveSolve, Point2, PointExpr,
@@ -16,7 +16,7 @@ fn main() -> eframe::Result<()> {
     eframe::run_native(
         "Constraint Sketch (v1)",
         options,
-        Box::new(|_cc| Ok(Box::new(SketchApp::with_sample()))),
+        Box::new(|_cc| Ok(Box::new(App::with_sample()))),
     )
 }
 
@@ -30,7 +30,8 @@ enum Tool {
     FixPoint,
 }
 
-struct SketchApp {
+/// Application shell: owns Document and Interact; central panel is the Canvas.
+struct App {
     doc: Document,
     interact: InteractiveSolve,
     drag: DragSession,
@@ -42,7 +43,7 @@ struct SketchApp {
     logical_points: Vec<PointExpr>,
 }
 
-impl SketchApp {
+impl App {
     fn with_sample() -> Self {
         let mut app = Self {
             doc: Document::new(),
@@ -249,7 +250,7 @@ fn congruent(doc: &Document, a: PointExpr, b: PointExpr) -> bool {
     })
 }
 
-impl eframe::App for SketchApp {
+impl eframe::App for App {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         egui::TopBottomPanel::top("tools").show(ctx, |ui| {
             ui.horizontal(|ui| {
@@ -276,6 +277,7 @@ impl eframe::App for SketchApp {
         });
 
         egui::CentralPanel::default().show(ctx, |ui| {
+            // Canvas: Document evaluated at committed State; drag → Interact.
             let (response, painter) =
                 ui.allocate_painter(ui.available_size(), Sense::click_and_drag());
 

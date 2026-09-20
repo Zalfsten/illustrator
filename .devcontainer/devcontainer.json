@@ -4,16 +4,6 @@
     "dockerfile": "Dockerfile"
   },
 
-  "features": {
-    "ghcr.io/devcontainers/features/git:1": {
-      "version": "latest",
-      "ppa": true
-    },
-    "ghcr.io/devcontainers/features/github-cli:1": {
-      "version": "latest"
-    }
-  },
-
   "customizations": {
     "vscode": {
       "settings": {
@@ -22,11 +12,9 @@
         "terminal.integrated.defaultProfile.linux": "bash"
       },
       "extensions": [
-        "dbaeumer.vscode-eslint",
-        "esbenp.prettier-vscode",
-        "streetsidesoftware.code-spell-checker",
-        "usernamehw.errorlens",
-        "christian-kohler.path-intellisense"
+        "rust-lang.rust-analyzer",
+        "tamasfe.even-better-toml",
+        "usernamehw.errorlens"
       ]
     }
   },
@@ -39,9 +27,9 @@
   ],
 
   "mounts": [
-    "source=${localEnv:HOME}${localEnv:USERPROFILE}/.ssh,target=/home/node/.ssh,readonly,type=bind,consistency=cached",
+    "source=${localEnv:HOME}${localEnv:USERPROFILE}/.ssh,target=/home/vscode/.ssh,readonly,type=bind,consistency=cached",
     "source=/tmp/.X11-unix,target=/tmp/.X11-unix,type=bind"
   ],
 
-  "remoteUser": "node"
+  "remoteUser": "vscode"
 }

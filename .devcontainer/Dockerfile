@@ -1,12 +1,13 @@
-FROM mcr.microsoft.com/devcontainers/javascript-node:1-22-bookworm
+FROM mcr.microsoft.com/devcontainers/rust:1-trixie
 
-# OpenSpec CLI (spec-driven workflow for AI coding agents)
-RUN npm install -g @fission-ai/openspec@latest \
-  && openspec --version
-
-# X11 / OpenGL runtime libs for egui/winit (host display via /tmp/.X11-unix)
+# Tooling previously provided by Dev Container features (git, gh, node)
+# plus X11/OpenGL libs for egui/winit (host display via /tmp/.X11-unix).
 RUN apt-get update \
   && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+    ca-certificates \
+    curl \
+    gnupg \
+    git \
     libxcursor1 \
     libxrandr2 \
     libxi6 \
@@ -20,13 +21,20 @@ RUN apt-get update \
     libgl1 \
     libegl1 \
     libfontconfig1 \
+  # GitHub CLI
+  && curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
+    | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg \
+  && chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg \
+  && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
+    > /etc/apt/sources.list.d/github-cli.list \
+  # Node.js LTS (for OpenSpec CLI)
+  && curl -fsSL https://deb.nodesource.com/setup_lts.x | bash - \
+  && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+    gh \
+    nodejs \
+  && npm install -g @fission-ai/openspec@latest \
+  && openspec --version \
+  && node --version \
+  && gh --version \
+  && git --version \
   && rm -rf /var/lib/apt/lists/*
-
-# Rust toolchain for impls/linux-rust
-ENV RUSTUP_HOME=/usr/local/rustup \
-    CARGO_HOME=/usr/local/cargo \
-    PATH=/usr/local/cargo/bin:$PATH
-RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
-    | sh -s -- -y --default-toolchain stable --profile minimal \
-  && chmod -R a+w "$RUSTUP_HOME" "$CARGO_HOME" \
-  && rustc --version && cargo --version

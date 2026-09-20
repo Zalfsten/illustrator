@@ -1,6 +1,6 @@
 # Illustrator
 
-Entwicklungsumgebung mit [OpenSpec](https://openspec.dev) im Dev Container.
+Entwicklungsumgebung mit [OpenSpec](https://openspec.dev) im Rust-Dev-Container (Debian trixie).
 
 ## Voraussetzungen
 
@@ -12,6 +12,10 @@ Entwicklungsumgebung mit [OpenSpec](https://openspec.dev) im Dev Container.
 1. Projekt öffnen
 2. Command Palette → **Dev Containers: Reopen in Container**
 3. Beim ersten Start installiert `post-create.sh` die OpenSpec CLI und initialisiert das Projekt für Cursor
+
+## Dokumentation
+
+- [Constraint mathematics](docs/constraint-mathematics.md) — Glossar und mathematische Formulierung (Structure/State, Residuen, Assembly, Interact)
 
 ## OpenSpec
 
