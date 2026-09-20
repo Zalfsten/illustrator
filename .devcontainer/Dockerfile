@@ -21,6 +21,10 @@ RUN apt-get update \
     libgl1 \
     libegl1 \
     libfontconfig1 \
+    # Ceres NLS (SolverPort backend) + build tools for the C++ bridge
+    libceres-dev \
+    pkg-config \
+    g++ \
   # GitHub CLI
   && curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
     | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg \

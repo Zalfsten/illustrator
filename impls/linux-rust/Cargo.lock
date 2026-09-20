@@ -674,6 +674,9 @@ dependencies = [
 [[package]]
 name = "constraint_runtime"
 version = "0.1.0"
+dependencies = [
+ "cc",
+]
 
 [[package]]
 name = "core-foundation"

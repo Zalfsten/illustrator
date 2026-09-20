@@ -1,9 +1,10 @@
 //! Interactive solve: soft drag, stay-near-previous, commit/fail, atomic drag.
 
 use crate::assemble::{AssembledSystem, SoftContribution};
+use crate::ceres_solver::CeresSolver;
 use crate::document::Document;
 use crate::geom::PointExpr;
-use crate::solver::{LmSolver, SolveOutcome, SolverOptions, SolverPort, SystemEval};
+use crate::solver::{SolverOptions, SolverPort, SystemEval};
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct SolveError {
@@ -33,7 +34,7 @@ impl Default for SoftTerms {
     fn default() -> Self {
         Self {
             mouse_weight: 40.0,
-            stay_weight: 0.05,
+            stay_weight: 0.02,
         }
     }
 }
@@ -45,70 +46,63 @@ fn soft_for_drag(
     mouse: (f64, f64),
     weights: &SoftTerms,
 ) -> Vec<SoftContribution> {
+    // Indices pulled by the mouse must not also get stay-near — otherwise stay
+    // fights the pointer and traps the drag in the previous nullspace (e.g. only
+    // vertical motion on an axis-aligned right angle).
+    let mut mouse_exprs = vec![dragged];
+    for c in doc.constraints() {
+        if let crate::constraint::Constraint::Congruence { a, b } = c {
+            if *a == dragged {
+                mouse_exprs.push(*b);
+            } else if *b == dragged {
+                mouse_exprs.push(*a);
+            }
+        }
+    }
+    let mut mouse_indices = std::collections::BTreeSet::new();
+    for expr in &mouse_exprs {
+        let ix = expr.param_indices(doc.segments());
+        mouse_indices.insert(ix[0]);
+        mouse_indices.insert(ix[1]);
+    }
+
     let mut soft = Vec::new();
     for (i, &v) in prev.iter().enumerate() {
+        if mouse_indices.contains(&i) {
+            continue;
+        }
         soft.push(SoftContribution {
             index: i,
             target: v,
             weight: weights.stay_weight,
         });
     }
-    let idxs = dragged.param_indices(doc.segments());
-    soft.push(SoftContribution {
-        index: idxs[0],
-        target: mouse.0,
-        weight: weights.mouse_weight,
-    });
-    soft.push(SoftContribution {
-        index: idxs[1],
-        target: mouse.1,
-        weight: weights.mouse_weight,
-    });
-    for c in doc.constraints() {
-        if let crate::constraint::Constraint::Congruence { a, b } = c {
-            let other = if *a == dragged {
-                *b
-            } else if *b == dragged {
-                *a
-            } else {
-                continue;
-            };
-            let oi = other.param_indices(doc.segments());
-            soft.push(SoftContribution {
-                index: oi[0],
-                target: mouse.0,
-                weight: weights.mouse_weight,
-            });
-            soft.push(SoftContribution {
-                index: oi[1],
-                target: mouse.1,
-                weight: weights.mouse_weight,
-            });
-        }
+    for expr in &mouse_exprs {
+        let ix = expr.param_indices(doc.segments());
+        soft.push(SoftContribution {
+            index: ix[0],
+            target: mouse.0,
+            weight: weights.mouse_weight,
+        });
+        soft.push(SoftContribution {
+            index: ix[1],
+            target: mouse.1,
+            weight: weights.mouse_weight,
+        });
     }
     soft
 }
 
-/// Structural residual rows only (exclude soft) for success checks.
-#[allow(dead_code)]
-fn structural_norm_at(doc: &Document, p: &[f64]) -> f64 {
-    let soft: [SoftContribution; 0] = [];
-    let sys = AssembledSystem::from_structure(&doc.structure, p.len(), &soft);
-    let mut r = vec![0.0; sys.n_residuals()];
-    sys.residual(p, &mut r);
-    r.iter().map(|x| x * x).sum::<f64>().sqrt()
-}
-
-pub struct InteractiveSolve<S: SolverPort = LmSolver> {
+pub struct InteractiveSolve<S: SolverPort = CeresSolver> {
     pub solver: S,
     pub soft_weights: SoftTerms,
     pub opts: SolverOptions,
 }
 
-impl Default for InteractiveSolve<LmSolver> {
+impl Default for InteractiveSolve<CeresSolver> {
     fn default() -> Self {
         Self {
-            solver: LmSolver,
+            solver: CeresSolver,
             soft_weights: SoftTerms::default(),
             opts: SolverOptions::default(),
         }
@@ -116,6 +110,18 @@ impl Default for InteractiveSolve<LmSolver> {
 }
 
 impl<S: SolverPort> InteractiveSolve<S> {
+    fn structural_norm(doc: &Document, p: &[f64]) -> f64 {
+        let soft0: [SoftContribution; 0] = [];
+        let sys0 = AssembledSystem::from_structure(&doc.structure, p.len(), &soft0);
+        let mut r = vec![0.0; sys0.n_residuals()];
+        sys0.residual(p, &mut r);
+        r.iter().map(|x| x * x).sum::<f64>().sqrt()
+    }
+
+    fn structural_ok(&self, doc: &Document, p: &[f64]) -> bool {
+        Self::structural_norm(doc, p) <= self.opts.tol * 10.0
+    }
+
     /// Solve on a working copy of State; commit only if structural residuals pass.
     pub fn solve_commit(
         &mut self,
@@ -123,43 +129,36 @@ impl<S: SolverPort> InteractiveSolve<S> {
         soft: &[SoftContribution],
         fallback: &[f64],
     ) -> Result<(), SolveError> {
-        let sys = AssembledSystem::from_structure(&doc.structure, doc.state().len(), soft);
         let mut working = doc.clone_state();
-        let n_struct: usize = doc.constraints().iter().map(|c| c.residual_arity()).sum();
 
-        let outcome = self.solver.solve(&sys, &mut working, &self.opts);
-        match outcome {
-            SolveOutcome::Success { .. } | SolveOutcome::Failure { .. } => {
-                let s_norm = {
-                    let soft0: [SoftContribution; 0] = [];
-                    let sys0 =
-                        AssembledSystem::from_structure(&doc.structure, working.len(), &soft0);
-                    let mut r = vec![0.0; sys0.n_residuals()];
-                    sys0.residual(&working, &mut r);
-                    r[..n_struct.min(r.len())]
-                        .iter()
-                        .map(|x| x * x)
-                        .sum::<f64>()
-                        .sqrt()
-                };
-                if s_norm <= self.opts.tol {
-                    doc.commit_state(&working);
-                    Ok(())
-                } else {
-                    doc.restore_state(fallback);
-                    let message = match outcome {
-                        SolveOutcome::Failure { message, .. } => message,
-                        SolveOutcome::Success { .. } => {
-                            "structural residuals not satisfied".into()
-                        }
-                    };
-                    Err(SolveError {
-                        message,
-                        residual_norm: s_norm,
-                    })
-                }
+        // Phase 1: soft + hard (when soft is empty, this is structural-only).
+        let sys = AssembledSystem::from_structure(&doc.structure, doc.state().len(), soft);
+        let _ = self.solver.solve(&sys, &mut working, &self.opts);
+
+        if self.structural_ok(doc, &working) {
+            doc.commit_state(&working);
+            return Ok(());
+        }
+
+        // Phase 2: polish onto the constraint manifold from the soft attempt.
+        if !soft.is_empty() {
+            let soft0: [SoftContribution; 0] = [];
+            let sys0 = AssembledSystem::from_structure(&doc.structure, working.len(), &soft0);
+            let _ = self.solver.solve(&sys0, &mut working, &self.opts);
+            if self.structural_ok(doc, &working) {
+                doc.commit_state(&working);
+                return Ok(());
             }
         }
+
+        let s_norm = Self::structural_norm(doc, &working);
+        doc.restore_state(fallback);
+        Err(SolveError {
+            message: format!(
+                "structural residuals not satisfied after soft solve + polish (structural={s_norm})"
+            ),
+            residual_norm: s_norm,
+        })
     }
 
     pub fn structural_only(&mut self, doc: &mut Document) -> Result<(), SolveError> {

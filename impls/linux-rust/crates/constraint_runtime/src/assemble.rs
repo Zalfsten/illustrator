@@ -6,6 +6,12 @@ use crate::geom::Segment;
 use crate::solver::SystemEval;
 use crate::SOLVE_TOL;
 
+/// Relative weight of structural residuals vs soft terms during interactive solves.
+/// Must stay modest vs soft Jacobian scale: at canvas/pixel coordinates (~1e2),
+/// values ≫ 1e3 make soft mouse terms numerically invisible and trap drags in
+/// the previous nullspace (e.g. only vertical motion on an axis-aligned right angle).
+pub const HARD_WEIGHT_WITH_SOFT: f64 = 1e3;
+
 /// Soft residual: sqrt(w) * (p[index] - target); local J is scalar sqrt(w).
 #[derive(Clone, Debug)]
 pub struct SoftContribution {
@@ -87,7 +93,11 @@ impl SystemEval for AssembledSystem<'_> {
     fn residual(&self, p: &[f64], r: &mut [f64]) {
         assert_eq!(r.len(), self.n_res);
         r.fill(0.0);
-        let hard = if self.soft.is_empty() { 1.0 } else { 1e4 };
+        let hard = if self.soft.is_empty() {
+            1.0
+        } else {
+            HARD_WEIGHT_WITH_SOFT
+        };
         for (ci, c) in self.constraints.iter().enumerate() {
             let m = c.residual_arity();
             let row0 = self.structural_row0[ci];
@@ -107,7 +117,11 @@ impl SystemEval for AssembledSystem<'_> {
         let m = self.n_res;
         assert_eq!(j.len(), m * n);
         j.fill(0.0);
-        let hard = if self.soft.is_empty() { 1.0 } else { 1e4 };
+        let hard = if self.soft.is_empty() {
+            1.0
+        } else {
+            HARD_WEIGHT_WITH_SOFT
+        };
 
         for (ci, c) in self.constraints.iter().enumerate() {
             let conn = c.param_connectivity(self.segments);

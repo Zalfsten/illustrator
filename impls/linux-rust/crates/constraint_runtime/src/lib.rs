@@ -1,7 +1,8 @@
 //! Model E constraint runtime: global state vector, connectivity assembly,
-//! analytical Jacobians, and a swappable solver port.
+//! analytical Jacobians, and a swappable solver port (owned LM + Ceres).
 
 pub mod assemble;
+pub mod ceres_solver;
 pub mod connectivity;
 pub mod constraint;
 pub mod document;
@@ -10,6 +11,7 @@ pub mod interact;
 pub mod solver;
 
 pub use assemble::{AssembledSystem, SoftContribution, structural_residual_norm};
+pub use ceres_solver::CeresSolver;
 pub use connectivity::Connectivity;
 pub use constraint::{Constraint, EndpointRef, SegmentEnd};
 pub use document::{Document, DocumentStructure, State};

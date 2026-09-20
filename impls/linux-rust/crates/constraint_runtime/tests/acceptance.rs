@@ -118,3 +118,58 @@ fn rectangle_drag_keeps_structure_and_stays_near() {
         .sqrt();
     assert!(dist < 2.0, "dist={dist}");
 }
+
+
+#[test]
+fn right_angle_horizontal_drag_moves_x() {
+    // Regression: stay+mouse on the same DOFs + Orthogonal trapped the free
+    // end on a vertical line (axis-aligned right angle). Stay must skip mouse
+    // indices so the joint can rotate under the hard constraint.
+    let mut doc = Document::new();
+    let s0 = doc.add_segment(Point2::new(120.0, 320.0), Point2::new(320.0, 320.0));
+    let s1 = doc.add_segment(Point2::new(320.0, 320.0), Point2::new(320.0, 140.0));
+    doc.join_endpoints(
+        EndpointRef::new(s0, SegmentEnd::End),
+        EndpointRef::new(s1, SegmentEnd::Start),
+    );
+    doc.add_constraint(Constraint::Orthogonal {
+        a: SegmentId(0),
+        b: SegmentId(1),
+    });
+    doc.add_constraint(Constraint::FixPoint {
+        point: PointExpr::SegmentEnd {
+            segment: s0,
+            end: SegmentEndKind::Start,
+        },
+        target: Point2::new(120.0, 320.0),
+    });
+
+    let mut interact = InteractiveSolve::default();
+    interact.structural_only(&mut doc).expect("initial");
+    let free = PointExpr::SegmentEnd {
+        segment: s1,
+        end: SegmentEndKind::End,
+    };
+    let before = free.evaluate(doc.segments(), doc.state());
+
+    let mut drag = DragSession::new();
+    drag.pointer_down(&doc, free);
+    drag.pointer_move(&mut interact, &mut doc, (200.0, 140.0))
+        .expect("move");
+    let after = free.evaluate(doc.segments(), doc.state());
+    assert!(
+        (after.x - before.x).abs() > 40.0,
+        "expected horizontal motion, C {before:?} -> {after:?}"
+    );
+    assert!(residual_ok(&doc));
+
+    // Large further drag should still track (not stick at first feasible point).
+    drag.pointer_move(&mut interact, &mut doc, (80.0, 100.0))
+        .expect("large move");
+    let far = free.evaluate(doc.segments(), doc.state());
+    assert!(
+        (far.x - 80.0).abs() < 40.0 && (far.y - 100.0).abs() < 40.0,
+        "expected to follow large drag, got {far:?}"
+    );
+    assert!(residual_ok(&doc));
+}
