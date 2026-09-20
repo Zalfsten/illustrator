@@ -12,7 +12,9 @@ Behavioral contracts live in OpenSpec capabilities (`geometry-ir`, `state-vector
 | **DocumentStructure** | Discrete sketch: geometries, structural constraints, and the connectivity schema that maps local parameters into indices of a state vector. Independent of GUI and of any concrete solver algorithm. |
 | **State** $p$ | Contiguous vector of continuous scalars (degrees of freedom). One State length matches one DocumentStructure's parameter count. |
 | **Document** | Composite of DocumentStructure plus a **committed** State. |
-| **Point expression** | Map from geometry parameters to a 2D location (e.g. a segment endpoint). Not a free-standing point entity and not a snapshot detached from parameters. |
+| **Vec2 / free vector** | Displacement or direction in the plane. Fundamental linear quantity: difference of points, segment direction, etc. |
+| **Point2 / point** | Affine location. May be written as a position vector relative to an origin, but is not a free vector. $P - Q$ is a vector; $P + v$ is a point; $P + Q$ is not meaningful. |
+| **Point expression** | Map from geometry parameters to a 2D **point** (e.g. a segment endpoint). Not a free-standing point entity and not a snapshot detached from parameters. |
 | **Residual** | Scalar (or small vector) that is zero iff a constraint (or soft term) is satisfied within tolerance. |
 | **Local Jacobian** | Derivatives of a local residual contribution w.r.t. the local parameters that contribution depends on. |
 | **Connectivity** $M_N$ | Explicit map from local parameter indices of contribution $N$ to global indices in $p$. Used to scatter local residuals/Jacobians into global arrays. |
@@ -58,8 +60,8 @@ Examples from the v1 catalog:
 
 - **Congruence** of two point expressions $A(p), B(p)$:  
   $r = A(p) - B(p) \in \mathbb{R}^2$.
-- **Parallel** of two segment directions $u,v$: one scalar measuring linear dependence (e.g. $u_x v_y - u_y v_x$).
-- **Orthogonal**: one scalar $u \cdot v$.
+- **Parallel** of two segment direction vectors $u,v$: one scalar measuring linear dependence (e.g. the 2D cross $u_x v_y - u_y v_x$).
+- **Orthogonal**: one scalar $u \cdot v$ (dot of free vectors).
 - **FixPoint** of expression $A(p)$ to target $t$:  
   $r = A(p) - t \in \mathbb{R}^2$.
 

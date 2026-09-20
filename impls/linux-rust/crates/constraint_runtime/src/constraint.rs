@@ -87,12 +87,12 @@ impl Constraint {
             Constraint::Parallel { a, b } => {
                 let va = find(segments, *a).direction(p);
                 let vb = find(segments, *b).direction(p);
-                out[0] = va.x * vb.y - va.y * vb.x;
+                out[0] = va.cross(vb);
             }
             Constraint::Orthogonal { a, b } => {
                 let va = find(segments, *a).direction(p);
                 let vb = find(segments, *b).direction(p);
-                out[0] = va.x * vb.x + va.y * vb.y;
+                out[0] = va.dot(vb);
             }
             Constraint::FixPoint { point, target } => {
                 let q = point.evaluate(segments, p);

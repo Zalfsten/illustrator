@@ -32,6 +32,17 @@ context: |
   (styles, LaTeX, export, function graphs) arrive in later changes under
   the same principles.
 
+  Geometry ontology (points vs vectors):
+  In the plane, the free vector (displacement / direction) is the more
+  fundamental object. A point is an affine location that may be represented
+  by a position vector relative to a chosen origin, but it is not the same
+  kind of quantity as a free vector. Specs, docs, and implementations MUST
+  distinguish them in naming and types (e.g. Vec2 / Vector2 for free vectors
+  including segment directions and differences of points; Point2 only for
+  locations). Do not overload a single "Point2" type for both. Operations
+  must respect the distinction: point − point → vector; point + vector →
+  point; vector + vector → vector; point + point is not meaningful.
+
 # Per-artifact rules
 rules:
   proposal:
@@ -42,6 +53,7 @@ rules:
     - Keep requirements implementation-agnostic: no mandated programming language, OS, GUI toolkit, or library.
     - Do not require a specific solver algorithm by name; specify observable solve/interaction behavior and replaceable backends instead.
     - Express overarching architecture as domain contracts (e.g. Model E, hard vs soft conditions), not as code module layouts of one impl.
+    - Keep points and free vectors distinct in domain language; do not treat directions or displacements as points.
   design:
     - Record language, libraries, OS/GUI, repo layout, and solver algorithm choices here for the target implementation.
     - Assume other implementations may exist later under the same specs; prefer clear backend/UI boundaries.

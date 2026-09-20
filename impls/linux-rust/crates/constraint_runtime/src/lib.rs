@@ -13,7 +13,7 @@ pub use assemble::{AssembledSystem, SoftContribution, structural_residual_norm};
 pub use connectivity::Connectivity;
 pub use constraint::{Constraint, EndpointRef, SegmentEnd};
 pub use document::{Document, DocumentStructure, State};
-pub use geom::{Point2, PointExpr, Segment, SegmentEndKind, SegmentId, SEGMENT_STRIDE};
+pub use geom::{Point2, PointExpr, Segment, SegmentEndKind, SegmentId, Vec2, SEGMENT_STRIDE};
 pub use interact::{DragSession, InteractiveSolve, SoftTerms, SolveError};
 pub use solver::{
     LmSolver, SolveOutcome, SolverOptions, SolverPort, StubSolver, SystemEval, ffi,
