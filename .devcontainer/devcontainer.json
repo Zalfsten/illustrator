@@ -9,7 +9,10 @@
       "settings": {
         "editor.formatOnSave": true,
         "files.eol": "\n",
-        "terminal.integrated.defaultProfile.linux": "bash"
+        "terminal.integrated.defaultProfile.linux": "bash",
+        "rust-analyzer.linkedProjects": [
+          "impls/linux-rust/Cargo.toml"
+        ]
       },
       "extensions": [
         "rust-lang.rust-analyzer",
