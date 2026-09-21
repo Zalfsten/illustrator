@@ -4,7 +4,7 @@ use std::collections::HashMap;
 
 use crate::constraint::{Constraint, EndpointRef};
 use crate::geom::{
-    Geometry, Point2, PointExpr, Segment, SegmentId, SegmentStore, SEGMENT_STRIDE,
+    Geometry, GeometryId, GeometryStore, Point2, Segment, SEGMENT_STRIDE,
 };
 
 /// Contiguous continuous parameters for a sketch.
@@ -54,8 +54,8 @@ impl std::ops::Deref for State {
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct DocumentStructure {
     geometries: Vec<Geometry>,
-    /// `SegmentId` → index into `geometries` (O(1) lookup during evaluate/solve).
-    segment_index: HashMap<SegmentId, usize>,
+    /// `GeometryId` → index into `geometries` (O(1) lookup during evaluate/solve).
+    geometry_index: HashMap<GeometryId, usize>,
     constraints: Vec<Constraint>,
     next_id: usize,
 }
@@ -90,44 +90,34 @@ impl DocumentStructure {
 
     /// Register a geometry whose parameters already live in an external State.
     pub fn push_geometry(&mut self, g: Geometry) {
-        match &g {
-            Geometry::Segment(s) => {
-                debug_assert!(
-                    !self.segment_index.contains_key(&s.id),
-                    "duplicate segment id {:?}",
-                    s.id
-                );
-                self.segment_index.insert(s.id, self.geometries.len());
-                if s.id.0 >= self.next_id {
-                    self.next_id = s.id.0 + 1;
-                }
-            }
+        let id = g.id();
+        debug_assert!(
+            !self.geometry_index.contains_key(&id),
+            "duplicate geometry id {id:?}"
+        );
+        self.geometry_index.insert(id, self.geometries.len());
+        if id.0 >= self.next_id {
+            self.next_id = id.0 + 1;
         }
         self.geometries.push(g);
     }
 
-    fn constraint_references_segment(c: &Constraint, id: SegmentId) -> bool {
+    fn constraint_references_geometry(c: &Constraint, id: GeometryId) -> bool {
         match c {
             Constraint::Congruence { a, b } => {
-                point_expr_segment(a) == Some(id) || point_expr_segment(b) == Some(id)
+                a.referenced_geometry() == id || b.referenced_geometry() == id
             }
             Constraint::Parallel { a, b } | Constraint::Orthogonal { a, b } => *a == id || *b == id,
-            Constraint::FixPoint { point, .. } => point_expr_segment(point) == Some(id),
+            Constraint::FixPoint { point, .. } => point.referenced_geometry() == id,
         }
     }
 }
 
-impl SegmentStore for DocumentStructure {
-    fn segment(&self, id: SegmentId) -> Option<&Segment> {
-        let &slot = self.segment_index.get(&id)?;
-        match self.geometries.get(slot)? {
-            Geometry::Segment(s) => Some(s),
-        }
+impl GeometryStore for DocumentStructure {
+    fn geometry(&self, id: GeometryId) -> Option<&Geometry> {
+        let &slot = self.geometry_index.get(&id)?;
+        self.geometries.get(slot)
     }
-}
-
-fn point_expr_segment(expr: &PointExpr) -> Option<SegmentId> {
-    Some(expr.referenced_segment())
 }
 
 /// Document = DocumentStructure + committed State.
@@ -166,7 +156,7 @@ impl Document {
         self.structure.geometries()
     }
 
-    /// Convenience: all line-segment geometries in document order.
+    /// Segment geometries in document order (UI paint / pick).
     pub fn segments(&self) -> impl Iterator<Item = &Segment> {
         self.structure.geometries.iter().filter_map(|g| match g {
             Geometry::Segment(s) => Some(s),
@@ -177,8 +167,8 @@ impl Document {
         self.structure.constraints()
     }
 
-    pub fn add_segment(&mut self, a: Point2, b: Point2) -> SegmentId {
-        let id = SegmentId(self.structure.next_id);
+    pub fn add_segment(&mut self, a: Point2, b: Point2) -> GeometryId {
+        let id = GeometryId(self.structure.next_id);
         self.structure.next_id += 1;
         let param_offset = self.state.len();
         self.state.0.extend_from_slice(&[a.x, a.y, b.x, b.y]);
@@ -196,26 +186,28 @@ impl Document {
         self.structure.join_endpoints(a, b);
     }
 
-    pub fn segment(&self, id: SegmentId) -> Option<&Segment> {
-        self.structure.segment(id)
+    /// Look up a segment by id (UI / tests). Prefer [`GeometryStore::geometry`] in the solver path.
+    pub fn segment(&self, id: GeometryId) -> Option<&Segment> {
+        match self.structure.geometry(id)? {
+            Geometry::Segment(s) => Some(s),
+        }
     }
 
-    /// Remove a segment: compact State, remap offsets, drop orphan constraints.
-    pub fn remove_segment(&mut self, id: SegmentId) -> bool {
-        let Some(pos) = self.structure.segment_index.remove(&id) else {
+    /// Remove a geometry: compact State, remap offsets, drop orphan constraints.
+    pub fn remove_geometry(&mut self, id: GeometryId) -> bool {
+        let Some(pos) = self.structure.geometry_index.remove(&id) else {
             return false;
         };
-        let removed = match self.structure.geometries.remove(pos) {
-            Geometry::Segment(s) => s,
-        };
-        for slot in self.structure.segment_index.values_mut() {
+        let removed = self.structure.geometries.remove(pos);
+        for slot in self.structure.geometry_index.values_mut() {
             if *slot > pos {
                 *slot -= 1;
             }
         }
 
-        let start = removed.param_offset;
-        let removed_len = SEGMENT_STRIDE;
+        let (start, removed_len) = match &removed {
+            Geometry::Segment(s) => (s.param_offset, SEGMENT_STRIDE),
+        };
         let end = start + removed_len;
         assert!(end <= self.state.len());
         self.state.0.drain(start..end);
@@ -226,7 +218,7 @@ impl Document {
 
         self.structure
             .constraints
-            .retain(|c| !DocumentStructure::constraint_references_segment(c, id));
+            .retain(|c| !DocumentStructure::constraint_references_geometry(c, id));
 
         debug_assert_eq!(self.state.len(), self.structure.parameter_count());
         true
@@ -246,9 +238,9 @@ impl Document {
     }
 }
 
-impl SegmentStore for Document {
-    fn segment(&self, id: SegmentId) -> Option<&Segment> {
-        self.structure.segment(id)
+impl GeometryStore for Document {
+    fn geometry(&self, id: GeometryId) -> Option<&Geometry> {
+        self.structure.geometry(id)
     }
 }
 

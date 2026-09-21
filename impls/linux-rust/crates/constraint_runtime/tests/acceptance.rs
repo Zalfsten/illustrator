@@ -2,7 +2,7 @@
 
 use constraint_runtime::{
     AssembledSystem, Constraint, Document, DragSession, EndpointRef, InteractiveSolve, Point2,
-    PointExpr, SegmentEnd, SegmentEndKind, SegmentId, SoftContribution, SystemEval, SOLVE_TOL,
+    PointExpr, SegmentEnd, SegmentEndKind, GeometryId, SoftContribution, SystemEval, SOLVE_TOL,
 };
 
 fn residual_ok(doc: &Document) -> bool {
@@ -23,12 +23,12 @@ fn right_angle_soft_drag_keeps_orthogonal_and_congruence() {
         EndpointRef::new(s1, SegmentEnd::Start),
     );
     doc.add_constraint(Constraint::Orthogonal {
-        a: SegmentId(0),
-        b: SegmentId(1),
+        a: GeometryId(0),
+        b: GeometryId(1),
     });
     doc.add_constraint(Constraint::FixPoint {
         point: PointExpr::SegmentEnd {
-            segment: s0,
+            geometry: s0,
             end: SegmentEndKind::Start,
         },
         target: Point2::new(0.0, 0.0),
@@ -40,7 +40,7 @@ fn right_angle_soft_drag_keeps_orthogonal_and_congruence() {
 
     let mut drag = DragSession::new();
     let free = PointExpr::SegmentEnd {
-        segment: s1,
+        geometry: s1,
         end: SegmentEndKind::End,
     };
     drag.pointer_down(&doc, free);
@@ -85,7 +85,7 @@ fn rectangle_drag_keeps_structure_and_stays_near() {
     doc.add_constraint(Constraint::Orthogonal { a: ab, b: da });
     doc.add_constraint(Constraint::FixPoint {
         point: PointExpr::SegmentEnd {
-            segment: ab,
+            geometry: ab,
             end: SegmentEndKind::Start,
         },
         target: Point2::new(0.0, 1.0),
@@ -98,7 +98,7 @@ fn rectangle_drag_keeps_structure_and_stays_near() {
 
     let mut drag = DragSession::new();
     let corner = PointExpr::SegmentEnd {
-        segment: bc,
+        geometry: bc,
         end: SegmentEndKind::End,
     };
     drag.pointer_down(&doc, corner);
@@ -133,12 +133,12 @@ fn right_angle_horizontal_drag_moves_x() {
         EndpointRef::new(s1, SegmentEnd::Start),
     );
     doc.add_constraint(Constraint::Orthogonal {
-        a: SegmentId(0),
-        b: SegmentId(1),
+        a: GeometryId(0),
+        b: GeometryId(1),
     });
     doc.add_constraint(Constraint::FixPoint {
         point: PointExpr::SegmentEnd {
-            segment: s0,
+            geometry: s0,
             end: SegmentEndKind::Start,
         },
         target: Point2::new(120.0, 320.0),
@@ -147,7 +147,7 @@ fn right_angle_horizontal_drag_moves_x() {
     let mut interact = InteractiveSolve::default();
     interact.structural_only(&mut doc).expect("initial");
     let free = PointExpr::SegmentEnd {
-        segment: s1,
+        geometry: s1,
         end: SegmentEndKind::End,
     };
     let before = free.evaluate(&doc.structure, doc.state());
@@ -183,25 +183,25 @@ fn congruence_to_uniform_midpoint_pins_segment() {
     let s1 = doc.add_segment(Point2::new(1.0, 2.0), Point2::new(5.0, 2.0));
     doc.add_constraint(Constraint::FixPoint {
         point: PointExpr::SegmentEnd {
-            segment: s0,
+            geometry: s0,
             end: SegmentEndKind::Start,
         },
         target: Point2::new(0.0, 0.0),
     });
     doc.add_constraint(Constraint::FixPoint {
         point: PointExpr::SegmentEnd {
-            segment: s1,
+            geometry: s1,
             end: SegmentEndKind::Start,
         },
         target: Point2::new(1.0, 2.0),
     });
     doc.add_constraint(Constraint::Congruence {
         a: PointExpr::OnCurve {
-            segment: s0,
+            geometry: s0,
             param: CurveParam::Uniform(0.5),
         },
         b: PointExpr::SegmentEnd {
-            segment: s1,
+            geometry: s1,
             end: SegmentEndKind::Start,
         },
     });
@@ -210,7 +210,7 @@ fn congruence_to_uniform_midpoint_pins_segment() {
     interact.structural_only(&mut doc).expect("midpoint congruence");
     assert!(residual_ok(&doc));
     let mid_pt = PointExpr::OnCurve {
-        segment: s0,
+        geometry: s0,
         param: CurveParam::Uniform(0.5),
     }
     .evaluate(&doc.structure, doc.state());

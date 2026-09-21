@@ -10,9 +10,9 @@ Scientific figures need more than line segments: constructions such as midpoints
 - Define length policy: `tangent_at` is the chart derivative \(\gamma'(t)\) (parametric speed as length); `normal_at` is a planar \(\pm 90^\circ\) rotate of that tangent (same length). Neither is required to be unit length. Curvature is **not** encoded as normal length (deferred as a separate quantity).
 - Distinguish **capabilities**: curves with geometric endpoints (`HasEndpoints`) versus intrinsically periodic curves (e.g. full circle) that have a chart origin but no join endpoints.
 - Address points on a curve via `CurveParam`: `Normalized(t)` (canonical) and `Uniform(u)` (constant-speed / equal arc-length fraction on \([0,1]\)). Physical arc-length domain \(s \in [0,L]\) is deferred.
-- Extend **point expressions** beyond segment ends (e.g. on-curve samples); introduce **vector expressions** for tangents, normals, and directions used by constraints and construction.
+- Extend **point expressions** beyond segment ends (e.g. on-curve samples); introduce **vector expressions** for tangents, normals, and directions used by constraints and construction. Expressions and constraints name geometries by a shared **geometry identity**; DocumentStructure resolves identities for evaluate/solve without scanning the full geometry set. Line segment remains the proving kind and may keep UI-facing helpers (iterate/add/pick segments) without making segment the core lookup model.
 - Reserve cross-geometry expression forms (intersection, and later tangency as constraints) as expression / catalog concerns—not methods on a single curve type.
-- **BREAKING** (spec): lift the “segments only” geometry-set requirement so further primitives can be specified; this change’s implementation still proves the model primarily on segments.
+- **BREAKING** (spec): lift the “segments only” geometry-set requirement so further primitives can be specified; this change’s implementation still proves the model primarily on segments. Document storage is a sum of geometry kinds (segment today).
 - Document that a first-class `Point` geometry entity and `Face` remain out of scope; Rust traits / a document enum need no common OOP base class for a future `Point`.
 
 ## Capabilities
@@ -23,8 +23,8 @@ Scientific figures need more than line segments: constructions such as midpoints
 
 ### Modified Capabilities
 
-- `geometry-ir`: Curve model (position/tangent/normal), parameterization (`Normalized` / `Uniform`), endpoint/periodic capabilities, expanded point/vector expressions; replace segments-only gate with a curve-centered geometry set for this slice.
-- `geometry-eval`: Evaluation and analytical derivatives for curve position/tangent/normal and for new expression forms (at least segment-backed on-curve / uniform, which coincide for segments).
+- `geometry-ir`: Curve model (position/tangent/normal), parameterization (`Normalized` / `Uniform`), endpoint/periodic capabilities, expanded point/vector expressions; geometry identity + indexed resolution in DocumentStructure; replace segments-only gate with a curve-centered geometry set (sum of kinds; segment as proving kind).
+- `geometry-eval`: Evaluation and analytical derivatives for curve position/tangent/normal and for new expression forms (at least segment-backed on-curve / uniform, which coincide for segments); evaluation via identity resolution on DocumentStructure.
 
 ## Non-goals
 

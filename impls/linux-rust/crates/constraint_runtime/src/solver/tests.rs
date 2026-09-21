@@ -2,7 +2,7 @@ use super::*;
 use crate::assemble::AssembledSystem;
 use crate::constraint::{Constraint, EndpointRef, SegmentEnd};
 use crate::document::Document;
-use crate::geom::{Point2, PointExpr, SegmentEndKind, SegmentId};
+use crate::geom::{GeometryId, Point2, PointExpr, SegmentEndKind};
 
 #[test]
 fn stub_backend_swaps() {
@@ -28,7 +28,7 @@ fn lm_solves_fixpoint_analytically() {
     let s0 = doc.add_segment(Point2::new(3.0, 4.0), Point2::new(5.0, 6.0));
     doc.add_constraint(Constraint::FixPoint {
         point: PointExpr::SegmentEnd {
-            segment: s0,
+            geometry: s0,
             end: SegmentEndKind::Start,
         },
         target: Point2::new(0.0, 0.0),
@@ -54,14 +54,14 @@ fn lm_solves_congruence() {
     );
     doc.add_constraint(Constraint::FixPoint {
         point: PointExpr::SegmentEnd {
-            segment: s0,
+            geometry: s0,
             end: SegmentEndKind::Start,
         },
         target: Point2::new(0.0, 0.0),
     });
     doc.add_constraint(Constraint::FixPoint {
         point: PointExpr::SegmentEnd {
-            segment: s0,
+            geometry: s0,
             end: SegmentEndKind::End,
         },
         target: Point2::new(1.0, 0.0),
@@ -73,6 +73,6 @@ fn lm_solves_congruence() {
     assert!(matches!(out, SolveOutcome::Success { .. }), "{out:?}");
     doc.restore_state(&p);
     let a = doc.segment(s0).unwrap().end(doc.state());
-    let b = doc.segment(SegmentId(1)).unwrap().start(doc.state());
+    let b = doc.segment(GeometryId(1)).unwrap().start(doc.state());
     assert!((a.x - b.x).abs() < 1e-5 && (a.y - b.y).abs() < 1e-5);
 }

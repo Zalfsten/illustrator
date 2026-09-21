@@ -55,7 +55,7 @@ impl App {
         app.doc.add_constraint(Constraint::Orthogonal { a: s0, b: s1 });
         app.doc.add_constraint(Constraint::FixPoint {
             point: PointExpr::SegmentEnd {
-                segment: s0,
+                geometry: s0,
                 end: SegmentEndKind::Start,
             },
             target: Point2::new(120.0, 320.0),
@@ -73,11 +73,11 @@ impl App {
         let mut exprs = Vec::new();
         for s in self.doc.segments() {
             exprs.push(PointExpr::SegmentEnd {
-                segment: s.id,
+                geometry: s.id,
                 end: SegmentEndKind::Start,
             });
             exprs.push(PointExpr::SegmentEnd {
-                segment: s.id,
+                geometry: s.id,
                 end: SegmentEndKind::End,
             });
         }

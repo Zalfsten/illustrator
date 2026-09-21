@@ -11,7 +11,7 @@ fn ceres_solves_fixpoint() {
     let s0 = doc.add_segment(Point2::new(3.0, 4.0), Point2::new(5.0, 6.0));
     doc.add_constraint(Constraint::FixPoint {
         point: PointExpr::SegmentEnd {
-            segment: s0,
+            geometry: s0,
             end: SegmentEndKind::Start,
         },
         target: Point2::new(0.0, 0.0),

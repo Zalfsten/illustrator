@@ -21,7 +21,7 @@ A curve geometry SHALL evaluate its normalized position (as a point), tangent (a
 
 ### Requirement: On-curve and Uniform parameters are evaluable
 
-Point expressions that sample a curve at `Normalized` or `Uniform` parameters, and vector expressions for tangents and normals at those parameters, SHALL be evaluable against a state vector. For line segments, evaluation at `Uniform(u)` SHALL match evaluation at `Normalized(t)` for \(t = u\), including derivatives w.r.t. the segment's local parameters. Implementations SHALL document how `Uniform` will be obtained for future non-constant-speed curves (closed form or inversion); this capability requires a correct segment path and a defined extension point, not a general numerical arc-length solver.
+Point expressions that sample a curve at `Normalized` or `Uniform` parameters, and vector expressions for tangents and normals at those parameters, SHALL be evaluable against a state vector given DocumentStructure (or an equivalent geometry store that resolves geometry identities). Evaluation SHALL obtain the named geometry by identity resolution from that structure, then apply the curve (or endpoint) capability of that geometry. For line segments, evaluation at `Uniform(u)` SHALL match evaluation at `Normalized(t)` for \(t = u\), including derivatives w.r.t. the segment's local parameters. Implementations SHALL document how `Uniform` will be obtained for future non-constant-speed curves (closed form or inversion); this capability requires a correct segment path and a defined extension point, not a general numerical arc-length solver.
 
 #### Scenario: Segment OnCurve Uniform matches Normalized
 
@@ -29,6 +29,12 @@ Point expressions that sample a curve at `Normalized` or `Uniform` parameters, a
 - **AND** the same segment is evaluated at `Normalized(0.25)`
 - **THEN** both evaluations yield the same point from the same state
 - **AND** both yield matching analytical derivatives w.r.t. the segment's local parameters
+
+#### Scenario: Assembly evaluates expressions via identity resolution
+
+- **WHEN** residual or Jacobian assembly evaluates a constraint that names geometries by identity
+- **THEN** each named geometry is obtained from DocumentStructure by identity resolution
+- **AND** assembly SHALL NOT scan the full geometry list once per named identity to locate that geometry
 
 ## MODIFIED Requirements
 

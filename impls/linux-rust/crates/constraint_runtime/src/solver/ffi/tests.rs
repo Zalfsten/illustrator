@@ -10,7 +10,7 @@ fn c_calling_pattern_fills_residual() {
     let s0 = doc.add_segment(Point2::new(0.0, 0.0), Point2::new(1.0, 0.0));
     doc.add_constraint(Constraint::FixPoint {
         point: PointExpr::SegmentEnd {
-            segment: s0,
+            geometry: s0,
             end: SegmentEndKind::Start,
         },
         target: Point2::new(0.0, 0.0),

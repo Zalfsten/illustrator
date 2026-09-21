@@ -1,6 +1,6 @@
 use super::*;
 use crate::constraint::SegmentEnd;
-use crate::geom::SegmentEndKind;
+use crate::geom::{PointExpr, SegmentEndKind};
 
 #[test]
 fn two_segment_join_connectivity_indices() {
@@ -64,7 +64,7 @@ fn add_segment_grows_state_and_connectivity() {
 }
 
 #[test]
-fn remove_segment_compacts_state_and_drops_orphans() {
+fn remove_geometry_compacts_state_and_drops_orphans() {
     let mut doc = Document::new();
     let s0 = doc.add_segment(Point2::new(0.0, 0.0), Point2::new(1.0, 0.0));
     let s1 = doc.add_segment(Point2::new(1.0, 0.0), Point2::new(1.0, 1.0));
@@ -76,20 +76,20 @@ fn remove_segment_compacts_state_and_drops_orphans() {
     doc.add_constraint(Constraint::Orthogonal { a: s0, b: s1 });
     doc.add_constraint(Constraint::FixPoint {
         point: PointExpr::SegmentEnd {
-            segment: s2,
+            geometry: s2,
             end: SegmentEndKind::Start,
         },
         target: Point2::new(5.0, 5.0),
     });
     doc.add_constraint(Constraint::FixPoint {
         point: PointExpr::OnCurve {
-            segment: s1,
+            geometry: s1,
             param: crate::geom::CurveParam::Uniform(0.5),
         },
         target: Point2::new(1.0, 0.5),
     });
     assert_eq!(doc.constraints().len(), 4);
-    assert!(doc.remove_segment(s1));
+    assert!(doc.remove_geometry(s1));
     assert_eq!(doc.geometries().len(), 2);
     assert_eq!(doc.state().len(), 2 * SEGMENT_STRIDE);
     // s0 still at 0..4; s2 remapped from 8..12 to 4..8
@@ -101,6 +101,6 @@ fn remove_segment_compacts_state_and_drops_orphans() {
     assert!(matches!(
         &doc.constraints()[0],
         Constraint::FixPoint { point, .. }
-            if matches!(point, PointExpr::SegmentEnd { segment, .. } if *segment == s2)
+            if matches!(point, PointExpr::SegmentEnd { geometry, .. } if *geometry == s2)
     ));
 }

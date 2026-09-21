@@ -5,13 +5,15 @@
 - [x] 1.1 Add `CurveParam::{Normalized, Uniform}` and document Normalized vs Uniform in `geom` module docs; verify `cargo test -p constraint_runtime` still passes
 - [x] 1.2 Implement curve position/tangent/normal for `Segment` at normalized \(t\) (`position_at` / `tangent_at` / `normal_at`) returning `Point2` / `Vec2` from state; verify unit tests for \(t \in \{0, 0.5, 1\}\), tangent length = segment length, and normal = leftward rotate of tangent with equal length
 - [x] 1.3 Expose endpoints via the curve/endpoints API (defaults aligned with \(t=0/1\)); verify existing endpoint tests and `Endpoints`-style callers still compile
+- [x] 1.4 Introduce document `enum Geometry` (segment variant) with shared ops and `curve()`; verify tests compile against `Geometry` storage
+- [x] 1.5 Address geometries by `GeometryId` with DocumentStructure id→slot index (`GeometryStore`); remove linear segment scans from evaluate/solve; keep UI segment helpers (`segments` / `add_segment`); verify `cargo test -p constraint_runtime` and `cargo build -p sketch_ui`
 
 ## 2. Expressions
 
-- [x] 2.1 Extend `PointExpr` with on-curve samples (`OnCurve` + `CurveParam`, segment id for now); verify evaluation matches `position_at` for Normalized
+- [x] 2.1 Extend `PointExpr` with on-curve samples (`OnCurve` + `CurveParam`, keyed by `GeometryId`); verify evaluation matches `position_at` for Normalized
 - [x] 2.2 Introduce `VecExpr` with at least `TangentAt` and `NormalAt` (plus segment direction as needed); verify evaluation returns free vectors with the specified length/orientation semantics
 - [x] 2.3 Implement Uniform evaluation for segments as identity with Normalized (value + analytical derivatives used by constraints); verify unit test `Uniform(u) == Normalized(u)` on a segment including a mid-parameter case
-- [x] 2.4 Wire `document` / constraint reference cleanup so new expression variants do not panic on segment remove; verify remove-segment / orphan constraint tests still pass
+- [x] 2.4 Wire `document` / constraint reference cleanup so new expression variants do not panic on geometry remove; verify remove-geometry / orphan constraint tests still pass
 
 ## 3. Constraints and acceptance
 

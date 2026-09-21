@@ -54,13 +54,20 @@ Geometric start and end join points SHALL be provided only for curves that have 
 
 ### Requirement: On-curve point expressions and frame vector expressions
 
-The system SHALL provide point expressions that refer to a point on a named curve at a stated curve parameter (`Normalized` or `Uniform`). The system SHALL provide vector expressions that refer to the tangent free vector and the normal free vector of a named curve at a stated curve parameter, with the length and orientation semantics of the curve tangent/normal maps. These expressions SHALL evaluate as functions of the involved geometry parameters and SHALL NOT be coordinate snapshots detached from those parameters. Existing endpoint point expressions remain valid and SHALL be consistent with on-curve samples at the corresponding normalized endpoints when the curve has endpoints.
+The system SHALL provide point expressions that refer to a point on a named geometry (by stable geometry identity) at a stated curve parameter (`Normalized` or `Uniform`), provided that geometry is a curve. The system SHALL provide vector expressions that refer to the tangent free vector and the normal free vector of a named curve geometry at a stated curve parameter, with the length and orientation semantics of the curve tangent/normal maps. These expressions SHALL evaluate as functions of the involved geometry parameters and SHALL NOT be coordinate snapshots detached from those parameters. Existing endpoint point expressions remain valid and SHALL be consistent with on-curve samples at the corresponding normalized endpoints when the curve has endpoints. Endpoint expressions and segment-direction vector expressions SHALL apply only to geometries that expose the corresponding capability (line segments today); they SHALL NOT imply that every geometry is a segment.
 
 #### Scenario: Congruence can use an on-curve point expression
 
 - **WHEN** a Congruence relationship binds an on-curve point expression at `Uniform(0.5)` on a segment to another point expression
 - **AND** the equation system is assembled and solved successfully
 - **THEN** the segment midpoint coincides with the other expression's location within solve tolerance
+
+#### Scenario: Expressions name geometries by identity, not by kind-specific handles
+
+- **WHEN** an on-curve or frame vector expression refers to a geometry
+- **THEN** the reference is a stable geometry identity shared by all geometry kinds
+- **AND** resolving that identity yields the geometry object used for evaluation
+- **AND** the system SHALL NOT require a segment-only identity type for those expressions
 
 ### Requirement: Cross-geometry constructions are expressions or constraints
 
@@ -74,7 +81,7 @@ Operations that involve more than one geometry (for example intersection of two 
 
 ### Requirement: Geometry set includes curves with segment as proving kind
 
-The system SHALL treat parameterized curves as the primary geometry kind for path-like primitives. A line segment SHALL be a curve in this sense and SHALL remain supported. Additional curve kinds (circles, arcs, splines, function graphs) MAY be introduced in later changes that conform to the curve contract; this capability does not require them to be implemented yet. First-class point geometry entities and face/region geometries remain outside this requirement.
+The system SHALL treat parameterized curves as the primary geometry kind for path-like primitives. A line segment SHALL be a curve in this sense and SHALL remain supported. DocumentStructure SHALL store geometries as a sum of kinds (of which line segment is the only required kind in this slice). Shared geometry operations (parameter count, connectivity, reindex after removal, optional curve capability) SHALL apply uniformly; kind-specific behavior SHALL be obtained by matching on kind or by querying a capability (for example curve), not by a privileged segment-only store API in the core evaluate/solve path. Additional curve kinds (circles, arcs, splines, function graphs) MAY be introduced in later changes that conform to the curve contract; this capability does not require them to be implemented yet. First-class point geometry entities and face/region geometries remain outside this requirement. A UI or renderer MAY iterate only segment geometries for paint and pick while other kinds are absent.
 
 #### Scenario: Segment remains an admitted curve
 
@@ -87,6 +94,23 @@ The system SHALL treat parameterized curves as the primary geometry kind for pat
 - **WHEN** a document is constructed with only line segment curves
 - **THEN** the document satisfies this capability's geometry-set obligations
 - **AND** absence of circle or spline kinds is not a violation
+
+### Requirement: Geometries are resolved by stable identity without scanning the full set
+
+Each geometry in DocumentStructure SHALL have a stable geometry identity. DocumentStructure SHALL resolve a geometry identity to the corresponding geometry for expression evaluation, residual evaluation, and Jacobian assembly without scanning every geometry in the document for each lookup (lookup cost SHALL be independent of the number of geometries, aside from ordinary hash/map overhead). Constraints and expressions that name geometries SHALL use that identity. Removing a geometry SHALL drop the identity from the resolution map and invalidate or drop constraints that referenced it, consistent with existing structural-edit rules.
+
+#### Scenario: Evaluate resolves a named geometry without a full scan
+
+- **WHEN** a point or vector expression names a geometry identity
+- **AND** that expression is evaluated against DocumentStructure and a State
+- **THEN** DocumentStructure yields that geometry by identity resolution
+- **AND** evaluation does not depend on linearly searching the entire geometry collection for a matching identity
+
+#### Scenario: Remove drops identity resolution and orphan references
+
+- **WHEN** a geometry is removed from DocumentStructure
+- **THEN** its identity is no longer resolvable
+- **AND** structural constraints that referenced that identity are no longer present in the structure
 
 ## MODIFIED Requirements
 

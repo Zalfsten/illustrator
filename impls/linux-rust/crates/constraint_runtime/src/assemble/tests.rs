@@ -1,6 +1,6 @@
 use super::*;
 use crate::constraint::{Constraint, EndpointRef, SegmentEnd};
-use crate::geom::{Point2, PointExpr, SegmentEndKind, SegmentId};
+use crate::geom::{GeometryId, Point2, PointExpr, SegmentEndKind};
 
 #[test]
 fn residual_arity_stacks() {
@@ -12,16 +12,16 @@ fn residual_arity_stacks() {
         EndpointRef::new(s1, SegmentEnd::Start),
     );
     doc.add_constraint(Constraint::Parallel {
-        a: SegmentId(0),
-        b: SegmentId(1),
+        a: GeometryId(0),
+        b: GeometryId(1),
     });
     doc.add_constraint(Constraint::Orthogonal {
-        a: SegmentId(0),
-        b: SegmentId(1),
+        a: GeometryId(0),
+        b: GeometryId(1),
     });
     doc.add_constraint(Constraint::FixPoint {
         point: PointExpr::SegmentEnd {
-            segment: s0,
+            geometry: s0,
             end: SegmentEndKind::Start,
         },
         target: Point2::new(0.0, 0.0),
@@ -38,11 +38,11 @@ fn assembled_jacobian_matches_global_fd() {
     let _s1 = doc.add_segment(Point2::new(1.0, 0.5), Point2::new(2.0, 0.5));
     doc.join_endpoints(
         EndpointRef::new(s0, SegmentEnd::End),
-        EndpointRef::new(SegmentId(1), SegmentEnd::Start),
+        EndpointRef::new(GeometryId(1), SegmentEnd::Start),
     );
     doc.add_constraint(Constraint::FixPoint {
         point: PointExpr::SegmentEnd {
-            segment: s0,
+            geometry: s0,
             end: SegmentEndKind::Start,
         },
         target: Point2::new(0.0, 0.0),

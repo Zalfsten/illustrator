@@ -1,7 +1,9 @@
 //! Structural constraints: local residuals and analytical local Jacobians.
 
 use crate::connectivity::Connectivity;
-use crate::geom::{Point2, PointExpr, SegmentEndKind, SegmentId, SegmentStore};
+use crate::geom::{
+    Geometry, GeometryId, GeometryStore, Point2, PointExpr, SegmentEndKind,
+};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum SegmentEnd {
@@ -20,18 +22,18 @@ impl From<SegmentEnd> for SegmentEndKind {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct EndpointRef {
-    pub segment: SegmentId,
+    pub geometry: GeometryId,
     pub end: SegmentEnd,
 }
 
 impl EndpointRef {
-    pub fn new(segment: SegmentId, end: SegmentEnd) -> Self {
-        Self { segment, end }
+    pub fn new(geometry: GeometryId, end: SegmentEnd) -> Self {
+        Self { geometry, end }
     }
 
     pub fn as_expr(self) -> PointExpr {
         PointExpr::SegmentEnd {
-            segment: self.segment,
+            geometry: self.geometry,
             end: self.end.into(),
         }
     }
@@ -40,9 +42,14 @@ impl EndpointRef {
 #[derive(Clone, Debug, PartialEq)]
 pub enum Constraint {
     Congruence { a: PointExpr, b: PointExpr },
-    Parallel { a: SegmentId, b: SegmentId },
-    Orthogonal { a: SegmentId, b: SegmentId },
+    Parallel { a: GeometryId, b: GeometryId },
+    Orthogonal { a: GeometryId, b: GeometryId },
     FixPoint { point: PointExpr, target: Point2 },
+}
+
+fn segment_direction(store: &impl GeometryStore, id: GeometryId, p: &[f64]) -> crate::geom::Vec2 {
+    let Geometry::Segment(s) = store.expect_geometry(id);
+    s.direction(p)
 }
 
 impl Constraint {
@@ -54,7 +61,7 @@ impl Constraint {
     }
 
     /// Column connectivity: global parameter indices involved in this contribution.
-    pub fn param_connectivity(&self, store: &impl SegmentStore) -> Connectivity {
+    pub fn param_connectivity(&self, store: &impl GeometryStore) -> Connectivity {
         match self {
             Constraint::Congruence { a, b } => {
                 let mut idx = a.param_indices(store);
@@ -62,10 +69,8 @@ impl Constraint {
                 Connectivity::new(idx)
             }
             Constraint::Parallel { a, b } | Constraint::Orthogonal { a, b } => {
-                let sa = store.expect_segment(*a);
-                let sb = store.expect_segment(*b);
-                let mut idx = sa.connectivity().global_indices;
-                idx.extend(sb.connectivity().global_indices);
+                let mut idx = store.expect_geometry(*a).connectivity().global_indices;
+                idx.extend(store.expect_geometry(*b).connectivity().global_indices);
                 Connectivity::new(idx)
             }
             Constraint::FixPoint { point, .. } => {
@@ -75,7 +80,7 @@ impl Constraint {
     }
 
     /// Local residual `r_N` in contribution order (length = residual_arity).
-    pub fn eval_residual(&self, store: &impl SegmentStore, p: &[f64], out: &mut [f64]) {
+    pub fn eval_residual(&self, store: &impl GeometryStore, p: &[f64], out: &mut [f64]) {
         match self {
             Constraint::Congruence { a, b } => {
                 let pa = a.evaluate(store, p);
@@ -84,13 +89,13 @@ impl Constraint {
                 out[1] = pa.y - pb.y;
             }
             Constraint::Parallel { a, b } => {
-                let va = store.expect_segment(*a).direction(p);
-                let vb = store.expect_segment(*b).direction(p);
+                let va = segment_direction(store, *a, p);
+                let vb = segment_direction(store, *b, p);
                 out[0] = va.cross(vb);
             }
             Constraint::Orthogonal { a, b } => {
-                let va = store.expect_segment(*a).direction(p);
-                let vb = store.expect_segment(*b).direction(p);
+                let va = segment_direction(store, *a, p);
+                let vb = segment_direction(store, *b, p);
                 out[0] = va.dot(vb);
             }
             Constraint::FixPoint { point, target } => {
@@ -102,7 +107,7 @@ impl Constraint {
     }
 
     /// Local Jacobian `J_N` row-major, shape `(residual_arity × param_connectivity.len())`.
-    pub fn eval_jacobian(&self, store: &impl SegmentStore, p: &[f64], out: &mut [f64]) {
+    pub fn eval_jacobian(&self, store: &impl GeometryStore, p: &[f64], out: &mut [f64]) {
         let n_local = self.param_connectivity(store).len();
         let m = self.residual_arity();
         assert_eq!(out.len(), m * n_local);
@@ -128,8 +133,8 @@ impl Constraint {
                 }
             }
             Constraint::Parallel { a, b } => {
-                let va = store.expect_segment(*a).direction(p);
-                let vb = store.expect_segment(*b).direction(p);
+                let va = segment_direction(store, *a, p);
+                let vb = segment_direction(store, *b, p);
                 out[0] = -vb.y;
                 out[1] = vb.x;
                 out[2] = vb.y;
@@ -140,8 +145,8 @@ impl Constraint {
                 out[7] = va.x;
             }
             Constraint::Orthogonal { a, b } => {
-                let va = store.expect_segment(*a).direction(p);
-                let vb = store.expect_segment(*b).direction(p);
+                let va = segment_direction(store, *a, p);
+                let vb = segment_direction(store, *b, p);
                 out[0] = -vb.x;
                 out[1] = -vb.y;
                 out[2] = vb.x;

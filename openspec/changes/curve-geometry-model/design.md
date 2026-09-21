@@ -33,9 +33,15 @@ Target implementation: Linux Rust `constraint_runtime` (+ tests); `sketch_ui` on
 
 ### 2. Rust: Curve trait + document `enum Geometry`
 
-**Choice:** `Curve`-like trait with `position_at` / `tangent_at` / `normal_at` on normalized \(t\); separate `HasEndpoints` (or inherent endpoints on `Segment` only for now). DocumentStructure stores `Vec<Geometry>` with `Geometry::Segment(Segment)` today; further kinds become new enum variants. Shared ops live on `Geometry` (`parameter_count`, `connectivity`, `reindex_after_removal`, `curve()` → `&dyn Curve`). Callers use `curve()` / `match` for kind-specific work—not a growing set of `as_xxx` helpers. Convenience `Document::segments()` iterates segment geometries.  
-**Why:** Makes the storage sum type explicit; scales by capability (Curve) and shared Geometry methods rather than per-variant downcasts.  
-**Alternative:** Keep `Vec<Segment>` until circle exists — rejected once we want the structure visible now. Per-type `as_segment`/`as_circle` — rejected as unscalable.
+**Choice:** `Curve`-like trait with `position_at` / `tangent_at` / `normal_at` on normalized \(t\); separate `HasEndpoints` (or inherent endpoints on `Segment` only for now). DocumentStructure stores `Vec<Geometry>` with `Geometry::Segment(Segment)` today; further kinds become new enum variants. Shared ops live on `Geometry` (`id`, `parameter_count`, `connectivity`, `reindex_after_removal`, `curve()` → `&dyn Curve`). Callers use `curve()` / `match` for kind-specific work—not a growing set of `as_xxx` helpers and not a `SegmentStore` in the evaluate/solve path.  
+**Why:** Makes the storage sum type explicit; scales by capability (Curve) and shared Geometry methods rather than per-variant downcasts or segment-privileged lookup.  
+**Alternative:** Keep `Vec<Segment>` until circle exists — rejected once we want the structure visible now. Per-type `as_segment`/`as_circle` — rejected as unscalable. Linear `find_segment` over `&[Geometry]` — rejected (does not scale under residual/Jacobian eval).
+
+### 2a. Geometry identity + O(1) store on DocumentStructure
+
+**Choice:** Canonical `GeometryId` for all kinds. DocumentStructure maintains an id→slot index and implements a geometry store used by `PointExpr` / `VecExpr` / constraints / assembly. `SegmentId` remains only as a type alias for UI/tools that still speak in segments. Document keeps thin segment helpers for the renderer (`segments()`, `add_segment`, `segment(id)`); structural remove is `remove_geometry`.  
+**Why:** Lookup cost independent of geometry count; segment is one kind, not the document's indexing model.  
+**Alternative:** Segment-only `SegmentStore` / `segment_index` — rejected (hard-codes the proving kind into the API).
 
 ### 2b. Tangent / normal length and orientation
 
@@ -51,9 +57,9 @@ Target implementation: Linux Rust `constraint_runtime` (+ tests); `sketch_ui` on
 
 ### 4. Expression shapes
 
-**Choice:** Extend `PointExpr` with `OnCurve { curve: SegmentId (for now), param: CurveParam }`; add `VecExpr` with `TangentAt` / `NormalAt` (and reuse segment direction where useful). Endpoint variants remain.  
-**Why:** Congruence/FixPoint already consume `PointExpr`; midpoints become bindable without new constraints.  
-**Alternative:** Separate `SampleId` table — heavier, defer.
+**Choice:** Extend `PointExpr` with `OnCurve { geometry: GeometryId, param: CurveParam }`; endpoint variant `SegmentEnd { geometry, end }` (requires segment capability); add `VecExpr` with `TangentAt` / `NormalAt` / `SegmentDirection` keyed by `GeometryId`.  
+**Why:** Congruence/FixPoint already consume `PointExpr`; midpoints become bindable without new constraints; ids stay kind-agnostic.  
+**Alternative:** Separate `SampleId` table — heavier, defer. Keep `SegmentId` fields on expressions — rejected once `GeometryId` exists.
 
 ### 5. Naming in code/docs
 
@@ -72,10 +78,11 @@ Target implementation: Linux Rust `constraint_runtime` (+ tests); `sketch_ui` on
 
 ## Risks / Trade-offs
 
-- [SegmentId-only OnCurve] → Migration to a geometry id enum when circles arrive; keep `SegmentId` for this slice and note in tasks.  
+- [UI still segment-shaped] → `Document::segments()` / `add_segment` remain for paint/pick; core path uses `Geometry` + `GeometryId`.  
 - [Uniform ≡ Normalized only proven on segments] → Spec scenario already states they diverge for future Béziers; tests lock segment equality.  
 - [Trait abstraction with one implementor] → Accept thin trait or inherent methods + trait for test doubles; prefer trait if it clarifies the contract without ceremony.  
 - [BREAKING spec removal of segments-only] → Archive updates main specs; existing docs that say “v1 segments only” need a one-line refresh.
+- [Parallel/Orthogonal still assume segment direction] → Catalog entries resolve geometry by id then require segment capability; generalize when non-segment directions land.
 
 ## Migration Plan
 
