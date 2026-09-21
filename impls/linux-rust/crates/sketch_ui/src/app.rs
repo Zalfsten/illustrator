@@ -1,8 +1,8 @@
 //! Application shell: Document, Interact, tools, and Canvas painting.
 
 use constraint_runtime::{
-    Constraint, Document, DragSession, EndpointKind, EndpointRef, InteractiveSolve, Point2,
-    PointExpr, SegmentId, SolveError,
+    Constraint, Document, DragSession, EndpointKind, EndpointRef, GeometryId, InteractiveSolve,
+    Mesh, Point2, PointExpr, SolveError,
 };
 use eframe::egui::{self, Color32, Pos2, Sense, Stroke};
 
@@ -22,7 +22,7 @@ pub struct App {
     interact: InteractiveSolve,
     drag: DragSession,
     tool: Tool,
-    pick_ends: Vec<(SegmentId, EndpointKind)>,
+    pick_ends: Vec<(GeometryId, EndpointKind)>,
     segment_clicks: Vec<Point2>,
     status: String,
     last_error: Option<String>,
@@ -65,19 +65,24 @@ impl App {
         app
     }
 
+    fn mesh(&self) -> Mesh {
+        Mesh::from_structure(&self.doc.structure, self.doc.state())
+    }
+
     fn eval_point(&self, expr: PointExpr) -> Point2 {
         expr.evaluate(&self.doc.structure, self.doc.state())
     }
 
     fn rebuild_logical_points(&mut self) {
+        // Handles from Mesh endpoints (congruence-collapsed); not Mesh hit for drag.
         let mut exprs = Vec::new();
-        for s in self.doc.segments() {
+        for e in &self.mesh().edges {
             exprs.push(PointExpr::Endpoint {
-                geometry: s.id,
+                geometry: e.geometry,
                 end: EndpointKind::Start,
             });
             exprs.push(PointExpr::Endpoint {
-                geometry: s.id,
+                geometry: e.geometry,
                 end: EndpointKind::End,
             });
         }
@@ -100,7 +105,7 @@ impl App {
             Ok(()) => {
                 self.last_error = None;
                 self.status = format!(
-                    "OK — segments={} constraints={}",
+                    "OK — geometries={} constraints={}",
                     self.doc.geometries().len(),
                     self.doc.constraints().len()
                 );
@@ -127,27 +132,14 @@ impl App {
         best
     }
 
-    fn hit_end(&self, pos: Pos2, radius: f64) -> Option<(SegmentId, EndpointKind)> {
-        let mut best = None;
-        let mut best_d = radius;
-        let state = self.doc.state();
-        for s in self.doc.segments() {
-            for (end, p) in [
-                (EndpointKind::Start, s.start(state)),
-                (EndpointKind::End, s.end(state)),
-            ] {
-                let d = (p.x - pos.x as f64).hypot(p.y - pos.y as f64);
-                if d < best_d {
-                    best_d = d;
-                    best = Some((s.id, end));
-                }
-            }
-        }
-        best
+    fn hit_end(&self, pos: Pos2, radius: f64) -> Option<(GeometryId, EndpointKind)> {
+        self.mesh()
+            .hit_endpoint(Point2::new(pos.x as f64, pos.y as f64), radius)
     }
 
-    fn hit_segment(&self, pos: Pos2, radius: f64) -> Option<SegmentId> {
-        self.hit_end(pos, radius).map(|(id, _)| id)
+    fn hit_edge(&self, pos: Pos2, radius: f64) -> Option<GeometryId> {
+        self.mesh()
+            .hit_geometry(Point2::new(pos.x as f64, pos.y as f64), radius)
     }
 
     fn handle_click(&mut self, pos: Pos2) {
@@ -162,7 +154,7 @@ impl App {
                     self.segment_clicks.clear();
                     self.rebuild_logical_points();
                     self.status = format!(
-                        "Added segment — segments={}",
+                        "Added segment — geometries={}",
                         self.doc.geometries().len()
                     );
                 } else {
@@ -187,7 +179,7 @@ impl App {
                 }
             }
             Tool::Parallel | Tool::Orthogonal => {
-                if let Some(id) = self.hit_segment(pos, 24.0) {
+                if let Some(id) = self.hit_edge(pos, 24.0) {
                     self.pick_ends.push((id, EndpointKind::Start));
                     if self.pick_ends.len() >= 2 {
                         let a = self.pick_ends[0].0;
@@ -202,7 +194,7 @@ impl App {
                         let r = self.interact.structural_only(&mut self.doc);
                         self.report(r);
                     } else {
-                        self.status = "Pick second segment".into();
+                        self.status = "Pick second geometry".into();
                     }
                 }
             }
@@ -263,18 +255,16 @@ impl eframe::App for App {
         });
 
         egui::CentralPanel::default().show(ctx, |ui| {
-            // Canvas: Document evaluated at committed State; drag → Interact.
+            // Canvas: Mesh from Document+State; drag → Interact (logical points).
             let (response, painter) =
                 ui.allocate_painter(ui.available_size(), Sense::click_and_drag());
 
-            let state = self.doc.state();
-            for s in self.doc.segments() {
-                let a = s.start(state);
-                let b = s.end(state);
+            let mesh = self.mesh();
+            for e in &mesh.edges {
                 painter.line_segment(
                     [
-                        Pos2::new(a.x as f32, a.y as f32),
-                        Pos2::new(b.x as f32, b.y as f32),
+                        Pos2::new(e.a.x as f32, e.a.y as f32),
+                        Pos2::new(e.b.x as f32, e.b.y as f32),
                     ],
                     Stroke::new(2.0_f32, Color32::from_rgb(40, 40, 40)),
                 );

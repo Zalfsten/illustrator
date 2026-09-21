@@ -8,6 +8,7 @@ pub mod constraint;
 pub mod document;
 pub mod geom;
 pub mod interact;
+pub mod mesh;
 pub mod solver;
 
 pub use assemble::{AssembledSystem, SoftContribution, structural_residual_norm};
@@ -20,6 +21,7 @@ pub use geom::{
     Segment, SegmentId, Vec2, VecExpr, SEGMENT_STRIDE,
 };
 pub use interact::{DragSession, InteractiveSolve, SoftTerms, SolveError};
+pub use mesh::{Mesh, MeshEdge};
 pub use solver::{
     LmSolver, SolveOutcome, SolverOptions, SolverPort, StubSolver, SystemEval, ffi,
 };
