@@ -2,16 +2,16 @@ use super::*;
 use crate::assemble::AssembledSystem;
 use crate::constraint::Constraint;
 use crate::document::Document;
-use crate::geom::{Point2, PointExpr, SegmentEndKind};
+use crate::geom::{Point2, PointExpr, EndpointKind};
 
 #[test]
 fn c_calling_pattern_fills_residual() {
     let mut doc = Document::new();
     let s0 = doc.add_segment(Point2::new(0.0, 0.0), Point2::new(1.0, 0.0));
     doc.add_constraint(Constraint::FixPoint {
-        point: PointExpr::SegmentEnd {
+        point: PointExpr::Endpoint {
             geometry: s0,
-            end: SegmentEndKind::Start,
+            end: EndpointKind::Start,
         },
         target: Point2::new(0.0, 0.0),
     });

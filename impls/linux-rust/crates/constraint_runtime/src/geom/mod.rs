@@ -263,21 +263,21 @@ impl Segment {
 
     pub fn endpoints(&self) -> (PointExpr, PointExpr) {
         (
-            PointExpr::SegmentEnd {
+            PointExpr::Endpoint {
                 geometry: self.id,
-                end: SegmentEndKind::Start,
+                end: EndpointKind::Start,
             },
-            PointExpr::SegmentEnd {
+            PointExpr::Endpoint {
                 geometry: self.id,
-                end: SegmentEndKind::End,
+                end: EndpointKind::End,
             },
         )
     }
 
-    pub fn endpoint_param_indices(&self, end: SegmentEndKind) -> [usize; 2] {
+    pub fn endpoint_param_indices(&self, end: EndpointKind) -> [usize; 2] {
         match end {
-            SegmentEndKind::Start => [self.param_offset, self.param_offset + 1],
-            SegmentEndKind::End => [self.param_offset + 2, self.param_offset + 3],
+            EndpointKind::Start => [self.param_offset, self.param_offset + 1],
+            EndpointKind::End => [self.param_offset + 2, self.param_offset + 3],
         }
     }
 
@@ -304,16 +304,17 @@ impl Curve for Segment {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum SegmentEndKind {
+pub enum EndpointKind {
     Start,
     End,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum PointExpr {
-    SegmentEnd {
+    /// Endpoint of a geometry that has the endpoints capability (line segment today).
+    Endpoint {
         geometry: GeometryId,
-        end: SegmentEndKind,
+        end: EndpointKind,
     },
     OnCurve {
         geometry: GeometryId,
@@ -324,11 +325,11 @@ pub enum PointExpr {
 impl PointExpr {
     pub fn evaluate(&self, store: &impl GeometryStore, p: &[f64]) -> Point2 {
         match *self {
-            PointExpr::SegmentEnd { geometry, end } => {
+            PointExpr::Endpoint { geometry, end } => {
                 let Geometry::Segment(s) = store.expect_geometry(geometry);
                 match end {
-                    SegmentEndKind::Start => s.start(p),
-                    SegmentEndKind::End => s.end(p),
+                    EndpointKind::Start => s.start(p),
+                    EndpointKind::End => s.end(p),
                 }
             }
             PointExpr::OnCurve { geometry, param } => store
@@ -342,7 +343,7 @@ impl PointExpr {
     /// Global parameter indices this expression depends on.
     pub fn param_indices(&self, store: &impl GeometryStore) -> Vec<usize> {
         match *self {
-            PointExpr::SegmentEnd { geometry, end } => {
+            PointExpr::Endpoint { geometry, end } => {
                 let Geometry::Segment(s) = store.expect_geometry(geometry);
                 let ix = s.endpoint_param_indices(end);
                 vec![ix[0], ix[1]]
@@ -368,7 +369,7 @@ impl PointExpr {
         dx.fill(0.0);
         dy.fill(0.0);
         match *self {
-            PointExpr::SegmentEnd { .. } => {
+            PointExpr::Endpoint { .. } => {
                 dx[0] = 1.0;
                 dy[1] = 1.0;
             }
@@ -386,9 +387,7 @@ impl PointExpr {
 
     pub fn referenced_geometry(&self) -> GeometryId {
         match *self {
-            PointExpr::SegmentEnd { geometry, .. } | PointExpr::OnCurve { geometry, .. } => {
-                geometry
-            }
+            PointExpr::Endpoint { geometry, .. } | PointExpr::OnCurve { geometry, .. } => geometry,
         }
     }
 }

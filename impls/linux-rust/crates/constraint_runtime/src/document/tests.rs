@@ -1,6 +1,5 @@
 use super::*;
-use crate::constraint::SegmentEnd;
-use crate::geom::{PointExpr, SegmentEndKind};
+use crate::geom::{EndpointKind, PointExpr};
 
 #[test]
 fn two_segment_join_connectivity_indices() {
@@ -8,8 +7,8 @@ fn two_segment_join_connectivity_indices() {
     let s0 = doc.add_segment(Point2::new(0.0, 0.0), Point2::new(1.0, 0.0));
     let s1 = doc.add_segment(Point2::new(2.0, 0.0), Point2::new(3.0, 1.0));
     doc.join_endpoints(
-        EndpointRef::new(s0, SegmentEnd::End),
-        EndpointRef::new(s1, SegmentEnd::Start),
+        EndpointRef::new(s0, EndpointKind::End),
+        EndpointRef::new(s1, EndpointKind::Start),
     );
     let c = &doc.constraints()[0];
     let conn = c.param_connectivity(&doc.structure);
@@ -22,22 +21,22 @@ fn join_inserts_congruence_only() {
     let s0 = doc.add_segment(Point2::new(0.0, 0.0), Point2::new(1.0, 0.0));
     let s1 = doc.add_segment(Point2::new(2.0, 0.0), Point2::new(3.0, 1.0));
     doc.join_endpoints(
-        EndpointRef::new(s0, SegmentEnd::End),
-        EndpointRef::new(s1, SegmentEnd::Start),
+        EndpointRef::new(s0, EndpointKind::End),
+        EndpointRef::new(s1, EndpointKind::Start),
     );
     match &doc.constraints()[0] {
         Constraint::Congruence { a, b } => {
             assert!(matches!(
                 a,
-                crate::geom::PointExpr::SegmentEnd {
-                    end: SegmentEndKind::End,
+                crate::geom::PointExpr::Endpoint {
+                    end: EndpointKind::End,
                     ..
                 }
             ));
             assert!(matches!(
                 b,
-                crate::geom::PointExpr::SegmentEnd {
-                    end: SegmentEndKind::Start,
+                crate::geom::PointExpr::Endpoint {
+                    end: EndpointKind::Start,
                     ..
                 }
             ));
@@ -70,14 +69,14 @@ fn remove_geometry_compacts_state_and_drops_orphans() {
     let s1 = doc.add_segment(Point2::new(1.0, 0.0), Point2::new(1.0, 1.0));
     let s2 = doc.add_segment(Point2::new(5.0, 5.0), Point2::new(6.0, 5.0));
     doc.join_endpoints(
-        EndpointRef::new(s0, SegmentEnd::End),
-        EndpointRef::new(s1, SegmentEnd::Start),
+        EndpointRef::new(s0, EndpointKind::End),
+        EndpointRef::new(s1, EndpointKind::Start),
     );
     doc.add_constraint(Constraint::Orthogonal { a: s0, b: s1 });
     doc.add_constraint(Constraint::FixPoint {
-        point: PointExpr::SegmentEnd {
+        point: PointExpr::Endpoint {
             geometry: s2,
-            end: SegmentEndKind::Start,
+            end: EndpointKind::Start,
         },
         target: Point2::new(5.0, 5.0),
     });
@@ -101,6 +100,6 @@ fn remove_geometry_compacts_state_and_drops_orphans() {
     assert!(matches!(
         &doc.constraints()[0],
         Constraint::FixPoint { point, .. }
-            if matches!(point, PointExpr::SegmentEnd { geometry, .. } if *geometry == s2)
+            if matches!(point, PointExpr::Endpoint { geometry, .. } if *geometry == s2)
     ));
 }

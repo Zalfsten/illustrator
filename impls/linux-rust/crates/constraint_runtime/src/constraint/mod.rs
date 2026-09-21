@@ -2,39 +2,24 @@
 
 use crate::connectivity::Connectivity;
 use crate::geom::{
-    Geometry, GeometryId, GeometryStore, Point2, PointExpr, SegmentEndKind,
+    EndpointKind, Geometry, GeometryId, GeometryStore, Point2, PointExpr,
 };
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum SegmentEnd {
-    Start,
-    End,
-}
-
-impl From<SegmentEnd> for SegmentEndKind {
-    fn from(value: SegmentEnd) -> Self {
-        match value {
-            SegmentEnd::Start => SegmentEndKind::Start,
-            SegmentEnd::End => SegmentEndKind::End,
-        }
-    }
-}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct EndpointRef {
     pub geometry: GeometryId,
-    pub end: SegmentEnd,
+    pub end: EndpointKind,
 }
 
 impl EndpointRef {
-    pub fn new(geometry: GeometryId, end: SegmentEnd) -> Self {
+    pub fn new(geometry: GeometryId, end: EndpointKind) -> Self {
         Self { geometry, end }
     }
 
     pub fn as_expr(self) -> PointExpr {
-        PointExpr::SegmentEnd {
+        PointExpr::Endpoint {
             geometry: self.geometry,
-            end: self.end.into(),
+            end: self.end,
         }
     }
 }

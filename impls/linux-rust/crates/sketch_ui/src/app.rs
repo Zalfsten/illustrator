@@ -1,8 +1,8 @@
 //! Application shell: Document, Interact, tools, and Canvas painting.
 
 use constraint_runtime::{
-    Constraint, Document, DragSession, EndpointRef, InteractiveSolve, Point2, PointExpr,
-    SegmentEnd, SegmentEndKind, SegmentId, SolveError,
+    Constraint, Document, DragSession, EndpointKind, EndpointRef, InteractiveSolve, Point2,
+    PointExpr, SegmentId, SolveError,
 };
 use eframe::egui::{self, Color32, Pos2, Sense, Stroke};
 
@@ -22,7 +22,7 @@ pub struct App {
     interact: InteractiveSolve,
     drag: DragSession,
     tool: Tool,
-    pick_ends: Vec<(SegmentId, SegmentEnd)>,
+    pick_ends: Vec<(SegmentId, EndpointKind)>,
     segment_clicks: Vec<Point2>,
     status: String,
     last_error: Option<String>,
@@ -49,14 +49,14 @@ impl App {
             .doc
             .add_segment(Point2::new(320.0, 320.0), Point2::new(320.0, 140.0));
         app.doc.join_endpoints(
-            EndpointRef::new(s0, SegmentEnd::End),
-            EndpointRef::new(s1, SegmentEnd::Start),
+            EndpointRef::new(s0, EndpointKind::End),
+            EndpointRef::new(s1, EndpointKind::Start),
         );
         app.doc.add_constraint(Constraint::Orthogonal { a: s0, b: s1 });
         app.doc.add_constraint(Constraint::FixPoint {
-            point: PointExpr::SegmentEnd {
+            point: PointExpr::Endpoint {
                 geometry: s0,
-                end: SegmentEndKind::Start,
+                end: EndpointKind::Start,
             },
             target: Point2::new(120.0, 320.0),
         });
@@ -72,13 +72,13 @@ impl App {
     fn rebuild_logical_points(&mut self) {
         let mut exprs = Vec::new();
         for s in self.doc.segments() {
-            exprs.push(PointExpr::SegmentEnd {
+            exprs.push(PointExpr::Endpoint {
                 geometry: s.id,
-                end: SegmentEndKind::Start,
+                end: EndpointKind::Start,
             });
-            exprs.push(PointExpr::SegmentEnd {
+            exprs.push(PointExpr::Endpoint {
                 geometry: s.id,
-                end: SegmentEndKind::End,
+                end: EndpointKind::End,
             });
         }
         let mut keep = Vec::new();
@@ -127,14 +127,14 @@ impl App {
         best
     }
 
-    fn hit_end(&self, pos: Pos2, radius: f64) -> Option<(SegmentId, SegmentEnd)> {
+    fn hit_end(&self, pos: Pos2, radius: f64) -> Option<(SegmentId, EndpointKind)> {
         let mut best = None;
         let mut best_d = radius;
         let state = self.doc.state();
         for s in self.doc.segments() {
             for (end, p) in [
-                (SegmentEnd::Start, s.start(state)),
-                (SegmentEnd::End, s.end(state)),
+                (EndpointKind::Start, s.start(state)),
+                (EndpointKind::End, s.end(state)),
             ] {
                 let d = (p.x - pos.x as f64).hypot(p.y - pos.y as f64);
                 if d < best_d {
@@ -188,7 +188,7 @@ impl App {
             }
             Tool::Parallel | Tool::Orthogonal => {
                 if let Some(id) = self.hit_segment(pos, 24.0) {
-                    self.pick_ends.push((id, SegmentEnd::Start));
+                    self.pick_ends.push((id, EndpointKind::Start));
                     if self.pick_ends.len() >= 2 {
                         let a = self.pick_ends[0].0;
                         let b = self.pick_ends[1].0;

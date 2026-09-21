@@ -22,13 +22,13 @@ fn jacobian_matches_fd_for_catalog() {
     let (structure, p) = two_segs();
     let constraints = [
         Constraint::Congruence {
-            a: PointExpr::SegmentEnd {
+            a: PointExpr::Endpoint {
                 geometry: GeometryId(0),
-                end: SegmentEndKind::Start,
+                end: EndpointKind::Start,
             },
-            b: PointExpr::SegmentEnd {
+            b: PointExpr::Endpoint {
                 geometry: GeometryId(1),
-                end: SegmentEndKind::Start,
+                end: EndpointKind::Start,
             },
         },
         Constraint::Parallel {
@@ -40,9 +40,9 @@ fn jacobian_matches_fd_for_catalog() {
             b: GeometryId(1),
         },
         Constraint::FixPoint {
-            point: PointExpr::SegmentEnd {
+            point: PointExpr::Endpoint {
                 geometry: GeometryId(0),
-                end: SegmentEndKind::Start,
+                end: EndpointKind::Start,
             },
             target: Point2::new(0.0, 0.0),
         },
@@ -51,9 +51,9 @@ fn jacobian_matches_fd_for_catalog() {
                 geometry: GeometryId(0),
                 param: crate::geom::CurveParam::Uniform(0.5),
             },
-            b: PointExpr::SegmentEnd {
+            b: PointExpr::Endpoint {
                 geometry: GeometryId(1),
-                end: SegmentEndKind::Start,
+                end: EndpointKind::Start,
             },
         },
     ];

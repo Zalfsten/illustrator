@@ -13,11 +13,11 @@ pub mod solver;
 pub use assemble::{AssembledSystem, SoftContribution, structural_residual_norm};
 pub use ceres_solver::CeresSolver;
 pub use connectivity::Connectivity;
-pub use constraint::{Constraint, EndpointRef, SegmentEnd};
+pub use constraint::{Constraint, EndpointRef};
 pub use document::{Document, DocumentStructure, State};
 pub use geom::{
-    Curve, CurveParam, Geometry, GeometryId, GeometryStore, Point2, PointExpr, Segment,
-    SegmentEndKind, SegmentId, Vec2, VecExpr, SEGMENT_STRIDE,
+    Curve, CurveParam, EndpointKind, Geometry, GeometryId, GeometryStore, Point2, PointExpr,
+    Segment, SegmentId, Vec2, VecExpr, SEGMENT_STRIDE,
 };
 pub use interact::{DragSession, InteractiveSolve, SoftTerms, SolveError};
 pub use solver::{

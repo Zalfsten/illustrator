@@ -2,7 +2,7 @@
 
 use constraint_runtime::{
     AssembledSystem, Constraint, Document, DragSession, EndpointRef, InteractiveSolve, Point2,
-    PointExpr, SegmentEnd, SegmentEndKind, GeometryId, SoftContribution, SystemEval, SOLVE_TOL,
+    PointExpr, EndpointKind, GeometryId, SoftContribution, SystemEval, SOLVE_TOL,
 };
 
 fn residual_ok(doc: &Document) -> bool {
@@ -19,17 +19,17 @@ fn right_angle_soft_drag_keeps_orthogonal_and_congruence() {
     let s0 = doc.add_segment(Point2::new(0.0, 0.0), Point2::new(1.0, 0.0));
     let s1 = doc.add_segment(Point2::new(1.0, 0.0), Point2::new(1.0, 1.0));
     doc.join_endpoints(
-        EndpointRef::new(s0, SegmentEnd::End),
-        EndpointRef::new(s1, SegmentEnd::Start),
+        EndpointRef::new(s0, EndpointKind::End),
+        EndpointRef::new(s1, EndpointKind::Start),
     );
     doc.add_constraint(Constraint::Orthogonal {
         a: GeometryId(0),
         b: GeometryId(1),
     });
     doc.add_constraint(Constraint::FixPoint {
-        point: PointExpr::SegmentEnd {
+        point: PointExpr::Endpoint {
             geometry: s0,
-            end: SegmentEndKind::Start,
+            end: EndpointKind::Start,
         },
         target: Point2::new(0.0, 0.0),
     });
@@ -39,9 +39,9 @@ fn right_angle_soft_drag_keeps_orthogonal_and_congruence() {
     assert!(residual_ok(&doc));
 
     let mut drag = DragSession::new();
-    let free = PointExpr::SegmentEnd {
+    let free = PointExpr::Endpoint {
         geometry: s1,
-        end: SegmentEndKind::End,
+        end: EndpointKind::End,
     };
     drag.pointer_down(&doc, free);
     drag.pointer_move(&mut interact, &mut doc, (0.2, 1.5))
@@ -64,29 +64,29 @@ fn rectangle_drag_keeps_structure_and_stays_near() {
     let da = doc.add_segment(Point2::new(0.0, 0.0), Point2::new(0.0, 1.0));
 
     doc.join_endpoints(
-        EndpointRef::new(ab, SegmentEnd::End),
-        EndpointRef::new(bc, SegmentEnd::Start),
+        EndpointRef::new(ab, EndpointKind::End),
+        EndpointRef::new(bc, EndpointKind::Start),
     );
     doc.join_endpoints(
-        EndpointRef::new(bc, SegmentEnd::End),
-        EndpointRef::new(cd, SegmentEnd::Start),
+        EndpointRef::new(bc, EndpointKind::End),
+        EndpointRef::new(cd, EndpointKind::Start),
     );
     doc.join_endpoints(
-        EndpointRef::new(cd, SegmentEnd::End),
-        EndpointRef::new(da, SegmentEnd::Start),
+        EndpointRef::new(cd, EndpointKind::End),
+        EndpointRef::new(da, EndpointKind::Start),
     );
     doc.join_endpoints(
-        EndpointRef::new(da, SegmentEnd::End),
-        EndpointRef::new(ab, SegmentEnd::Start),
+        EndpointRef::new(da, EndpointKind::End),
+        EndpointRef::new(ab, EndpointKind::Start),
     );
 
     doc.add_constraint(Constraint::Parallel { a: ab, b: cd });
     doc.add_constraint(Constraint::Parallel { a: da, b: bc });
     doc.add_constraint(Constraint::Orthogonal { a: ab, b: da });
     doc.add_constraint(Constraint::FixPoint {
-        point: PointExpr::SegmentEnd {
+        point: PointExpr::Endpoint {
             geometry: ab,
-            end: SegmentEndKind::Start,
+            end: EndpointKind::Start,
         },
         target: Point2::new(0.0, 1.0),
     });
@@ -97,9 +97,9 @@ fn rectangle_drag_keeps_structure_and_stays_near() {
     assert!(residual_ok(&doc));
 
     let mut drag = DragSession::new();
-    let corner = PointExpr::SegmentEnd {
+    let corner = PointExpr::Endpoint {
         geometry: bc,
-        end: SegmentEndKind::End,
+        end: EndpointKind::End,
     };
     drag.pointer_down(&doc, corner);
     let mouse = (2.15, -0.1);
@@ -129,26 +129,26 @@ fn right_angle_horizontal_drag_moves_x() {
     let s0 = doc.add_segment(Point2::new(120.0, 320.0), Point2::new(320.0, 320.0));
     let s1 = doc.add_segment(Point2::new(320.0, 320.0), Point2::new(320.0, 140.0));
     doc.join_endpoints(
-        EndpointRef::new(s0, SegmentEnd::End),
-        EndpointRef::new(s1, SegmentEnd::Start),
+        EndpointRef::new(s0, EndpointKind::End),
+        EndpointRef::new(s1, EndpointKind::Start),
     );
     doc.add_constraint(Constraint::Orthogonal {
         a: GeometryId(0),
         b: GeometryId(1),
     });
     doc.add_constraint(Constraint::FixPoint {
-        point: PointExpr::SegmentEnd {
+        point: PointExpr::Endpoint {
             geometry: s0,
-            end: SegmentEndKind::Start,
+            end: EndpointKind::Start,
         },
         target: Point2::new(120.0, 320.0),
     });
 
     let mut interact = InteractiveSolve::default();
     interact.structural_only(&mut doc).expect("initial");
-    let free = PointExpr::SegmentEnd {
+    let free = PointExpr::Endpoint {
         geometry: s1,
-        end: SegmentEndKind::End,
+        end: EndpointKind::End,
     };
     let before = free.evaluate(&doc.structure, doc.state());
 
@@ -182,16 +182,16 @@ fn congruence_to_uniform_midpoint_pins_segment() {
     let s0 = doc.add_segment(Point2::new(0.0, 0.0), Point2::new(4.0, 0.0));
     let s1 = doc.add_segment(Point2::new(1.0, 2.0), Point2::new(5.0, 2.0));
     doc.add_constraint(Constraint::FixPoint {
-        point: PointExpr::SegmentEnd {
+        point: PointExpr::Endpoint {
             geometry: s0,
-            end: SegmentEndKind::Start,
+            end: EndpointKind::Start,
         },
         target: Point2::new(0.0, 0.0),
     });
     doc.add_constraint(Constraint::FixPoint {
-        point: PointExpr::SegmentEnd {
+        point: PointExpr::Endpoint {
             geometry: s1,
-            end: SegmentEndKind::Start,
+            end: EndpointKind::Start,
         },
         target: Point2::new(1.0, 2.0),
     });
@@ -200,9 +200,9 @@ fn congruence_to_uniform_midpoint_pins_segment() {
             geometry: s0,
             param: CurveParam::Uniform(0.5),
         },
-        b: PointExpr::SegmentEnd {
+        b: PointExpr::Endpoint {
             geometry: s1,
-            end: SegmentEndKind::Start,
+            end: EndpointKind::Start,
         },
     });
 

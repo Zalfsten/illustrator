@@ -1,6 +1,6 @@
 use super::*;
-use crate::constraint::{Constraint, EndpointRef, SegmentEnd};
-use crate::geom::{GeometryId, Point2, SegmentEndKind};
+use crate::constraint::{Constraint, EndpointRef};
+use crate::geom::{GeometryId, Point2, EndpointKind};
 use crate::solver::StubSolver;
 
 #[test]
@@ -8,18 +8,18 @@ fn soft_not_persisted_after_drag() {
     let mut doc = Document::new();
     let s0 = doc.add_segment(Point2::new(0.0, 0.0), Point2::new(1.0, 0.0));
     doc.add_constraint(Constraint::FixPoint {
-        point: PointExpr::SegmentEnd {
+        point: PointExpr::Endpoint {
             geometry: s0,
-            end: SegmentEndKind::Start,
+            end: EndpointKind::Start,
         },
         target: Point2::new(0.0, 0.0),
     });
     let n = doc.constraints().len();
     let mut interact = InteractiveSolve::default();
     let mut drag = DragSession::new();
-    let expr = PointExpr::SegmentEnd {
+    let expr = PointExpr::Endpoint {
         geometry: s0,
-        end: SegmentEndKind::End,
+        end: EndpointKind::End,
     };
     drag.pointer_down(&doc, expr);
     let _ = drag.pointer_move(&mut interact, &mut doc, (1.5, 0.2));
@@ -32,9 +32,9 @@ fn failed_solve_keeps_state() {
     let mut doc = Document::new();
     let s0 = doc.add_segment(Point2::new(0.0, 0.0), Point2::new(1.0, 0.0));
     doc.add_constraint(Constraint::FixPoint {
-        point: PointExpr::SegmentEnd {
+        point: PointExpr::Endpoint {
             geometry: s0,
-            end: SegmentEndKind::Start,
+            end: EndpointKind::Start,
         },
         target: Point2::new(0.0, 0.0),
     });
@@ -48,9 +48,9 @@ fn failed_solve_keeps_state() {
     };
     // Conflicting FixPoints: start cannot be at two places.
     doc.add_constraint(Constraint::FixPoint {
-        point: PointExpr::SegmentEnd {
+        point: PointExpr::Endpoint {
             geometry: s0,
-            end: SegmentEndKind::Start,
+            end: EndpointKind::Start,
         },
         target: Point2::new(10.0, 10.0),
     });
@@ -69,17 +69,17 @@ fn atomic_drag_undo() {
     let s0 = doc.add_segment(Point2::new(0.0, 0.0), Point2::new(1.0, 0.0));
     let s1 = doc.add_segment(Point2::new(1.0, 0.0), Point2::new(1.0, 1.0));
     doc.join_endpoints(
-        EndpointRef::new(s0, SegmentEnd::End),
-        EndpointRef::new(s1, SegmentEnd::Start),
+        EndpointRef::new(s0, EndpointKind::End),
+        EndpointRef::new(s1, EndpointKind::Start),
     );
     doc.add_constraint(Constraint::Orthogonal {
         a: GeometryId(0),
         b: GeometryId(1),
     });
     doc.add_constraint(Constraint::FixPoint {
-        point: PointExpr::SegmentEnd {
+        point: PointExpr::Endpoint {
             geometry: s0,
-            end: SegmentEndKind::Start,
+            end: EndpointKind::Start,
         },
         target: Point2::new(0.0, 0.0),
     });
@@ -87,9 +87,9 @@ fn atomic_drag_undo() {
     interact.structural_only(&mut doc).unwrap();
     let before = doc.clone_state();
     let mut drag = DragSession::new();
-    let free = PointExpr::SegmentEnd {
+    let free = PointExpr::Endpoint {
         geometry: s1,
-        end: SegmentEndKind::End,
+        end: EndpointKind::End,
     };
     drag.pointer_down(&doc, free);
     drag.pointer_move(&mut interact, &mut doc, (2.0, 2.0))
