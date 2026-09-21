@@ -46,12 +46,18 @@ Nonlinear solves that update continuous parameters during interaction SHALL be p
 - **THEN** it obtains that State via SolverPort evaluations of assembled residuals/Jacobians
 - **AND** DocumentStructure is only read (plus connectivity) for assembly, not mutated by the solver itself
 
-### Requirement: Display tessellation is a deferred view concern
+### Requirement: Display Mesh is the Canvas geometry source
 
-Until geometries require tessellation beyond what the Canvas can draw directly from evaluated point expressions (for example only line segments), the system SHALL NOT require a first-class Mesh or View cache as part of Document or Interact. When such tessellation becomes necessary, it SHALL be introduced as a view layer derived from DocumentStructure plus a concrete State, not as a second source of truth for parameters or constraints.
+The system SHALL provide a display Mesh (or equivalent view-layer edge list) derived from DocumentStructure plus a concrete State \(p\). The Mesh SHALL NOT be part of Document or Interact as authoritative structure or parameters. The Canvas SHALL obtain stroked sketch geometry from that Mesh. Until richer tessellation is needed, a Mesh whose edges correspond one-to-one with line segment geometries SHALL satisfy this requirement. Hit-testing against Mesh primitives MAY be used by tools; when used, hit results SHALL carry stable geometry identities consistent with the Mesh edge tags.
 
-#### Scenario: Segment-only sketch needs no architectural mesh
+#### Scenario: Canvas paints via Mesh
 
-- **WHEN** a Document contains only line segments as geometries
-- **THEN** the Canvas MAY draw by evaluating endpoint expressions at State \(p\) without a persistent Mesh component
-- **AND** the absence of a Mesh does not violate this architecture capability
+- **WHEN** the App paints the sketch at the committed State
+- **THEN** drawable edges come from a Mesh built from DocumentStructure and that State
+- **AND** the Canvas does not own a second authoritative copy of structural relationships
+
+#### Scenario: Mesh stays outside Document authority
+
+- **WHEN** Interact commits a new State after a successful solve
+- **THEN** DocumentStructure and committed State remain the sole authorities for parameters and constraints
+- **AND** any Mesh used for display is rebuilt or invalidated from that Document rather than written back into DocumentStructure
