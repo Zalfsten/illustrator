@@ -12,7 +12,8 @@
         "terminal.integrated.defaultProfile.linux": "bash",
         "rust-analyzer.linkedProjects": [
           "impls/linux-rust/Cargo.toml"
-        ]
+        ],
+        "rust-analyzer.testExplorer": true
       },
       "extensions": [
         "rust-lang.rust-analyzer",

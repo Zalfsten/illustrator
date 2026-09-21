@@ -1,8 +1,6 @@
 //! FEM-style assembly of global residual and Jacobian from local contributions.
 
-use crate::constraint::Constraint;
 use crate::document::{Document, DocumentStructure};
-use crate::geom::Segment;
 use crate::solver::SystemEval;
 use crate::SOLVE_TOL;
 
@@ -40,8 +38,7 @@ impl SoftContribution {
 
 /// Assembled structural (+ optional soft) system implementing [`SystemEval`].
 pub struct AssembledSystem<'a> {
-    pub segments: &'a [Segment],
-    pub constraints: &'a [Constraint],
+    pub structure: &'a DocumentStructure,
     pub soft: &'a [SoftContribution],
     n_params: usize,
     n_res: usize,
@@ -66,8 +63,7 @@ impl<'a> AssembledSystem<'a> {
         let soft_row0 = row;
         row += soft.iter().map(SoftContribution::residual_arity).sum::<usize>();
         Self {
-            segments: structure.segments(),
-            constraints: structure.constraints(),
+            structure,
             soft,
             n_params,
             n_res: row,
@@ -98,10 +94,10 @@ impl SystemEval for AssembledSystem<'_> {
         } else {
             HARD_WEIGHT_WITH_SOFT
         };
-        for (ci, c) in self.constraints.iter().enumerate() {
+        for (ci, c) in self.structure.constraints().iter().enumerate() {
             let m = c.residual_arity();
             let row0 = self.structural_row0[ci];
-            c.eval_residual(self.segments, p, &mut r[row0..row0 + m]);
+            c.eval_residual(self.structure, p, &mut r[row0..row0 + m]);
             for x in &mut r[row0..row0 + m] {
                 *x *= hard;
             }
@@ -123,12 +119,12 @@ impl SystemEval for AssembledSystem<'_> {
             HARD_WEIGHT_WITH_SOFT
         };
 
-        for (ci, c) in self.constraints.iter().enumerate() {
-            let conn = c.param_connectivity(self.segments);
+        for (ci, c) in self.structure.constraints().iter().enumerate() {
+            let conn = c.param_connectivity(self.structure);
             let n_local = conn.len();
             let m_local = c.residual_arity();
             let mut j_local = vec![0.0; m_local * n_local];
-            c.eval_jacobian(self.segments, p, &mut j_local);
+            c.eval_jacobian(self.structure, p, &mut j_local);
             let row0 = self.structural_row0[ci];
             for i in 0..m_local {
                 for (lj, &g) in conn.global_indices.iter().enumerate() {

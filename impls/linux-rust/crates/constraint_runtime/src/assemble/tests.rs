@@ -1,5 +1,5 @@
 use super::*;
-use crate::constraint::{EndpointRef, SegmentEnd};
+use crate::constraint::{Constraint, EndpointRef, SegmentEnd};
 use crate::geom::{Point2, PointExpr, SegmentEndKind, SegmentId};
 
 #[test]

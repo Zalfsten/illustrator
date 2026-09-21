@@ -31,11 +31,11 @@ Target implementation: Linux Rust `constraint_runtime` (+ tests); `sketch_ui` on
 **Why:** Curve is the next layer of Model E geometry IR, not a parallel product area.  
 **Alternative:** New `curve-geometry` capability — rejected as a near-duplicate of `geometry-ir`.
 
-### 2. Rust: traits for capabilities, enum for document storage later
+### 2. Rust: Curve trait + document `enum Geometry`
 
-**Choice:** `Curve`-like trait with `position_at` / `tangent_at` / `normal_at` on normalized \(t\); separate `HasEndpoints` (or inherent endpoints on `Segment` only for now). Document still holds `Vec<Segment>` until a second kind exists; introduce `enum Geometry` only when needed.  
-**Why:** Matches exploration; avoids premature OOP base type.  
-**Alternative:** Immediate `enum Geometry { Segment }` wrapper — optional sugar, not required for correctness.
+**Choice:** `Curve`-like trait with `position_at` / `tangent_at` / `normal_at` on normalized \(t\); separate `HasEndpoints` (or inherent endpoints on `Segment` only for now). DocumentStructure stores `Vec<Geometry>` with `Geometry::Segment(Segment)` today; further kinds become new enum variants. Shared ops live on `Geometry` (`parameter_count`, `connectivity`, `reindex_after_removal`, `curve()` → `&dyn Curve`). Callers use `curve()` / `match` for kind-specific work—not a growing set of `as_xxx` helpers. Convenience `Document::segments()` iterates segment geometries.  
+**Why:** Makes the storage sum type explicit; scales by capability (Curve) and shared Geometry methods rather than per-variant downcasts.  
+**Alternative:** Keep `Vec<Segment>` until circle exists — rejected once we want the structure visible now. Per-type `as_segment`/`as_circle` — rejected as unscalable.
 
 ### 2b. Tangent / normal length and orientation
 

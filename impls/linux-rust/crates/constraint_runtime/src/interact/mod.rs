@@ -61,7 +61,7 @@ fn soft_for_drag(
     }
     let mut mouse_indices = std::collections::BTreeSet::new();
     for expr in &mouse_exprs {
-        for &i in &expr.param_indices(doc.segments()) {
+        for &i in &expr.param_indices(&doc.structure) {
             mouse_indices.insert(i);
         }
     }
@@ -78,7 +78,7 @@ fn soft_for_drag(
         });
     }
     for expr in &mouse_exprs {
-        let ix = expr.param_indices(doc.segments());
+        let ix = expr.param_indices(&doc.structure);
         // Soft mouse targets the expression's coordinate slots. Endpoint exprs
         // expose (x,y) as two indices; OnCurve is not a drag target in the UI yet.
         if ix.len() >= 2 {

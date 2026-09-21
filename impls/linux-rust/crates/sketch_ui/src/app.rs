@@ -66,7 +66,7 @@ impl App {
     }
 
     fn eval_point(&self, expr: PointExpr) -> Point2 {
-        expr.evaluate(self.doc.segments(), self.doc.state())
+        expr.evaluate(&self.doc.structure, self.doc.state())
     }
 
     fn rebuild_logical_points(&mut self) {
@@ -83,9 +83,9 @@ impl App {
         }
         let mut keep = Vec::new();
         for expr in exprs {
-            let p = expr.evaluate(self.doc.segments(), self.doc.state());
+            let p = expr.evaluate(&self.doc.structure, self.doc.state());
             let duplicate = keep.iter().any(|k: &PointExpr| {
-                let q = k.evaluate(self.doc.segments(), self.doc.state());
+                let q = k.evaluate(&self.doc.structure, self.doc.state());
                 (p.x - q.x).hypot(p.y - q.y) < 1e-3 || congruent(&self.doc, expr, *k)
             });
             if !duplicate {
@@ -101,7 +101,7 @@ impl App {
                 self.last_error = None;
                 self.status = format!(
                     "OK — segments={} constraints={}",
-                    self.doc.segments().len(),
+                    self.doc.geometries().len(),
                     self.doc.constraints().len()
                 );
             }
@@ -163,7 +163,7 @@ impl App {
                     self.rebuild_logical_points();
                     self.status = format!(
                         "Added segment — segments={}",
-                        self.doc.segments().len()
+                        self.doc.geometries().len()
                     );
                 } else {
                     self.status = "Segment: click second endpoint".into();
@@ -280,7 +280,7 @@ impl eframe::App for App {
                 );
             }
             for expr in &self.logical_points {
-                let p = expr.evaluate(self.doc.segments(), self.doc.state());
+                let p = expr.evaluate(&self.doc.structure, self.doc.state());
                 painter.circle_filled(
                     Pos2::new(p.x as f32, p.y as f32),
                     5.0,

@@ -12,7 +12,7 @@ fn two_segment_join_connectivity_indices() {
         EndpointRef::new(s1, SegmentEnd::Start),
     );
     let c = &doc.constraints()[0];
-    let conn = c.param_connectivity(doc.segments());
+    let conn = c.param_connectivity(&doc.structure);
     assert_eq!(conn.global_indices, vec![2, 3, 4, 5]);
 }
 
@@ -90,7 +90,7 @@ fn remove_segment_compacts_state_and_drops_orphans() {
     });
     assert_eq!(doc.constraints().len(), 4);
     assert!(doc.remove_segment(s1));
-    assert_eq!(doc.segments().len(), 2);
+    assert_eq!(doc.geometries().len(), 2);
     assert_eq!(doc.state().len(), 2 * SEGMENT_STRIDE);
     // s0 still at 0..4; s2 remapped from 8..12 to 4..8
     assert_eq!(doc.segment(s0).unwrap().param_offset, 0);

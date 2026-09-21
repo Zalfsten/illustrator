@@ -176,6 +176,56 @@ pub trait Curve {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct SegmentId(pub usize);
 
+/// Document-level sum of geometry kinds (Model E storage).
+#[derive(Clone, Debug, PartialEq)]
+pub enum Geometry {
+    Segment(Segment),
+}
+
+impl Geometry {
+    pub fn parameter_count(&self) -> usize {
+        match self {
+            Geometry::Segment(_) => SEGMENT_STRIDE,
+        }
+    }
+
+    pub fn connectivity(&self) -> Connectivity {
+        match self {
+            Geometry::Segment(s) => s.connectivity(),
+        }
+    }
+
+    /// After a contiguous block was removed from State, shift this geometry's
+    /// local→global indices that lay after the hole.
+    pub fn reindex_after_removal(&mut self, removed_start: usize, removed_len: usize) {
+        match self {
+            Geometry::Segment(s) => {
+                if s.param_offset > removed_start {
+                    s.param_offset -= removed_len;
+                }
+            }
+        }
+    }
+
+    /// Curve capability when this geometry is a curve (segment, later circle, …).
+    pub fn curve(&self) -> Option<&dyn Curve> {
+        match self {
+            Geometry::Segment(s) => Some(s),
+        }
+    }
+}
+
+/// O(1) segment lookup used by expressions and constraints during evaluate/solve.
+/// Implemented by [`crate::document::DocumentStructure`] via an id→slot index.
+pub trait SegmentStore {
+    fn segment(&self, id: SegmentId) -> Option<&Segment>;
+
+    fn expect_segment(&self, id: SegmentId) -> &Segment {
+        self.segment(id)
+            .unwrap_or_else(|| panic!("segment id {id:?} not in document"))
+    }
+}
+
 /// Line segment: endpoint chart, parameters live at `p[param_offset..param_offset+4]`.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Segment {
@@ -263,33 +313,33 @@ pub enum PointExpr {
 }
 
 impl PointExpr {
-    pub fn evaluate(&self, segments: &[Segment], p: &[f64]) -> Point2 {
+    pub fn evaluate(&self, store: &impl SegmentStore, p: &[f64]) -> Point2 {
         match *self {
             PointExpr::SegmentEnd { segment, end } => {
-                let s = find_segment(segments, segment);
+                let s = store.expect_segment(segment);
                 match end {
                     SegmentEndKind::Start => s.start(p),
                     SegmentEndKind::End => s.end(p),
                 }
             }
             PointExpr::OnCurve { segment, param } => {
-                let s = find_segment(segments, segment);
-                s.position_at(param.segment_chart_t(), p)
+                store
+                    .expect_segment(segment)
+                    .position_at(param.segment_chart_t(), p)
             }
         }
     }
 
     /// Global parameter indices this expression depends on.
-    pub fn param_indices(&self, segments: &[Segment]) -> Vec<usize> {
+    pub fn param_indices(&self, store: &impl SegmentStore) -> Vec<usize> {
         match *self {
             PointExpr::SegmentEnd { segment, end } => {
-                let s = find_segment(segments, segment);
+                let s = store.expect_segment(segment);
                 let ix = s.endpoint_param_indices(end);
                 vec![ix[0], ix[1]]
             }
             PointExpr::OnCurve { segment, .. } => {
-                let s = find_segment(segments, segment);
-                s.all_param_indices().to_vec()
+                store.expect_segment(segment).all_param_indices().to_vec()
             }
         }
     }
@@ -298,12 +348,12 @@ impl PointExpr {
     /// written as parallel `dx` / `dy` slices (same length as connectivity).
     pub fn eval_point_jacobian(
         &self,
-        segments: &[Segment],
+        store: &impl SegmentStore,
         _p: &[f64],
         dx: &mut [f64],
         dy: &mut [f64],
     ) {
-        let n = self.param_indices(segments).len();
+        let n = self.param_indices(store).len();
         assert_eq!(dx.len(), n);
         assert_eq!(dy.len(), n);
         dx.fill(0.0);
@@ -315,7 +365,6 @@ impl PointExpr {
             }
             PointExpr::OnCurve { param, .. } => {
                 let t = param.segment_chart_t();
-                // pos = (1-t)A + t B; local order [Ax,Ay,Bx,By]
                 dx[0] = 1.0 - t;
                 dy[1] = 1.0 - t;
                 dx[2] = t;
@@ -346,26 +395,17 @@ pub enum VecExpr {
 }
 
 impl VecExpr {
-    pub fn evaluate(&self, segments: &[Segment], p: &[f64]) -> Vec2 {
+    pub fn evaluate(&self, store: &impl SegmentStore, p: &[f64]) -> Vec2 {
         match *self {
-            VecExpr::SegmentDirection { segment } => find_segment(segments, segment).direction(p),
-            VecExpr::TangentAt { segment, param } => {
-                let s = find_segment(segments, segment);
-                s.tangent_at(param.segment_chart_t(), p)
-            }
-            VecExpr::NormalAt { segment, param } => {
-                let s = find_segment(segments, segment);
-                s.normal_at(param.segment_chart_t(), p)
-            }
+            VecExpr::SegmentDirection { segment } => store.expect_segment(segment).direction(p),
+            VecExpr::TangentAt { segment, param } => store
+                .expect_segment(segment)
+                .tangent_at(param.segment_chart_t(), p),
+            VecExpr::NormalAt { segment, param } => store
+                .expect_segment(segment)
+                .normal_at(param.segment_chart_t(), p),
         }
     }
-}
-
-fn find_segment(segments: &[Segment], id: SegmentId) -> &Segment {
-    segments
-        .iter()
-        .find(|s| s.id == id)
-        .expect("segment for expression")
 }
 
 #[cfg(test)]

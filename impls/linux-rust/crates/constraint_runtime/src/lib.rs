@@ -16,8 +16,8 @@ pub use connectivity::Connectivity;
 pub use constraint::{Constraint, EndpointRef, SegmentEnd};
 pub use document::{Document, DocumentStructure, State};
 pub use geom::{
-    Curve, CurveParam, Point2, PointExpr, Segment, SegmentEndKind, SegmentId, Vec2, VecExpr,
-    SEGMENT_STRIDE,
+    Curve, CurveParam, Geometry, Point2, PointExpr, Segment, SegmentEndKind, SegmentId,
+    SegmentStore, Vec2, VecExpr, SEGMENT_STRIDE,
 };
 pub use interact::{DragSession, InteractiveSolve, SoftTerms, SolveError};
 pub use solver::{

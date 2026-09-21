@@ -1,7 +1,11 @@
 //! Document: DocumentStructure + committed State \(p\).
 
+use std::collections::HashMap;
+
 use crate::constraint::{Constraint, EndpointRef};
-use crate::geom::{Point2, PointExpr, Segment, SegmentId, SEGMENT_STRIDE};
+use crate::geom::{
+    Geometry, Point2, PointExpr, Segment, SegmentId, SegmentStore, SEGMENT_STRIDE,
+};
 
 /// Contiguous continuous parameters for a sketch.
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -49,7 +53,9 @@ impl std::ops::Deref for State {
 /// Discrete sketch: geometries, structural constraints, connectivity schema.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct DocumentStructure {
-    segments: Vec<Segment>,
+    geometries: Vec<Geometry>,
+    /// `SegmentId` → index into `geometries` (O(1) lookup during evaluate/solve).
+    segment_index: HashMap<SegmentId, usize>,
     constraints: Vec<Constraint>,
     next_id: usize,
 }
@@ -59,20 +65,16 @@ impl DocumentStructure {
         Self::default()
     }
 
-    pub fn segments(&self) -> &[Segment] {
-        &self.segments
+    pub fn geometries(&self) -> &[Geometry] {
+        &self.geometries
     }
 
     pub fn constraints(&self) -> &[Constraint] {
         &self.constraints
     }
 
-    pub fn segment(&self, id: SegmentId) -> Option<&Segment> {
-        self.segments.iter().find(|s| s.id == id)
-    }
-
     pub fn parameter_count(&self) -> usize {
-        self.segments.len() * SEGMENT_STRIDE
+        self.geometries.iter().map(Geometry::parameter_count).sum()
     }
 
     pub fn add_constraint(&mut self, c: Constraint) {
@@ -86,6 +88,24 @@ impl DocumentStructure {
         });
     }
 
+    /// Register a geometry whose parameters already live in an external State.
+    pub fn push_geometry(&mut self, g: Geometry) {
+        match &g {
+            Geometry::Segment(s) => {
+                debug_assert!(
+                    !self.segment_index.contains_key(&s.id),
+                    "duplicate segment id {:?}",
+                    s.id
+                );
+                self.segment_index.insert(s.id, self.geometries.len());
+                if s.id.0 >= self.next_id {
+                    self.next_id = s.id.0 + 1;
+                }
+            }
+        }
+        self.geometries.push(g);
+    }
+
     fn constraint_references_segment(c: &Constraint, id: SegmentId) -> bool {
         match c {
             Constraint::Congruence { a, b } => {
@@ -93,6 +113,15 @@ impl DocumentStructure {
             }
             Constraint::Parallel { a, b } | Constraint::Orthogonal { a, b } => *a == id || *b == id,
             Constraint::FixPoint { point, .. } => point_expr_segment(point) == Some(id),
+        }
+    }
+}
+
+impl SegmentStore for DocumentStructure {
+    fn segment(&self, id: SegmentId) -> Option<&Segment> {
+        let &slot = self.segment_index.get(&id)?;
+        match self.geometries.get(slot)? {
+            Geometry::Segment(s) => Some(s),
         }
     }
 }
@@ -133,8 +162,15 @@ impl Document {
         &self.state
     }
 
-    pub fn segments(&self) -> &[Segment] {
-        self.structure.segments()
+    pub fn geometries(&self) -> &[Geometry] {
+        self.structure.geometries()
+    }
+
+    /// Convenience: all line-segment geometries in document order.
+    pub fn segments(&self) -> impl Iterator<Item = &Segment> {
+        self.structure.geometries.iter().filter_map(|g| match g {
+            Geometry::Segment(s) => Some(s),
+        })
     }
 
     pub fn constraints(&self) -> &[Constraint] {
@@ -147,7 +183,8 @@ impl Document {
         let param_offset = self.state.len();
         self.state.0.extend_from_slice(&[a.x, a.y, b.x, b.y]);
         debug_assert_eq!(self.state.len() - param_offset, SEGMENT_STRIDE);
-        self.structure.segments.push(Segment { id, param_offset });
+        self.structure
+            .push_geometry(Geometry::Segment(Segment { id, param_offset }));
         id
     }
 
@@ -165,19 +202,26 @@ impl Document {
 
     /// Remove a segment: compact State, remap offsets, drop orphan constraints.
     pub fn remove_segment(&mut self, id: SegmentId) -> bool {
-        let Some(pos) = self.structure.segments.iter().position(|s| s.id == id) else {
+        let Some(pos) = self.structure.segment_index.remove(&id) else {
             return false;
         };
-        let removed = self.structure.segments.remove(pos);
+        let removed = match self.structure.geometries.remove(pos) {
+            Geometry::Segment(s) => s,
+        };
+        for slot in self.structure.segment_index.values_mut() {
+            if *slot > pos {
+                *slot -= 1;
+            }
+        }
+
         let start = removed.param_offset;
-        let end = start + SEGMENT_STRIDE;
+        let removed_len = SEGMENT_STRIDE;
+        let end = start + removed_len;
         assert!(end <= self.state.len());
         self.state.0.drain(start..end);
 
-        for s in &mut self.structure.segments {
-            if s.param_offset > start {
-                s.param_offset -= SEGMENT_STRIDE;
-            }
+        for g in &mut self.structure.geometries {
+            g.reindex_after_removal(start, removed_len);
         }
 
         self.structure
@@ -199,6 +243,12 @@ impl Document {
 
     pub fn commit_state(&mut self, p: &[f64]) {
         self.restore_state(p);
+    }
+}
+
+impl SegmentStore for Document {
+    fn segment(&self, id: SegmentId) -> Option<&Segment> {
+        self.structure.segment(id)
     }
 }
 

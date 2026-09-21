@@ -1,4 +1,11 @@
 use super::*;
+use crate::document::DocumentStructure;
+
+fn store_with(seg: Segment) -> DocumentStructure {
+    let mut s = DocumentStructure::new();
+    s.push_geometry(Geometry::Segment(seg));
+    s
+}
 
 #[test]
 fn editing_state_vector_changes_endpoints() {
@@ -39,6 +46,7 @@ fn segment_curve_position_tangent_normal() {
         id: SegmentId(0),
         param_offset: 0,
     };
+    let store = store_with(seg.clone());
     let p = vec![0.0, 0.0, 4.0, 0.0];
     assert_eq!(seg.position_at(0.0, &p), Point2::new(0.0, 0.0));
     assert_eq!(seg.position_at(0.5, &p), Point2::new(2.0, 0.0));
@@ -52,13 +60,10 @@ fn segment_curve_position_tangent_normal() {
     assert!((n.length() - tan.length()).abs() < 1e-12);
     let (start_e, end_e) = seg.endpoints();
     assert_eq!(
-        start_e.evaluate(&[seg.clone()], &p),
+        start_e.evaluate(&store, &p),
         seg.position_at(0.0, &p)
     );
-    assert_eq!(
-        end_e.evaluate(&[seg.clone()], &p),
-        seg.position_at(1.0, &p)
-    );
+    assert_eq!(end_e.evaluate(&store, &p), seg.position_at(1.0, &p));
 }
 
 #[test]
@@ -67,19 +72,19 @@ fn oncurve_uniform_matches_normalized_on_segment() {
         id: SegmentId(0),
         param_offset: 0,
     };
-    let segments = vec![seg.clone()];
+    let store = store_with(seg.clone());
     let p = vec![1.0, 2.0, 5.0, 8.0];
     let u = 0.25;
     let a = PointExpr::OnCurve {
         segment: SegmentId(0),
         param: CurveParam::Normalized(u),
     }
-    .evaluate(&segments, &p);
+    .evaluate(&store, &p);
     let b = PointExpr::OnCurve {
         segment: SegmentId(0),
         param: CurveParam::Uniform(u),
     }
-    .evaluate(&segments, &p);
+    .evaluate(&store, &p);
     assert_eq!(a, b);
     assert_eq!(a, seg.position_at(u, &p));
 
@@ -91,34 +96,33 @@ fn oncurve_uniform_matches_normalized_on_segment() {
         segment: SegmentId(0),
         param: CurveParam::Normalized(u),
     }
-    .eval_point_jacobian(&segments, &p, &mut dx_n, &mut dy_n);
+    .eval_point_jacobian(&store, &p, &mut dx_n, &mut dy_n);
     PointExpr::OnCurve {
         segment: SegmentId(0),
         param: CurveParam::Uniform(u),
     }
-    .eval_point_jacobian(&segments, &p, &mut dx_u, &mut dy_u);
+    .eval_point_jacobian(&store, &p, &mut dx_u, &mut dy_u);
     assert_eq!(dx_n, dx_u);
     assert_eq!(dy_n, dy_u);
 }
 
 #[test]
 fn vec_expr_tangent_and_normal() {
-    let seg = Segment {
+    let store = store_with(Segment {
         id: SegmentId(0),
         param_offset: 0,
-    };
-    let segments = [seg];
+    });
     let p = vec![0.0, 0.0, 0.0, 3.0];
     let t = VecExpr::TangentAt {
         segment: SegmentId(0),
         param: CurveParam::Normalized(0.0),
     }
-    .evaluate(&segments, &p);
+    .evaluate(&store, &p);
     let n = VecExpr::NormalAt {
         segment: SegmentId(0),
         param: CurveParam::Uniform(0.5),
     }
-    .evaluate(&segments, &p);
+    .evaluate(&store, &p);
     assert_eq!(t, Vec2::new(0.0, 3.0));
     assert_eq!(n, Vec2::new(-3.0, 0.0));
 }

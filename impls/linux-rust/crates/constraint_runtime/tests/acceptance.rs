@@ -150,13 +150,13 @@ fn right_angle_horizontal_drag_moves_x() {
         segment: s1,
         end: SegmentEndKind::End,
     };
-    let before = free.evaluate(doc.segments(), doc.state());
+    let before = free.evaluate(&doc.structure, doc.state());
 
     let mut drag = DragSession::new();
     drag.pointer_down(&doc, free);
     drag.pointer_move(&mut interact, &mut doc, (200.0, 140.0))
         .expect("move");
-    let after = free.evaluate(doc.segments(), doc.state());
+    let after = free.evaluate(&doc.structure, doc.state());
     assert!(
         (after.x - before.x).abs() > 40.0,
         "expected horizontal motion, C {before:?} -> {after:?}"
@@ -166,7 +166,7 @@ fn right_angle_horizontal_drag_moves_x() {
     // Large further drag should still track (not stick at first feasible point).
     drag.pointer_move(&mut interact, &mut doc, (80.0, 100.0))
         .expect("large move");
-    let far = free.evaluate(doc.segments(), doc.state());
+    let far = free.evaluate(&doc.structure, doc.state());
     assert!(
         (far.x - 80.0).abs() < 40.0 && (far.y - 100.0).abs() < 40.0,
         "expected to follow large drag, got {far:?}"
@@ -213,6 +213,6 @@ fn congruence_to_uniform_midpoint_pins_segment() {
         segment: s0,
         param: CurveParam::Uniform(0.5),
     }
-    .evaluate(doc.segments(), doc.state());
+    .evaluate(&doc.structure, doc.state());
     assert!((mid_pt.x - 1.0).abs() < 1e-4 && (mid_pt.y - 2.0).abs() < 1e-4);
 }

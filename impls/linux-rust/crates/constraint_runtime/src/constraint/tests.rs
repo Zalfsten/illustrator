@@ -1,25 +1,25 @@
 use super::*;
-use crate::geom::SEGMENT_STRIDE;
+use crate::document::DocumentStructure;
+use crate::geom::{Geometry, Segment, SEGMENT_STRIDE};
 
-fn two_segs() -> (Vec<Segment>, Vec<f64>) {
-    let segments = vec![
-        Segment {
-            id: SegmentId(0),
-            param_offset: 0,
-        },
-        Segment {
-            id: SegmentId(1),
-            param_offset: SEGMENT_STRIDE,
-        },
-    ];
+fn two_segs() -> (DocumentStructure, Vec<f64>) {
+    let mut structure = DocumentStructure::new();
+    structure.push_geometry(Geometry::Segment(Segment {
+        id: SegmentId(0),
+        param_offset: 0,
+    }));
+    structure.push_geometry(Geometry::Segment(Segment {
+        id: SegmentId(1),
+        param_offset: SEGMENT_STRIDE,
+    }));
     // s0: (0,0)-(1,0), s1: (0,0)-(0,1) perpendicular sharing origin conceptually
     let p = vec![0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0];
-    (segments, p)
+    (structure, p)
 }
 
 #[test]
 fn jacobian_matches_fd_for_catalog() {
-    let (segments, p) = two_segs();
+    let (structure, p) = two_segs();
     let constraints = [
         Constraint::Congruence {
             a: PointExpr::SegmentEnd {
@@ -60,20 +60,20 @@ fn jacobian_matches_fd_for_catalog() {
 
     let eps = 1e-7;
     for c in &constraints {
-        let conn = c.param_connectivity(&segments);
+        let conn = c.param_connectivity(&structure);
         let m = c.residual_arity();
         let n = conn.len();
         let mut j_an = vec![0.0; m * n];
-        c.eval_jacobian(&segments, &p, &mut j_an);
+        c.eval_jacobian(&structure, &p, &mut j_an);
 
         let mut r0 = vec![0.0; m];
-        c.eval_residual(&segments, &p, &mut r0);
+        c.eval_residual(&structure, &p, &mut r0);
 
         for (col, &g) in conn.global_indices.iter().enumerate() {
             let mut p2 = p.clone();
             p2[g] += eps;
             let mut rp = vec![0.0; m];
-            c.eval_residual(&segments, &p2, &mut rp);
+            c.eval_residual(&structure, &p2, &mut rp);
             for row in 0..m {
                 let fd = (rp[row] - r0[row]) / eps;
                 let an = j_an[row * n + col];
