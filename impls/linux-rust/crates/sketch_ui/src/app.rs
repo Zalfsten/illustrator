@@ -1,8 +1,8 @@
 //! Application shell: Document, Interact, tools, and Canvas painting.
 
 use constraint_runtime::{
-    Constraint, Document, DragSession, EndpointKind, EndpointRef, GeometryId, InteractiveSolve,
-    Mesh, Point2, PointExpr, SolveError,
+    Constraint, Document, DragSession, EndpointKind, EndpointRef, GeometryId, GeometryRole,
+    InteractiveSolve, Mesh, MeshFilter, Point2, PointExpr, SolveError,
 };
 use eframe::egui::{self, Color32, Pos2, Sense, Stroke};
 
@@ -16,12 +16,29 @@ enum Tool {
     FixPoint,
 }
 
+/// UI session: result-only vs include construction (Mesh + handles share one filter).
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum PresentationMode {
+    ResultOnly,
+    IncludeConstruction,
+}
+
+impl PresentationMode {
+    fn mesh_filter(self) -> MeshFilter {
+        match self {
+            PresentationMode::ResultOnly => MeshFilter::RESULT_ONLY,
+            PresentationMode::IncludeConstruction => MeshFilter::INCLUDE_CONSTRUCTION,
+        }
+    }
+}
+
 /// Owns Document and Interact; central panel is the Canvas.
 pub struct App {
     doc: Document,
     interact: InteractiveSolve,
     drag: DragSession,
     tool: Tool,
+    presentation: PresentationMode,
     pick_ends: Vec<(GeometryId, EndpointKind)>,
     segment_clicks: Vec<Point2>,
     status: String,
@@ -36,9 +53,11 @@ impl App {
             interact: InteractiveSolve::default(),
             drag: DragSession::new(),
             tool: Tool::Select,
+            presentation: PresentationMode::ResultOnly,
             pick_ends: Vec::new(),
             segment_clicks: Vec::new(),
-            status: "Sample right angle — drag the free end.".into(),
+            status: "Sample right angle — drag the free end. Toggle construction to see helper."
+                .into(),
             last_error: None,
             logical_points: Vec::new(),
         };
@@ -48,6 +67,13 @@ impl App {
         let s1 = app
             .doc
             .add_segment(Point2::new(320.0, 320.0), Point2::new(320.0, 140.0));
+        // Demo: helper diagonal marked construction (hidden in result-only).
+        let helper = app
+            .doc
+            .add_segment(Point2::new(120.0, 320.0), Point2::new(320.0, 140.0));
+        assert!(app
+            .doc
+            .set_geometry_role(helper, GeometryRole::Construction));
         app.doc.join_endpoints(
             EndpointRef::new(s0, EndpointKind::End),
             EndpointRef::new(s1, EndpointKind::Start),
@@ -66,7 +92,11 @@ impl App {
     }
 
     fn mesh(&self) -> Mesh {
-        Mesh::from_structure(&self.doc.structure, self.doc.state())
+        Mesh::from_structure(
+            &self.doc.structure,
+            self.doc.state(),
+            self.presentation.mesh_filter(),
+        )
     }
 
     fn eval_point(&self, expr: PointExpr) -> Point2 {
@@ -248,6 +278,23 @@ impl eframe::App for App {
                     self.segment_clicks.clear();
                 }
             });
+            ui.horizontal(|ui| {
+                ui.label("Show:");
+                let prev = self.presentation;
+                ui.selectable_value(
+                    &mut self.presentation,
+                    PresentationMode::ResultOnly,
+                    "Result only",
+                );
+                ui.selectable_value(
+                    &mut self.presentation,
+                    PresentationMode::IncludeConstruction,
+                    "Include construction",
+                );
+                if self.presentation != prev {
+                    self.rebuild_logical_points();
+                }
+            });
             ui.label(&self.status);
             if let Some(err) = &self.last_error {
                 ui.colored_label(Color32::RED, err);
@@ -261,12 +308,17 @@ impl eframe::App for App {
 
             let mesh = self.mesh();
             for e in &mesh.edges {
+                let stroke = if e.role == GeometryRole::Construction {
+                    Stroke::new(1.5_f32, Color32::from_rgb(160, 160, 180))
+                } else {
+                    Stroke::new(2.0_f32, Color32::from_rgb(40, 40, 40))
+                };
                 painter.line_segment(
                     [
                         Pos2::new(e.a.x as f32, e.a.y as f32),
                         Pos2::new(e.b.x as f32, e.b.y as f32),
                     ],
-                    Stroke::new(2.0_f32, Color32::from_rgb(40, 40, 40)),
+                    stroke,
                 );
             }
             for expr in &self.logical_points {

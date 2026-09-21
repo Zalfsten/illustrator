@@ -1,5 +1,5 @@
 use super::*;
-use crate::geom::{EndpointKind, PointExpr};
+use crate::geom::{EndpointKind, GeometryRole, PointExpr};
 
 #[test]
 fn two_segment_join_connectivity_indices() {
@@ -54,12 +54,28 @@ fn add_segment_grows_state_and_connectivity() {
     assert_eq!(doc.structure.parameter_count(), SEGMENT_STRIDE);
     let s = doc.segment(s0).unwrap();
     assert_eq!(s.connectivity().global_indices, vec![0, 1, 2, 3]);
+    assert_eq!(s.role, GeometryRole::Result);
     let s1 = doc.add_segment(Point2::new(2.0, 0.0), Point2::new(3.0, 1.0));
     assert_eq!(doc.state().len(), 2 * SEGMENT_STRIDE);
     assert_eq!(
         doc.segment(s1).unwrap().connectivity().global_indices,
         vec![4, 5, 6, 7]
     );
+}
+
+#[test]
+fn set_geometry_role_round_trips() {
+    let mut doc = Document::new();
+    let id = doc.add_segment(Point2::new(0.0, 0.0), Point2::new(1.0, 0.0));
+    assert_eq!(doc.segment(id).unwrap().role, GeometryRole::Result);
+    assert!(doc.set_geometry_role(id, GeometryRole::Construction));
+    assert_eq!(doc.segment(id).unwrap().role, GeometryRole::Construction);
+    assert_eq!(
+        doc.structure.geometry(id).unwrap().role(),
+        GeometryRole::Construction
+    );
+    assert!(doc.set_geometry_role(id, GeometryRole::Result));
+    assert_eq!(doc.segment(id).unwrap().role, GeometryRole::Result);
 }
 
 #[test]

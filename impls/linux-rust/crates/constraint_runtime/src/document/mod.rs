@@ -4,7 +4,7 @@ use std::collections::HashMap;
 
 use crate::constraint::{Constraint, EndpointRef};
 use crate::geom::{
-    Geometry, GeometryId, GeometryStore, Point2, Segment, SEGMENT_STRIDE,
+    Geometry, GeometryId, GeometryRole, GeometryStore, Point2, Segment, SEGMENT_STRIDE,
 };
 
 /// Contiguous continuous parameters for a sketch.
@@ -174,8 +174,25 @@ impl Document {
         self.state.0.extend_from_slice(&[a.x, a.y, b.x, b.y]);
         debug_assert_eq!(self.state.len() - param_offset, SEGMENT_STRIDE);
         self.structure
-            .push_geometry(Geometry::Segment(Segment { id, param_offset }));
+            .push_geometry(Geometry::Segment(Segment {
+                id,
+                param_offset,
+                role: GeometryRole::Result,
+            }));
         id
+    }
+
+    /// Set geometry role (result vs construction). Returns false if id missing.
+    pub fn set_geometry_role(&mut self, id: GeometryId, role: GeometryRole) -> bool {
+        let Some(&slot) = self.structure.geometry_index.get(&id) else {
+            return false;
+        };
+        match &mut self.structure.geometries[slot] {
+            Geometry::Segment(s) => {
+                s.role = role;
+                true
+            }
+        }
     }
 
     pub fn add_constraint(&mut self, c: Constraint) {

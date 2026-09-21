@@ -17,11 +17,11 @@ pub use connectivity::Connectivity;
 pub use constraint::{Constraint, EndpointRef};
 pub use document::{Document, DocumentStructure, State};
 pub use geom::{
-    Curve, CurveParam, EndpointKind, Geometry, GeometryId, GeometryStore, Point2, PointExpr,
-    Segment, SegmentId, Vec2, VecExpr, SEGMENT_STRIDE,
+    Curve, CurveParam, EndpointKind, Geometry, GeometryId, GeometryRole, GeometryStore, Point2,
+    PointExpr, Segment, SegmentId, Vec2, VecExpr, SEGMENT_STRIDE,
 };
 pub use interact::{DragSession, InteractiveSolve, SoftTerms, SolveError};
-pub use mesh::{Mesh, MeshEdge};
+pub use mesh::{Mesh, MeshEdge, MeshFilter};
 pub use solver::{
     LmSolver, SolveOutcome, SolverOptions, SolverPort, StubSolver, SystemEval, ffi,
 };

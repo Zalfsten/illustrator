@@ -3,12 +3,35 @@
 //! Derived view only — not authoritative for parameters or constraints.
 
 use crate::document::DocumentStructure;
-use crate::geom::{EndpointKind, Geometry, GeometryId, Point2};
+use crate::geom::{EndpointKind, Geometry, GeometryId, GeometryRole, Point2};
+
+/// Which geometries contribute edges to a Mesh.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct MeshFilter {
+    pub include_construction: bool,
+}
+
+impl MeshFilter {
+    pub const RESULT_ONLY: Self = Self {
+        include_construction: false,
+    };
+
+    pub const INCLUDE_CONSTRUCTION: Self = Self {
+        include_construction: true,
+    };
+}
+
+impl Default for MeshFilter {
+    fn default() -> Self {
+        Self::RESULT_ONLY
+    }
+}
 
 /// One stroked edge in the plane, tagged with the producing geometry.
 #[derive(Clone, Debug, PartialEq)]
 pub struct MeshEdge {
     pub geometry: GeometryId,
+    pub role: GeometryRole,
     /// Start endpoint for segment edges (`EndpointKind::Start`).
     pub a: Point2,
     /// End endpoint for segment edges (`EndpointKind::End`).
@@ -22,13 +45,21 @@ pub struct Mesh {
 }
 
 impl Mesh {
-    pub fn from_structure(structure: &DocumentStructure, p: &[f64]) -> Self {
+    pub fn from_structure(
+        structure: &DocumentStructure,
+        p: &[f64],
+        filter: MeshFilter,
+    ) -> Self {
         let mut edges = Vec::with_capacity(structure.geometries().len());
         for g in structure.geometries() {
+            if !filter.include_construction && g.role() == GeometryRole::Construction {
+                continue;
+            }
             match g {
                 Geometry::Segment(s) => {
                     edges.push(MeshEdge {
                         geometry: s.id,
+                        role: s.role,
                         a: s.start(p),
                         b: s.end(p),
                     });

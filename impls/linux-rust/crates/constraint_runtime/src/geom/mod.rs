@@ -179,6 +179,14 @@ pub struct GeometryId(pub usize);
 /// Alias kept for the segment-only UI / tools layer.
 pub type SegmentId = GeometryId;
 
+/// Presentation role: result figure vs construction helper.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub enum GeometryRole {
+    #[default]
+    Result,
+    Construction,
+}
+
 /// Document-level sum of geometry kinds (Model E storage).
 #[derive(Clone, Debug, PartialEq)]
 pub enum Geometry {
@@ -189,6 +197,12 @@ impl Geometry {
     pub fn id(&self) -> GeometryId {
         match self {
             Geometry::Segment(s) => s.id,
+        }
+    }
+
+    pub fn role(&self) -> GeometryRole {
+        match self {
+            Geometry::Segment(s) => s.role,
         }
     }
 
@@ -240,6 +254,7 @@ pub trait GeometryStore {
 pub struct Segment {
     pub id: GeometryId,
     pub param_offset: usize,
+    pub role: GeometryRole,
 }
 
 impl Segment {

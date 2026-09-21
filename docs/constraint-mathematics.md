@@ -25,7 +25,9 @@ Behavioral contracts live in OpenSpec capabilities (`geometry-ir`, `state-vector
 | **Connectivity** $M_N$ | Explicit map from local parameter indices of contribution $N$ to global indices in $p$. Used to scatter local residuals/Jacobians into global arrays. |
 | **Assembly** | Building the global residual $r(p)$ and Jacobian $J(p)=\partial r/\partial p$ by evaluating each contribution and scattering via connectivity. |
 | **Soft contribution** | Transient residual used only during Interact (e.g. mouse follow, stay-near-previous). Not stored as a structural constraint in DocumentStructure. |
-| **Mesh** | View-layer tessellation of DocumentStructure evaluated at a State \(p\) into drawable edges (tagged with geometry identity). Derived only — not authoritative for parameters or constraints. Used for Canvas paint and optional WYSIWYG hit-testing. |
+| **Mesh** | View-layer tessellation of DocumentStructure evaluated at a State \(p\) into drawable edges (tagged with geometry identity and role). Derived only — not authoritative for parameters or constraints. Used for Canvas paint and optional WYSIWYG hit-testing. Built with a **MeshFilter** that may omit construction geometries. |
+| **GeometryRole** | DocumentStructure flag on each geometry: **Result** (published figure) or **Construction** (helper). Construction remains in State and constraints; role alone does not remove parameters. |
+| **Presentation mode** | App/UI session choice: result-only vs include-construction. Selects the MeshFilter for paint, Mesh hits, and logical handles so invisible construction is not pickable. |
 | **Working copy** | Temporary State used during Interact / solve iterations. May differ from the committed State. |
 | **Commit** | Replacing the Document's committed State with a working State after a successful solve (structural residuals within tolerance). |
 

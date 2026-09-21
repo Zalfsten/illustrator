@@ -12,6 +12,7 @@ fn editing_state_vector_changes_endpoints() {
     let seg = Segment {
         id: GeometryId(0),
         param_offset: 0,
+        role: GeometryRole::Result,
     };
     let mut p = vec![0.0, 0.0, 1.0, 0.0];
     assert_eq!(seg.end(&p), Point2::new(1.0, 0.0));
@@ -32,6 +33,7 @@ fn point_minus_point_is_vec_direction_is_vec() {
     let seg = Segment {
         id: GeometryId(0),
         param_offset: 0,
+        role: GeometryRole::Result,
     };
     let p = vec![0.0, 0.0, 1.0, 0.0];
     let d: Vec2 = seg.direction(&p);
@@ -45,6 +47,7 @@ fn segment_curve_position_tangent_normal() {
     let seg = Segment {
         id: GeometryId(0),
         param_offset: 0,
+        role: GeometryRole::Result,
     };
     let store = store_with(seg.clone());
     let p = vec![0.0, 0.0, 4.0, 0.0];
@@ -71,6 +74,7 @@ fn oncurve_uniform_matches_normalized_on_segment() {
     let seg = Segment {
         id: GeometryId(0),
         param_offset: 0,
+        role: GeometryRole::Result,
     };
     let store = store_with(seg.clone());
     let p = vec![1.0, 2.0, 5.0, 8.0];
@@ -111,6 +115,7 @@ fn vec_expr_tangent_and_normal() {
     let store = store_with(Segment {
         id: GeometryId(0),
         param_offset: 0,
+        role: GeometryRole::Result,
     });
     let p = vec![0.0, 0.0, 0.0, 3.0];
     let t = VecExpr::TangentAt {
