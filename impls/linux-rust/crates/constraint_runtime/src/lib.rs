@@ -15,7 +15,10 @@ pub use ceres_solver::CeresSolver;
 pub use connectivity::Connectivity;
 pub use constraint::{Constraint, EndpointRef, SegmentEnd};
 pub use document::{Document, DocumentStructure, State};
-pub use geom::{Point2, PointExpr, Segment, SegmentEndKind, SegmentId, Vec2, SEGMENT_STRIDE};
+pub use geom::{
+    Curve, CurveParam, Point2, PointExpr, Segment, SegmentEndKind, SegmentId, Vec2, VecExpr,
+    SEGMENT_STRIDE,
+};
 pub use interact::{DragSession, InteractiveSolve, SoftTerms, SolveError};
 pub use solver::{
     LmSolver, SolveOutcome, SolverOptions, SolverPort, StubSolver, SystemEval, ffi,

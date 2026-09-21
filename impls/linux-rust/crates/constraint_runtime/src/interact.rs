@@ -61,9 +61,9 @@ fn soft_for_drag(
     }
     let mut mouse_indices = std::collections::BTreeSet::new();
     for expr in &mouse_exprs {
-        let ix = expr.param_indices(doc.segments());
-        mouse_indices.insert(ix[0]);
-        mouse_indices.insert(ix[1]);
+        for &i in &expr.param_indices(doc.segments()) {
+            mouse_indices.insert(i);
+        }
     }
 
     let mut soft = Vec::new();
@@ -79,16 +79,20 @@ fn soft_for_drag(
     }
     for expr in &mouse_exprs {
         let ix = expr.param_indices(doc.segments());
-        soft.push(SoftContribution {
-            index: ix[0],
-            target: mouse.0,
-            weight: weights.mouse_weight,
-        });
-        soft.push(SoftContribution {
-            index: ix[1],
-            target: mouse.1,
-            weight: weights.mouse_weight,
-        });
+        // Soft mouse targets the expression's coordinate slots. Endpoint exprs
+        // expose (x,y) as two indices; OnCurve is not a drag target in the UI yet.
+        if ix.len() >= 2 {
+            soft.push(SoftContribution {
+                index: ix[0],
+                target: mouse.0,
+                weight: weights.mouse_weight,
+            });
+            soft.push(SoftContribution {
+                index: ix[1],
+                target: mouse.1,
+                weight: weights.mouse_weight,
+            });
+        }
     }
     soft
 }

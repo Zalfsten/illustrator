@@ -98,9 +98,7 @@ impl DocumentStructure {
 }
 
 fn point_expr_segment(expr: &PointExpr) -> Option<SegmentId> {
-    match expr {
-        PointExpr::SegmentEnd { segment, .. } => Some(*segment),
-    }
+    Some(expr.referenced_segment())
 }
 
 /// Document = DocumentStructure + committed State.
@@ -289,7 +287,14 @@ mod tests {
             },
             target: Point2::new(5.0, 5.0),
         });
-        assert_eq!(doc.constraints().len(), 3);
+        doc.add_constraint(Constraint::FixPoint {
+            point: PointExpr::OnCurve {
+                segment: s1,
+                param: crate::geom::CurveParam::Uniform(0.5),
+            },
+            target: Point2::new(1.0, 0.5),
+        });
+        assert_eq!(doc.constraints().len(), 4);
         assert!(doc.remove_segment(s1));
         assert_eq!(doc.segments().len(), 2);
         assert_eq!(doc.state().len(), 2 * SEGMENT_STRIDE);
@@ -297,7 +302,7 @@ mod tests {
         assert_eq!(doc.segment(s0).unwrap().param_offset, 0);
         assert_eq!(doc.segment(s2).unwrap().param_offset, SEGMENT_STRIDE);
         assert_eq!(doc.state()[4], 5.0);
-        // congruence + orthogonal referenced s1 → dropped; FixPoint on s2 kept
+        // congruence + orthogonal + OnCurve FixPoint referenced s1 → dropped; FixPoint on s2 kept
         assert_eq!(doc.constraints().len(), 1);
         assert!(matches!(
             &doc.constraints()[0],

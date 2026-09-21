@@ -14,7 +14,12 @@ Behavioral contracts live in OpenSpec capabilities (`geometry-ir`, `state-vector
 | **Document** | Composite of DocumentStructure plus a **committed** State. |
 | **Vec2 / free vector** | Displacement or direction in the plane. Fundamental linear quantity: difference of points, segment direction, etc. |
 | **Point2 / point** | Affine location. May be written as a position vector relative to an origin, but is not a free vector. $P - Q$ is a vector; $P + v$ is a point; $P + Q$ is not meaningful. |
-| **Point expression** | Map from geometry parameters to a 2D **point** (e.g. a segment endpoint). Not a free-standing point entity and not a snapshot detached from parameters. |
+| **Point expression** | Map from geometry parameters to a 2D **point** (e.g. a segment endpoint or an on-curve sample). Not a free-standing point entity and not a snapshot detached from parameters. |
+| **Vector expression** | Map from geometry parameters to a free **vector** (e.g. segment direction, curve tangent or normal). |
+| **Normalized curve parameter** | Chart coordinate \(t \in [0,1]\): the curve's native formula domain affinely mapped to the unit interval. Equal \(\Delta t\) need not mean equal arc length. |
+| **Uniform curve parameter** | Arc-length fraction \(u \in [0,1]\): equal \(\Delta u\) means equal arc length along the curve. For a line segment, Normalized and Uniform coincide. |
+| **Curve tangent** | Chart derivative \(\gamma'(t)\) as a free vector; length is parametric speed (segment: segment length). Not required to be unit length. |
+| **Curve normal** | Leftward planar rotate of the tangent \((-v_y, v_x)\); same length as the tangent. Not a curvature-weighted vector. |
 | **Residual** | Scalar (or small vector) that is zero iff a constraint (or soft term) is satisfied within tolerance. |
 | **Local Jacobian** | Derivatives of a local residual contribution w.r.t. the local parameters that contribution depends on. |
 | **Connectivity** $M_N$ | Explicit map from local parameter indices of contribution $N$ to global indices in $p$. Used to scatter local residuals/Jacobians into global arrays. |

@@ -173,3 +173,46 @@ fn right_angle_horizontal_drag_moves_x() {
     );
     assert!(residual_ok(&doc));
 }
+
+#[test]
+fn congruence_to_uniform_midpoint_pins_segment() {
+    use constraint_runtime::CurveParam;
+
+    let mut doc = Document::new();
+    let s0 = doc.add_segment(Point2::new(0.0, 0.0), Point2::new(4.0, 0.0));
+    let s1 = doc.add_segment(Point2::new(1.0, 2.0), Point2::new(5.0, 2.0));
+    doc.add_constraint(Constraint::FixPoint {
+        point: PointExpr::SegmentEnd {
+            segment: s0,
+            end: SegmentEndKind::Start,
+        },
+        target: Point2::new(0.0, 0.0),
+    });
+    doc.add_constraint(Constraint::FixPoint {
+        point: PointExpr::SegmentEnd {
+            segment: s1,
+            end: SegmentEndKind::Start,
+        },
+        target: Point2::new(1.0, 2.0),
+    });
+    doc.add_constraint(Constraint::Congruence {
+        a: PointExpr::OnCurve {
+            segment: s0,
+            param: CurveParam::Uniform(0.5),
+        },
+        b: PointExpr::SegmentEnd {
+            segment: s1,
+            end: SegmentEndKind::Start,
+        },
+    });
+
+    let mut interact = InteractiveSolve::default();
+    interact.structural_only(&mut doc).expect("midpoint congruence");
+    assert!(residual_ok(&doc));
+    let mid_pt = PointExpr::OnCurve {
+        segment: s0,
+        param: CurveParam::Uniform(0.5),
+    }
+    .evaluate(doc.segments(), doc.state());
+    assert!((mid_pt.x - 1.0).abs() < 1e-4 && (mid_pt.y - 2.0).abs() < 1e-4);
+}

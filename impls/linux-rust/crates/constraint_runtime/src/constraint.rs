@@ -57,9 +57,9 @@ impl Constraint {
     pub fn param_connectivity(&self, segments: &[Segment]) -> Connectivity {
         match self {
             Constraint::Congruence { a, b } => {
-                let ia = a.param_indices(segments);
-                let ib = b.param_indices(segments);
-                Connectivity::new(vec![ia[0], ia[1], ib[0], ib[1]])
+                let mut idx = a.param_indices(segments);
+                idx.extend(b.param_indices(segments));
+                Connectivity::new(idx)
             }
             Constraint::Parallel { a, b } | Constraint::Orthogonal { a, b } => {
                 let sa = find(segments, *a);
@@ -68,10 +68,7 @@ impl Constraint {
                 idx.extend(sb.connectivity().global_indices);
                 Connectivity::new(idx)
             }
-            Constraint::FixPoint { point, .. } => {
-                let i = point.param_indices(segments);
-                Connectivity::new(vec![i[0], i[1]])
-            }
+            Constraint::FixPoint { point, .. } => Connectivity::new(point.param_indices(segments)),
         }
     }
 
@@ -110,12 +107,24 @@ impl Constraint {
         out.fill(0.0);
 
         match self {
-            Constraint::Congruence { .. } => {
-                // r = [xa-xb, ya-yb], local order [xa,ya,xb,yb]
-                out[0 * n_local + 0] = 1.0;
-                out[0 * n_local + 2] = -1.0;
-                out[1 * n_local + 1] = 1.0;
-                out[1 * n_local + 3] = -1.0;
+            Constraint::Congruence { a, b } => {
+                // r = A(p) - B(p); local cols = [indices(A) | indices(B)]
+                let na = a.param_indices(segments).len();
+                let nb = b.param_indices(segments).len();
+                let mut dax = vec![0.0; na];
+                let mut day = vec![0.0; na];
+                let mut dbx = vec![0.0; nb];
+                let mut dby = vec![0.0; nb];
+                a.eval_point_jacobian(segments, p, &mut dax, &mut day);
+                b.eval_point_jacobian(segments, p, &mut dbx, &mut dby);
+                for i in 0..na {
+                    out[0 * n_local + i] = dax[i];
+                    out[1 * n_local + i] = day[i];
+                }
+                for j in 0..nb {
+                    out[0 * n_local + na + j] = -dbx[j];
+                    out[1 * n_local + na + j] = -dby[j];
+                }
             }
             Constraint::Parallel { a, b } => {
                 // r = vx_a * vy_b - vy_a * vx_b
@@ -147,9 +156,15 @@ impl Constraint {
                 out[6] = va.x;
                 out[7] = va.y;
             }
-            Constraint::FixPoint { .. } => {
-                out[0 * n_local + 0] = 1.0;
-                out[1 * n_local + 1] = 1.0;
+            Constraint::FixPoint { point, .. } => {
+                let n = point.param_indices(segments).len();
+                let mut dx = vec![0.0; n];
+                let mut dy = vec![0.0; n];
+                point.eval_point_jacobian(segments, p, &mut dx, &mut dy);
+                for i in 0..n {
+                    out[0 * n_local + i] = dx[i];
+                    out[1 * n_local + i] = dy[i];
+                }
             }
         }
     }
@@ -211,6 +226,16 @@ mod tests {
                     end: SegmentEndKind::Start,
                 },
                 target: Point2::new(0.0, 0.0),
+            },
+            Constraint::Congruence {
+                a: PointExpr::OnCurve {
+                    segment: SegmentId(0),
+                    param: crate::geom::CurveParam::Uniform(0.5),
+                },
+                b: PointExpr::SegmentEnd {
+                    segment: SegmentId(1),
+                    end: SegmentEndKind::Start,
+                },
             },
         ];
 
