@@ -1,6 +1,7 @@
 //! Minimal egui front-end for the constraint runtime.
 
 mod app;
+mod viewport;
 
 use app::App;
 

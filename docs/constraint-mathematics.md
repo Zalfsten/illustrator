@@ -14,6 +14,8 @@ Behavioral contracts live in OpenSpec capabilities (`geometry-ir`, `state-vector
 | **Document** | Composite of DocumentStructure plus a **committed** State. |
 | **Vec2 / free vector** | Displacement or direction in the plane. Fundamental linear quantity: difference of points, segment direction, etc. |
 | **Point2 / point** | Affine location. May be written as a position vector relative to an origin, but is not a free vector. $P - Q$ is a vector; $P + v$ is a point; $P + Q$ is not meaningful. |
+| **World coordinates** | Durable planar frame for Document State and Mesh edge positions. **y-up** (scientific/mathematical): $+y$ points upward. Not window pixels. |
+| **Viewport** | App/UI session mapping between world and screen coordinates: uniform scale, origin, and y-flip for toolkits with $+y$ downward. Paint uses world→screen; pointer input and pixel pick radii use screen→world (`r_{\mathrm{world}}=r_{\mathrm{px}}/\mathrm{scale}`). |
 | **Point expression** | Map from geometry parameters to a 2D **point** (e.g. a segment endpoint or an on-curve sample). Not a free-standing point entity and not a snapshot detached from parameters. |
 | **Vector expression** | Map from geometry parameters to a free **vector** (e.g. segment direction, curve tangent or normal). |
 | **Normalized curve parameter** | Chart coordinate \(t \in [0,1]\): the curve's native formula domain affinely mapped to the unit interval. Equal \(\Delta t\) need not mean equal arc length. |
@@ -25,7 +27,7 @@ Behavioral contracts live in OpenSpec capabilities (`geometry-ir`, `state-vector
 | **Connectivity** $M_N$ | Explicit map from local parameter indices of contribution $N$ to global indices in $p$. Used to scatter local residuals/Jacobians into global arrays. |
 | **Assembly** | Building the global residual $r(p)$ and Jacobian $J(p)=\partial r/\partial p$ by evaluating each contribution and scattering via connectivity. |
 | **Soft contribution** | Transient residual used only during Interact (e.g. mouse follow, stay-near-previous). Not stored as a structural constraint in DocumentStructure. |
-| **Mesh** | View-layer tessellation of DocumentStructure evaluated at a State \(p\) into drawable edges (tagged with geometry identity and role). Derived only — not authoritative for parameters or constraints. Used for Canvas paint and optional WYSIWYG hit-testing. Built with a **MeshFilter** that may omit construction geometries. |
+| **Mesh** | View-layer tessellation of DocumentStructure evaluated at a State \(p\) into drawable edges (tagged with geometry identity and role) in **world coordinates**. Derived only — not authoritative for parameters or constraints. Used for Canvas paint (via Viewport) and optional WYSIWYG hit-testing. Built with a **MeshFilter** that may omit construction geometries. |
 | **GeometryRole** | DocumentStructure flag on each geometry: **Result** (published figure) or **Construction** (helper). Construction remains in State and constraints; role alone does not remove parameters. |
 | **Presentation mode** | App/UI session choice: result-only vs include-construction. Selects the MeshFilter for paint, Mesh hits, and logical handles so invisible construction is not pickable. |
 | **Working copy** | Temporary State used during Interact / solve iterations. May differ from the committed State. |

@@ -4,7 +4,9 @@ use constraint_runtime::{
     Constraint, Document, DragSession, EndpointKind, EndpointRef, GeometryId, GeometryRole,
     InteractiveSolve, Mesh, MeshFilter, Point2, PointExpr, SolveError,
 };
-use eframe::egui::{self, Color32, Pos2, Sense, Stroke};
+use eframe::egui::{self, Color32, Pos2, Rect, Sense, Stroke};
+
+use crate::viewport::Viewport;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Tool {
@@ -32,6 +34,11 @@ impl PresentationMode {
     }
 }
 
+/// Fixed world AABB used to fit the Viewport (sample sketch + margin room).
+const WORLD_MIN: Point2 = Point2 { x: -0.5, y: -0.5 };
+const WORLD_MAX: Point2 = Point2 { x: 2.5, y: 2.5 };
+const VIEW_MARGIN: f32 = 40.0;
+
 /// Owns Document and Interact; central panel is the Canvas.
 pub struct App {
     doc: Document,
@@ -44,6 +51,8 @@ pub struct App {
     status: String,
     last_error: Option<String>,
     logical_points: Vec<PointExpr>,
+    /// Last fitted viewport (updated each paint from canvas rect).
+    viewport: Viewport,
 }
 
 impl App {
@@ -56,21 +65,23 @@ impl App {
             presentation: PresentationMode::ResultOnly,
             pick_ends: Vec::new(),
             segment_clicks: Vec::new(),
-            status: "Sample right angle — drag the free end. Toggle construction to see helper."
+            status: "Sample right angle (world y-up) — drag the free end. Toggle construction to see helper."
                 .into(),
             last_error: None,
             logical_points: Vec::new(),
+            viewport: Viewport::new(1.0, Pos2::ZERO),
         };
+        // World units, y-up: horizontal then vertical leg of a right angle.
         let s0 = app
             .doc
-            .add_segment(Point2::new(120.0, 320.0), Point2::new(320.0, 320.0));
+            .add_segment(Point2::new(0.0, 0.0), Point2::new(2.0, 0.0));
         let s1 = app
             .doc
-            .add_segment(Point2::new(320.0, 320.0), Point2::new(320.0, 140.0));
+            .add_segment(Point2::new(2.0, 0.0), Point2::new(2.0, 2.0));
         // Demo: helper diagonal marked construction (hidden in result-only).
         let helper = app
             .doc
-            .add_segment(Point2::new(120.0, 320.0), Point2::new(320.0, 140.0));
+            .add_segment(Point2::new(0.0, 0.0), Point2::new(2.0, 2.0));
         assert!(app
             .doc
             .set_geometry_role(helper, GeometryRole::Construction));
@@ -84,7 +95,7 @@ impl App {
                 geometry: s0,
                 end: EndpointKind::Start,
             },
-            target: Point2::new(120.0, 320.0),
+            target: Point2::new(0.0, 0.0),
         });
         let _ = app.interact.structural_only(&mut app.doc);
         app.rebuild_logical_points();
@@ -148,12 +159,14 @@ impl App {
         self.rebuild_logical_points();
     }
 
-    fn hit_point(&self, pos: Pos2, radius: f64) -> Option<PointExpr> {
+    fn hit_point(&self, screen: Pos2, radius_px: f64) -> Option<PointExpr> {
+        let query = self.viewport.to_world(screen);
+        let radius = self.viewport.px_to_world(radius_px);
         let mut best = None;
         let mut best_d = radius;
         for expr in &self.logical_points {
             let p = self.eval_point(*expr);
-            let d = (p.x - pos.x as f64).hypot(p.y - pos.y as f64);
+            let d = (p.x - query.x).hypot(p.y - query.y);
             if d < best_d {
                 best_d = d;
                 best = Some(*expr);
@@ -162,21 +175,23 @@ impl App {
         best
     }
 
-    fn hit_end(&self, pos: Pos2, radius: f64) -> Option<(GeometryId, EndpointKind)> {
-        self.mesh()
-            .hit_endpoint(Point2::new(pos.x as f64, pos.y as f64), radius)
+    fn hit_end(&self, screen: Pos2, radius_px: f64) -> Option<(GeometryId, EndpointKind)> {
+        let query = self.viewport.to_world(screen);
+        let radius = self.viewport.px_to_world(radius_px);
+        self.mesh().hit_endpoint(query, radius)
     }
 
-    fn hit_edge(&self, pos: Pos2, radius: f64) -> Option<GeometryId> {
-        self.mesh()
-            .hit_geometry(Point2::new(pos.x as f64, pos.y as f64), radius)
+    fn hit_edge(&self, screen: Pos2, radius_px: f64) -> Option<GeometryId> {
+        let query = self.viewport.to_world(screen);
+        let radius = self.viewport.px_to_world(radius_px);
+        self.mesh().hit_geometry(query, radius)
     }
 
-    fn handle_click(&mut self, pos: Pos2) {
+    fn handle_click(&mut self, screen: Pos2) {
+        let world = self.viewport.to_world(screen);
         match self.tool {
             Tool::Segment => {
-                self.segment_clicks
-                    .push(Point2::new(pos.x as f64, pos.y as f64));
+                self.segment_clicks.push(world);
                 if self.segment_clicks.len() >= 2 {
                     let a = self.segment_clicks[0];
                     let b = self.segment_clicks[1];
@@ -192,7 +207,7 @@ impl App {
                 }
             }
             Tool::Join => {
-                if let Some(h) = self.hit_end(pos, 12.0) {
+                if let Some(h) = self.hit_end(screen, 12.0) {
                     self.pick_ends.push(h);
                     if self.pick_ends.len() >= 2 {
                         let a = self.pick_ends[0];
@@ -209,7 +224,7 @@ impl App {
                 }
             }
             Tool::Parallel | Tool::Orthogonal => {
-                if let Some(id) = self.hit_edge(pos, 24.0) {
+                if let Some(id) = self.hit_edge(screen, 24.0) {
                     self.pick_ends.push((id, EndpointKind::Start));
                     if self.pick_ends.len() >= 2 {
                         let a = self.pick_ends[0].0;
@@ -229,7 +244,7 @@ impl App {
                 }
             }
             Tool::FixPoint => {
-                if let Some(expr) = self.hit_point(pos, 12.0) {
+                if let Some(expr) = self.hit_point(screen, 12.0) {
                     let p = self.eval_point(expr);
                     self.doc.add_constraint(Constraint::FixPoint {
                         point: expr,
@@ -302,9 +317,11 @@ impl eframe::App for App {
         });
 
         egui::CentralPanel::default().show(ctx, |ui| {
-            // Canvas: Mesh from Document+State; drag → Interact (logical points).
+            // Canvas: Mesh (world) → Viewport → screen; drag → Interact in world.
             let (response, painter) =
                 ui.allocate_painter(ui.available_size(), Sense::click_and_drag());
+            let canvas: Rect = response.rect;
+            self.viewport = Viewport::fit(canvas, WORLD_MIN, WORLD_MAX, VIEW_MARGIN);
 
             let mesh = self.mesh();
             for e in &mesh.edges {
@@ -313,25 +330,21 @@ impl eframe::App for App {
                 } else {
                     Stroke::new(2.0_f32, Color32::from_rgb(40, 40, 40))
                 };
-                painter.line_segment(
-                    [
-                        Pos2::new(e.a.x as f32, e.a.y as f32),
-                        Pos2::new(e.b.x as f32, e.b.y as f32),
-                    ],
-                    stroke,
-                );
+                let a = self.viewport.to_screen(e.a);
+                let b = self.viewport.to_screen(e.b);
+                painter.line_segment([a, b], stroke);
             }
             for expr in &self.logical_points {
                 let p = expr.evaluate(&self.doc.structure, self.doc.state());
                 painter.circle_filled(
-                    Pos2::new(p.x as f32, p.y as f32),
+                    self.viewport.to_screen(p),
                     5.0,
                     Color32::from_rgb(30, 100, 200),
                 );
             }
             for p in &self.segment_clicks {
                 painter.circle_filled(
-                    Pos2::new(p.x as f32, p.y as f32),
+                    self.viewport.to_screen(*p),
                     4.0,
                     Color32::from_rgb(200, 120, 40),
                 );
@@ -347,10 +360,11 @@ impl eframe::App for App {
                 }
                 if response.dragged() && self.drag.is_dragging() {
                     if let Some(pos) = response.interact_pointer_pos() {
+                        let world = self.viewport.to_world(pos);
                         if let Err(e) = self.drag.pointer_move(
                             &mut self.interact,
                             &mut self.doc,
-                            (pos.x as f64, pos.y as f64),
+                            (world.x, world.y),
                         ) {
                             self.last_error = Some(e.to_string());
                             self.status = "Solve failed during drag — kept last good".into();
@@ -362,10 +376,11 @@ impl eframe::App for App {
                 }
                 if response.drag_stopped() && self.drag.is_dragging() {
                     if let Some(pos) = response.interact_pointer_pos() {
+                        let world = self.viewport.to_world(pos);
                         let r = self.drag.pointer_up(
                             &mut self.interact,
                             &mut self.doc,
-                            (pos.x as f64, pos.y as f64),
+                            (world.x, world.y),
                         );
                         self.report(r);
                     } else {
