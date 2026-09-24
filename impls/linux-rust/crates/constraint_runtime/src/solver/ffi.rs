@@ -51,4 +51,5 @@
     }
 
 #[cfg(test)]
-mod tests;
+#[path = "tests_ffi.rs"]
+mod tests_ffi;

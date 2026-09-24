@@ -257,4 +257,5 @@ impl Default for DragSession {
 }
 
 #[cfg(test)]
-mod tests;
+#[path = "tests_interact.rs"]
+mod tests_interact;

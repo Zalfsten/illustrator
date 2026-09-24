@@ -105,4 +105,5 @@ impl SolverPort for CeresSolver {
 }
 
 #[cfg(test)]
-mod tests;
+#[path = "tests_ceres_solver.rs"]
+mod tests_ceres_solver;

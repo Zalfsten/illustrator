@@ -156,4 +156,5 @@ impl Constraint {
 }
 
 #[cfg(test)]
-mod tests;
+#[path = "tests_constraint.rs"]
+mod tests_constraint;

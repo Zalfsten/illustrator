@@ -223,4 +223,5 @@ fn solve_linear(a_in: &[f64], b_in: &[f64], n: usize) -> Option<Vec<f64>> {
 pub mod ffi;
 
 #[cfg(test)]
-mod tests;
+#[path = "tests_solver.rs"]
+mod tests_solver;

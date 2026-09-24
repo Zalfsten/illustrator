@@ -120,4 +120,5 @@ fn distance_point_to_segment(q: Point2, a: Point2, b: Point2) -> f64 {
 }
 
 #[cfg(test)]
-mod tests;
+#[path = "tests_mesh.rs"]
+mod tests_mesh;

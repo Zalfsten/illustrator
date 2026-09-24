@@ -159,4 +159,5 @@ pub fn is_structurally_satisfied(doc: &Document) -> bool {
 }
 
 #[cfg(test)]
-mod tests;
+#[path = "tests_assemble.rs"]
+mod tests_assemble;

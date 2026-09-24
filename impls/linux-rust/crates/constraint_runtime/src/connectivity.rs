@@ -25,4 +25,5 @@ impl Connectivity {
 }
 
 #[cfg(test)]
-mod tests;
+#[path = "tests_connectivity.rs"]
+mod tests_connectivity;

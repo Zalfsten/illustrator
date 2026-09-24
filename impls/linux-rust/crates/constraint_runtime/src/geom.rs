@@ -444,4 +444,5 @@ impl VecExpr {
 }
 
 #[cfg(test)]
-mod tests;
+#[path = "tests_geom.rs"]
+mod tests_geom;

@@ -44,15 +44,17 @@ context: |
   point; vector + vector → vector; point + point is not meaningful.
 
   Rust module and unit-test layout (impls/linux-rust):
-  Prefer module directories over monolithic foo.rs once a module has unit
-  tests or is likely to grow: src/<module>/mod.rs for production code and
-  src/<module>/tests.rs for that module's unit tests, with
-  `#[cfg(test)] mod tests;` in mod.rs. Nested submodules use the same
-  pattern (e.g. solver/ffi/{mod.rs,tests.rs}). Do not put large unit-test
-  suites inline at the bottom of foo.rs. Integration/acceptance tests that
-  only need the public API stay under crates/<name>/tests/ (e.g.
-  acceptance.rs). Unit tests that need private items belong in the module's
-  tests.rs, not in the crate-level tests/ directory.
+  Prefer sibling files once a module has unit tests: src/<module>.rs for
+  production code and src/tests_<module>.rs for that module's unit tests,
+  declared with `#[cfg(test)] #[path = "tests_<module>.rs"] mod tests_<module>;`
+  in <module>.rs. Do not create a src/<module>/ directory solely to hold
+  tests. A module directory exists only when there are real nested
+  submodules (e.g. solver.rs + solver/ffi.rs + solver/tests_ffi.rs and
+  src/tests_solver.rs). Do not use anonymous mod.rs / tests.rs pairs.
+  Do not put large unit-test suites inline at the bottom of foo.rs.
+  Integration/acceptance tests that only need the public API stay under
+  crates/<name>/tests/ (e.g. acceptance.rs). Unit tests that need private
+  items belong in tests_<module>.rs, not in the crate-level tests/ directory.
 
 # Per-artifact rules
 rules:
@@ -71,14 +73,14 @@ rules:
   tasks:
     - Scope tasks to the implementation(s) named in design.md; do not invent parallel impls unless the change asks for them.
     - Prefer proving the shared runtime contracts with tests before expanding illustration UI features.
-    - For linux-rust: place new unit tests in src/<module>/tests.rs (module directory), not inline at the bottom of a monolithic .rs file.
+    - For linux-rust: place new unit tests in src/tests_<module>.rs (sibling of <module>.rs), not inline at the bottom of a monolithic .rs file; create a module directory only for real nested submodules.
 
 # Per-operation guidance
 operations:
   apply:
     guidance:
       - Implement against the shared specs; keep impl-specific choices aligned with design.md.
-      - For linux-rust Rust code: keep unit tests in module directories (mod.rs + tests.rs); do not reintroduce large inline #[cfg(test)] blocks in foo.rs.
+      - For linux-rust Rust code: keep unit tests as src/<module>.rs + src/tests_<module>.rs (#[path]); module directories only for nested submodules; do not reintroduce large inline #[cfg(test)] blocks or anonymous mod.rs/tests.rs pairs.
   archive:
     guidance:
       - Summarize what became shared capability truth versus what remained impl-specific design.

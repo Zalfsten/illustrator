@@ -262,4 +262,5 @@ impl GeometryStore for Document {
 }
 
 #[cfg(test)]
-mod tests;
+#[path = "tests_document.rs"]
+mod tests_document;

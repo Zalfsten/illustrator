@@ -63,4 +63,5 @@ impl Viewport {
 }
 
 #[cfg(test)]
-mod tests;
+#[path = "tests_viewport.rs"]
+mod tests_viewport;
