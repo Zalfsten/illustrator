@@ -1,28 +1,7 @@
 //! Structural constraints: local residuals and analytical local Jacobians.
 
 use crate::connectivity::Connectivity;
-use crate::geom::{
-    EndpointKind, Geometry, GeometryId, GeometryStore, Point2, PointExpr,
-};
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct EndpointRef {
-    pub geometry: GeometryId,
-    pub end: EndpointKind,
-}
-
-impl EndpointRef {
-    pub fn new(geometry: GeometryId, end: EndpointKind) -> Self {
-        Self { geometry, end }
-    }
-
-    pub fn as_expr(self) -> PointExpr {
-        PointExpr::Endpoint {
-            geometry: self.geometry,
-            end: self.end,
-        }
-    }
-}
+use crate::geom::{Geometry, GeometryId, GeometryStore, Point2, PointExpr};
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Constraint {

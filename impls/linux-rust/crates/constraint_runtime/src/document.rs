@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 
-use crate::constraint::{Constraint, EndpointRef};
+use crate::constraint::Constraint;
 use crate::geom::{
     Geometry, GeometryId, GeometryRole, GeometryStore, Point2, Segment, SEGMENT_STRIDE,
 };
@@ -79,13 +79,6 @@ impl DocumentStructure {
 
     pub fn add_constraint(&mut self, c: Constraint) {
         self.constraints.push(c);
-    }
-
-    pub fn join_endpoints(&mut self, a: EndpointRef, b: EndpointRef) {
-        self.constraints.push(Constraint::Congruence {
-            a: a.as_expr(),
-            b: b.as_expr(),
-        });
     }
 
     /// Register a geometry whose parameters already live in an external State.
@@ -197,10 +190,6 @@ impl Document {
 
     pub fn add_constraint(&mut self, c: Constraint) {
         self.structure.add_constraint(c);
-    }
-
-    pub fn join_endpoints(&mut self, a: EndpointRef, b: EndpointRef) {
-        self.structure.join_endpoints(a, b);
     }
 
     /// Look up a segment by id (UI / tests). Prefer [`GeometryStore::geometry`] in the solver path.

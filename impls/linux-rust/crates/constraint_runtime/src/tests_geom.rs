@@ -79,15 +79,11 @@ fn oncurve_uniform_matches_normalized_on_segment() {
     let store = store_with(seg.clone());
     let p = vec![1.0, 2.0, 5.0, 8.0];
     let u = 0.25;
-    let a = PointExpr::OnCurve {
-        geometry: GeometryId(0),
-        param: CurveParam::Normalized(u),
-    }
+    let a = Segment::on_curve_expr(GeometryId(0), CurveParam::Normalized(u),
+    )
     .evaluate(&store, &p);
-    let b = PointExpr::OnCurve {
-        geometry: GeometryId(0),
-        param: CurveParam::Uniform(u),
-    }
+    let b = Segment::on_curve_expr(GeometryId(0), CurveParam::Uniform(u),
+    )
     .evaluate(&store, &p);
     assert_eq!(a, b);
     assert_eq!(a, seg.position_at(u, &p));
@@ -96,15 +92,11 @@ fn oncurve_uniform_matches_normalized_on_segment() {
     let mut dy_n = [0.0; 4];
     let mut dx_u = [0.0; 4];
     let mut dy_u = [0.0; 4];
-    PointExpr::OnCurve {
-        geometry: GeometryId(0),
-        param: CurveParam::Normalized(u),
-    }
+    Segment::on_curve_expr(GeometryId(0), CurveParam::Normalized(u),
+    )
     .eval_point_jacobian(&store, &p, &mut dx_n, &mut dy_n);
-    PointExpr::OnCurve {
-        geometry: GeometryId(0),
-        param: CurveParam::Uniform(u),
-    }
+    Segment::on_curve_expr(GeometryId(0), CurveParam::Uniform(u),
+    )
     .eval_point_jacobian(&store, &p, &mut dx_u, &mut dy_u);
     assert_eq!(dx_n, dx_u);
     assert_eq!(dy_n, dy_u);

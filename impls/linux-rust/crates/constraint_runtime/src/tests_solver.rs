@@ -1,8 +1,8 @@
 use super::*;
 use crate::assemble::AssembledSystem;
-use crate::constraint::{Constraint, EndpointRef};
+use crate::constraint::Constraint;
 use crate::document::Document;
-use crate::geom::{GeometryId, Point2, PointExpr, EndpointKind};
+use crate::geom::{GeometryId, Point2, Segment};
 
 #[test]
 fn stub_backend_swaps() {
@@ -27,10 +27,7 @@ fn lm_solves_fixpoint_analytically() {
     let mut doc = Document::new();
     let s0 = doc.add_segment(Point2::new(3.0, 4.0), Point2::new(5.0, 6.0));
     doc.add_constraint(Constraint::FixPoint {
-        point: PointExpr::Endpoint {
-            geometry: s0,
-            end: EndpointKind::Start,
-        },
+        point: Segment::start_expr(s0),
         target: Point2::new(0.0, 0.0),
     });
     let soft: [crate::assemble::SoftContribution; 0] = [];
@@ -48,22 +45,16 @@ fn lm_solves_congruence() {
     let mut doc = Document::new();
     let s0 = doc.add_segment(Point2::new(0.0, 0.0), Point2::new(1.0, 0.0));
     let s1 = doc.add_segment(Point2::new(2.0, 1.0), Point2::new(3.0, 1.0));
-    doc.join_endpoints(
-        EndpointRef::new(s0, EndpointKind::End),
-        EndpointRef::new(s1, EndpointKind::Start),
-    );
+    doc.add_constraint(Constraint::Congruence {
+        a: Segment::end_expr(s0),
+        b: Segment::start_expr(s1),
+    });
     doc.add_constraint(Constraint::FixPoint {
-        point: PointExpr::Endpoint {
-            geometry: s0,
-            end: EndpointKind::Start,
-        },
+        point: Segment::start_expr(s0),
         target: Point2::new(0.0, 0.0),
     });
     doc.add_constraint(Constraint::FixPoint {
-        point: PointExpr::Endpoint {
-            geometry: s0,
-            end: EndpointKind::End,
-        },
+        point: Segment::end_expr(s0),
         target: Point2::new(1.0, 0.0),
     });
     let soft: [crate::assemble::SoftContribution; 0] = [];

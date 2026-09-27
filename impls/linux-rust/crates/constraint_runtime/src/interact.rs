@@ -42,20 +42,20 @@ impl Default for SoftTerms {
 fn soft_for_drag(
     doc: &Document,
     prev: &[f64],
-    dragged: PointExpr,
+    dragged: &PointExpr,
     mouse: (f64, f64),
     weights: &SoftTerms,
 ) -> Vec<SoftContribution> {
     // Indices pulled by the mouse must not also get stay-near — otherwise stay
     // fights the pointer and traps the drag in the previous nullspace (e.g. only
     // vertical motion on an axis-aligned right angle).
-    let mut mouse_exprs = vec![dragged];
+    let mut mouse_exprs = vec![dragged.clone()];
     for c in doc.constraints() {
         if let crate::constraint::Constraint::Congruence { a, b } = c {
-            if *a == dragged {
-                mouse_exprs.push(*b);
-            } else if *b == dragged {
-                mouse_exprs.push(*a);
+            if a == dragged {
+                mouse_exprs.push(b.clone());
+            } else if b == dragged {
+                mouse_exprs.push(a.clone());
             }
         }
     }
@@ -205,7 +205,7 @@ impl DragSession {
         doc: &mut Document,
         mouse: (f64, f64),
     ) -> Result<(), SolveError> {
-        let Some(point) = self.active else {
+        let Some(point) = self.active.as_ref() else {
             return Ok(());
         };
         let soft = soft_for_drag(doc, &self.snapshot, point, mouse, &interact.soft_weights);
@@ -219,7 +219,7 @@ impl DragSession {
         doc: &mut Document,
         mouse: (f64, f64),
     ) -> Result<(), SolveError> {
-        let Some(point) = self.active else {
+        let Some(point) = self.active.as_ref() else {
             return Ok(());
         };
         let soft = soft_for_drag(doc, &self.snapshot, point, mouse, &interact.soft_weights);

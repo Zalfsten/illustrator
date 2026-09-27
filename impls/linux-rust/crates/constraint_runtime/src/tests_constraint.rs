@@ -1,6 +1,8 @@
 use super::*;
 use crate::document::DocumentStructure;
-use crate::geom::{Geometry, GeometryId, GeometryRole, Segment, SEGMENT_STRIDE};
+use crate::geom::{
+    Geometry, GeometryId, GeometryRole, Segment, SEGMENT_STRIDE,
+};
 
 fn two_segs() -> (DocumentStructure, Vec<f64>) {
     let mut structure = DocumentStructure::new();
@@ -24,14 +26,8 @@ fn jacobian_matches_fd_for_catalog() {
     let (structure, p) = two_segs();
     let constraints = [
         Constraint::Congruence {
-            a: PointExpr::Endpoint {
-                geometry: GeometryId(0),
-                end: EndpointKind::Start,
-            },
-            b: PointExpr::Endpoint {
-                geometry: GeometryId(1),
-                end: EndpointKind::Start,
-            },
+            a: Segment::start_expr(GeometryId(0)),
+            b: Segment::start_expr(GeometryId(1)),
         },
         Constraint::Parallel {
             a: GeometryId(0),
@@ -42,21 +38,13 @@ fn jacobian_matches_fd_for_catalog() {
             b: GeometryId(1),
         },
         Constraint::FixPoint {
-            point: PointExpr::Endpoint {
-                geometry: GeometryId(0),
-                end: EndpointKind::Start,
-            },
+            point: Segment::start_expr(GeometryId(0)),
             target: Point2::new(0.0, 0.0),
         },
         Constraint::Congruence {
-            a: PointExpr::OnCurve {
-                geometry: GeometryId(0),
-                param: crate::geom::CurveParam::Uniform(0.5),
-            },
-            b: PointExpr::Endpoint {
-                geometry: GeometryId(1),
-                end: EndpointKind::Start,
-            },
+            a: Segment::on_curve_expr(GeometryId(0), crate::geom::CurveParam::Uniform(0.5),
+            ),
+            b: Segment::start_expr(GeometryId(1)),
         },
     ];
 

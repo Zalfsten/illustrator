@@ -1,45 +1,33 @@
 use super::*;
-use crate::geom::{EndpointKind, GeometryRole, PointExpr};
+use crate::geom::{GeometryRole, Segment};
 
 #[test]
 fn two_segment_join_connectivity_indices() {
     let mut doc = Document::new();
     let s0 = doc.add_segment(Point2::new(0.0, 0.0), Point2::new(1.0, 0.0));
     let s1 = doc.add_segment(Point2::new(2.0, 0.0), Point2::new(3.0, 1.0));
-    doc.join_endpoints(
-        EndpointRef::new(s0, EndpointKind::End),
-        EndpointRef::new(s1, EndpointKind::Start),
-    );
+    doc.add_constraint(Constraint::Congruence {
+        a: Segment::end_expr(s0),
+        b: Segment::start_expr(s1),
+    });
     let c = &doc.constraints()[0];
     let conn = c.param_connectivity(&doc.structure);
     assert_eq!(conn.global_indices, vec![2, 3, 4, 5]);
 }
 
 #[test]
-fn join_inserts_congruence_only() {
+fn congruence_between_endpoint_point_exprs() {
     let mut doc = Document::new();
     let s0 = doc.add_segment(Point2::new(0.0, 0.0), Point2::new(1.0, 0.0));
     let s1 = doc.add_segment(Point2::new(2.0, 0.0), Point2::new(3.0, 1.0));
-    doc.join_endpoints(
-        EndpointRef::new(s0, EndpointKind::End),
-        EndpointRef::new(s1, EndpointKind::Start),
-    );
+    doc.add_constraint(Constraint::Congruence {
+        a: Segment::end_expr(s0),
+        b: Segment::start_expr(s1),
+    });
     match &doc.constraints()[0] {
         Constraint::Congruence { a, b } => {
-            assert!(matches!(
-                a,
-                crate::geom::PointExpr::Endpoint {
-                    end: EndpointKind::End,
-                    ..
-                }
-            ));
-            assert!(matches!(
-                b,
-                crate::geom::PointExpr::Endpoint {
-                    end: EndpointKind::Start,
-                    ..
-                }
-            ));
+            assert_eq!(a, &Segment::end_expr(s0));
+            assert_eq!(b, &Segment::start_expr(s1));
         }
         _ => panic!("expected Congruence"),
     }
@@ -84,23 +72,17 @@ fn remove_geometry_compacts_state_and_drops_orphans() {
     let s0 = doc.add_segment(Point2::new(0.0, 0.0), Point2::new(1.0, 0.0));
     let s1 = doc.add_segment(Point2::new(1.0, 0.0), Point2::new(1.0, 1.0));
     let s2 = doc.add_segment(Point2::new(5.0, 5.0), Point2::new(6.0, 5.0));
-    doc.join_endpoints(
-        EndpointRef::new(s0, EndpointKind::End),
-        EndpointRef::new(s1, EndpointKind::Start),
-    );
+    doc.add_constraint(Constraint::Congruence {
+        a: Segment::end_expr(s0),
+        b: Segment::start_expr(s1),
+    });
     doc.add_constraint(Constraint::Orthogonal { a: s0, b: s1 });
     doc.add_constraint(Constraint::FixPoint {
-        point: PointExpr::Endpoint {
-            geometry: s2,
-            end: EndpointKind::Start,
-        },
+        point: Segment::start_expr(s2),
         target: Point2::new(5.0, 5.0),
     });
     doc.add_constraint(Constraint::FixPoint {
-        point: PointExpr::OnCurve {
-            geometry: s1,
-            param: crate::geom::CurveParam::Uniform(0.5),
-        },
+        point: Segment::on_curve_expr(s1, crate::geom::CurveParam::Uniform(0.5)),
         target: Point2::new(1.0, 0.5),
     });
     assert_eq!(doc.constraints().len(), 4);
@@ -116,6 +98,6 @@ fn remove_geometry_compacts_state_and_drops_orphans() {
     assert!(matches!(
         &doc.constraints()[0],
         Constraint::FixPoint { point, .. }
-            if matches!(point, PointExpr::Endpoint { geometry, .. } if *geometry == s2)
+            if point.referenced_geometry() == s2
     ));
 }

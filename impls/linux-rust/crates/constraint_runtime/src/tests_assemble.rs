@@ -1,16 +1,16 @@
 use super::*;
-use crate::constraint::{Constraint, EndpointRef};
-use crate::geom::{EndpointKind, GeometryId, Point2, PointExpr};
+use crate::constraint::Constraint;
+use crate::geom::{GeometryId, Point2, Segment};
 
 #[test]
 fn residual_arity_stacks() {
     let mut doc = Document::new();
     let s0 = doc.add_segment(Point2::new(0.0, 0.0), Point2::new(1.0, 0.0));
     let s1 = doc.add_segment(Point2::new(1.0, 0.0), Point2::new(1.0, 1.0));
-    doc.join_endpoints(
-        EndpointRef::new(s0, EndpointKind::End),
-        EndpointRef::new(s1, EndpointKind::Start),
-    );
+    doc.add_constraint(Constraint::Congruence {
+        a: Segment::end_expr(s0),
+        b: Segment::start_expr(s1),
+    });
     doc.add_constraint(Constraint::Parallel {
         a: GeometryId(0),
         b: GeometryId(1),
@@ -20,10 +20,7 @@ fn residual_arity_stacks() {
         b: GeometryId(1),
     });
     doc.add_constraint(Constraint::FixPoint {
-        point: PointExpr::Endpoint {
-            geometry: s0,
-            end: EndpointKind::Start,
-        },
+        point: Segment::start_expr(s0),
         target: Point2::new(0.0, 0.0),
     });
     let soft: [SoftContribution; 0] = [];
@@ -36,15 +33,12 @@ fn assembled_jacobian_matches_global_fd() {
     let mut doc = Document::new();
     let s0 = doc.add_segment(Point2::new(0.0, 0.0), Point2::new(1.0, 0.0));
     let _s1 = doc.add_segment(Point2::new(1.0, 0.5), Point2::new(2.0, 0.5));
-    doc.join_endpoints(
-        EndpointRef::new(s0, EndpointKind::End),
-        EndpointRef::new(GeometryId(1), EndpointKind::Start),
-    );
+    doc.add_constraint(Constraint::Congruence {
+        a: Segment::end_expr(s0),
+        b: Segment::start_expr(GeometryId(1)),
+    });
     doc.add_constraint(Constraint::FixPoint {
-        point: PointExpr::Endpoint {
-            geometry: s0,
-            end: EndpointKind::Start,
-        },
+        point: Segment::start_expr(s0),
         target: Point2::new(0.0, 0.0),
     });
 

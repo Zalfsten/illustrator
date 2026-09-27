@@ -16,7 +16,8 @@ Behavioral contracts live in OpenSpec capabilities (`geometry-ir`, `state-vector
 | **Point2 / point** | Affine location. May be written as a position vector relative to an origin, but is not a free vector. $P - Q$ is a vector; $P + v$ is a point; $P + Q$ is not meaningful. |
 | **World coordinates** | Durable planar frame for Document State and Mesh edge positions. **y-up** (scientific/mathematical): $+y$ points upward. Not window pixels. |
 | **Viewport** | App/UI session mapping between world and screen coordinates: uniform scale, origin, and y-flip for toolkits with $+y$ downward. Paint uses world→screen; pointer input and pixel pick radii use screen→world (`r_{\mathrm{world}}=r_{\mathrm{px}}/\mathrm{scale}`). |
-| **Point expression** | Map from geometry parameters to a 2D **point** (e.g. a segment endpoint or an on-curve sample). Not a free-standing point entity and not a snapshot detached from parameters. |
+| **Point expression** | Opaque handle to an open **point formula**: a map from geometry State parameters to a 2D **point**. Not a free-standing point entity, not a coordinate snapshot, and not a closed catalog of formula kinds. Geometries construct formulas (e.g. segment start/end / on-curve); constraints and Interact only evaluate them. |
+| **Point formula** | Concrete, geometry-owned implementation of eval / parameter indices / Jacobian for one point expression. New geometry kinds add new formula types without extending a central expression enum. |
 | **Vector expression** | Map from geometry parameters to a free **vector** (e.g. segment direction, curve tangent or normal). |
 | **Normalized curve parameter** | Chart coordinate \(t \in [0,1]\): the curve's native formula domain affinely mapped to the unit interval. Equal \(\Delta t\) need not mean equal arc length. |
 | **Uniform curve parameter** | Arc-length fraction \(u \in [0,1]\): equal \(\Delta u\) means equal arc length along the curve. For a line segment, Normalized and Uniform coincide. |
@@ -32,6 +33,123 @@ Behavioral contracts live in OpenSpec capabilities (`geometry-ir`, `state-vector
 | **Presentation mode** | App/UI session choice: result-only vs include-construction. Selects the MeshFilter for paint, Mesh hits, and logical handles so invisible construction is not pickable. |
 | **Working copy** | Temporary State used during Interact / solve iterations. May differ from the committed State. |
 | **Commit** | Replacing the Document's committed State with a working State after a successful solve (structural residuals within tolerance). |
+
+## Design decision: open point formulas
+
+**Choice:** `PointExpr` is an opaque handle to a `PointFormula` (open set of formula types). There is no central `match` over expression kinds in the constraint/Interact path.
+
+**Why:** A closed formula catalog (`Endpoint | OnCurve | …` on the expression type) does not scale as geometries and point maps grow. Each geometry owns how its point maps are built; constraints only need eval, connectivity, and Jacobians.
+
+**Consequences (linux-rust):** Opaque `PointExpr` over `PointFormula`. Geometries typically build formulas with `PointExpr::from_closures` (eval / indices / Jacobian closures plus an equality key — closures alone are not `PartialEq`). Segment exposes `start_point` / `end_point` / `point_at` and id-based `start_expr` / `end_expr` / `on_curve_expr` as separate factories (no shared `endpoint_expr` that matches on start vs end). No per-formula structs and no central expression-kind `match`. `VecExpr` may follow later; it is still a closed enum today.
+
+### Approaches considered
+
+Conceptually a point expression is always a map \(\mathrm{State}\to\mathrm{Point2}\) (plus connectivity / Jacobian). The approaches differ in **where the formula lives** and **whether the system has a fixed formula catalog**. All of them need a stored carrier that can later `evaluate` / report indices / Jacobians **without** holding a live `&Segment` — constraints outlive the call that created the expression.
+
+#### A. Closed enum on `PointExpr`
+
+```text
+PointExpr = Endpoint { geometry, end } | OnCurve { geometry, param }
+evaluate / jacobian = central match on those constructors
+```
+
+| Pros | Cons |
+|------|------|
+| Simple `PartialEq` / `Debug` / (de)serialize — data only | Every new map kind touches the enum and every central `match` |
+| Easy to read in the IR: you see the formula kind | Suggests a domain taxonomy of “point kinds” even though constraints only need a black box |
+| Cheap sparsity choices per variant (e.g. endpoint uses 2 params, not 4) | Formula knowledge sits in `geom`/`PointExpr`, not with the geometry that owns the chart |
+
+This was the first linux-rust shape. Fine while there are only two constructors; does not scale with more geometries.
+
+#### B. Opaque newtype + private enum
+
+Public API hides variants; only geometry factories construct `PointExpr`. Internally still a closed enum and a private `match`.
+
+| Pros | Cons |
+|------|------|
+| Call sites match the mental model (`seg.end_point()` → `PointExpr`) | Same maintenance cost as A for new formula kinds |
+| Constraints never pattern-match on kinds | Still a global (just private) catalog |
+| Keeps data-driven Eq / Debug / serde | Opacity is API-only; openness is not real |
+
+Sweet spot if the set of maps stays small forever and you only want a cleaner surface.
+
+#### C. Collapse to a single constructor (`OnCurve` only)
+
+Endpoints are \(t=0\) / \(t=1\) (allowed by the curve model). One code path for eval / Jacobian.
+
+| Pros | Cons |
+|------|------|
+| Fewer variants, one analytical path | Connectivity/sparsity may pull all curve params (e.g. 4) even for an endpoint that only needs 2 — unless optimized specially |
+| Aligns with “everything is a chart sample” | Still a closed schema if other non-chart maps appear later (intersections, projections, …) |
+
+Useful simplification *inside* a geometry; not a full answer once maps are not only on-curve samples.
+
+#### D. Open trait + per-formula structs
+
+```text
+trait PointFormula { eval; param_indices; jacobian; eq_formula }
+PointExpr = Arc<dyn PointFormula>
+SegmentEndpointFormula / SegmentOnCurveFormula / …
+```
+
+| Pros | Cons |
+|------|------|
+| New geometry adds a type; no central expression `match` | Extra named types per map (noise if the math already lives on `Segment`) |
+| Constraints see only the trait | `PartialEq` needs `eq_formula` (or similar); serde harder |
+| Clear place for captures (`end`, `param`) | Easy to reinvent a second ontology of formula *names* |
+
+First open-formula implementation after leaving the enum.
+
+#### E. Open trait + closures (current)
+
+```text
+PointExpr::from_closures(geometry, key, eval, indices, jacobian)
+Segment::start_expr / end_expr / on_curve_expr build those closures
+```
+
+| Pros | Cons |
+|------|------|
+| Formula bodies can sit next to `Segment` math; no per-map structs | Closures are not `PartialEq` → need an explicit equality `key` |
+| Same openness as D for constraints | Debug/serde still awkward (key + geometry id, not the code) |
+| Factories on the geometry remain the public constructors | Captures and vtable costs are less obvious than plain data |
+
+Chosen for linux-rust: openness without a zoo of formula structs. The `key` is the data identity of the map (e.g. which end / which \(t\)), not a second catalog on `PointExpr`.
+
+#### F. Function pointers + plain data
+
+A small POD payload plus `fn` pointers (or a table) for eval / indices / Jacobian.
+
+| Pros | Cons |
+|------|------|
+| Eq/Debug over the POD; no fat trait object | Eval functions still need a shared signature and somewhere to live |
+| Open if new rows register without editing `PointExpr` | More ceremony than closures for little gain in this crate |
+| Friendly to FFI-shaped backends | Easy to drift back into a central registry of fns |
+
+#### G. Geometry-local private enum
+
+`PointExpr` stays opaque/open at the system boundary; **Segment** (or each geometry) keeps a *private* tag enum for its own maps and dispatches locally.
+
+| Pros | Cons |
+|------|------|
+| Catalog is local to the geometry that owns the charts | Each geometry invents its own dispatch |
+| No global `PointExpr` variant list | Cross-cutting maps (e.g. intersection of two geometries) do not fit one local enum |
+| Data-driven Eq inside that geometry | Hybrid: open externally, closed per type |
+
+Compatible with D/E as an *internal* detail of one geometry; not a substitute for an open handle at the constraint layer.
+
+### Summary
+
+| Approach | Catalog | Where formula lives | Best when |
+|----------|---------|---------------------|-----------|
+| A Closed `PointExpr` enum | Global, public | Central matches | Tiny fixed set of maps |
+| B Opaque + private enum | Global, hidden | Central matches | Same, cleaner API |
+| C `OnCurve` only | Global, tiny | Central / curve API | All maps are chart samples |
+| D Trait + structs | Open | Per-formula types | Many maps, explicit types OK |
+| **E Trait + closures** | **Open** | **Geometry factories** | **Many maps, math on geometry (chosen)** |
+| F fn + POD | Open/registry | Function table | FFI / POD-heavy hosts |
+| G Local private enum | Per geometry | Geometry dispatch | Internal to one kind |
+
+Shared public API across the open options: geometries construct expressions (`start_point` / `end_point` / `point_at`); constraints and Interact only evaluate opaque `PointExpr`s.
 
 ## Structure versus values
 

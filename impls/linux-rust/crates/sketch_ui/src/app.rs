@@ -1,9 +1,8 @@
 //! Application shell: Document, Interact, tools, and Canvas painting.
 
 use constraint_runtime::{
-    Constraint, Document, DragSession, EndpointKind, EndpointRef, GeometryId, GeometryRole,
-    InteractiveSolve, Mesh, MeshFilter, Point2, PointExpr, SolveError,
-};
+    Constraint, Document, DragSession, EndpointKind, GeometryId, GeometryRole,
+    InteractiveSolve, Mesh, MeshFilter, Point2, PointExpr, SolveError, Segment};
 use eframe::egui::{self, Color32, Pos2, Rect, Sense, Stroke};
 
 use crate::viewport::Viewport;
@@ -64,16 +63,13 @@ impl App {
         // Demo: helper diagonal marked construction (hidden in result-only).
         let helper = doc.add_segment(Point2::new(0.0, 0.0), Point2::new(2.0, 2.0));
         assert!(doc.set_geometry_role(helper, GeometryRole::Construction));
-        doc.join_endpoints(
-            EndpointRef::new(s0, EndpointKind::End),
-            EndpointRef::new(s1, EndpointKind::Start),
-        );
+        doc.add_constraint(Constraint::Congruence {
+            a: Segment::end_expr(s0),
+            b: Segment::start_expr(s1),
+        });
         doc.add_constraint(Constraint::Orthogonal { a: s0, b: s1 });
         doc.add_constraint(Constraint::FixPoint {
-            point: PointExpr::Endpoint {
-                geometry: s0,
-                end: EndpointKind::Start,
-            },
+            point: Segment::start_expr(s0),
             target: Point2::new(0.0, 0.0),
         });
 
@@ -107,7 +103,7 @@ impl App {
         )
     }
 
-    fn eval_point(&self, expr: PointExpr) -> Point2 {
+    fn eval_point(&self, expr: &PointExpr) -> Point2 {
         expr.evaluate(&self.doc.structure, self.doc.state())
     }
 
@@ -140,11 +136,11 @@ impl App {
         let mut best = None;
         let mut best_d = radius;
         for expr in &self.logical_points {
-            let p = self.eval_point(*expr);
+            let p = self.eval_point(expr);
             let d = (p.x - query.x).hypot(p.y - query.y);
             if d < best_d {
                 best_d = d;
-                best = Some(*expr);
+                best = Some(expr.clone());
             }
         }
         best
@@ -187,14 +183,16 @@ impl App {
                     if self.pick_ends.len() >= 2 {
                         let a = self.pick_ends[0];
                         let b = self.pick_ends[1];
-                        self.doc
-                            .join_endpoints(EndpointRef::new(a.0, a.1), EndpointRef::new(b.0, b.1));
+                        self.doc.add_constraint(Constraint::Congruence {
+                            a: point_expr_for_end(a.0, a.1),
+                            b: point_expr_for_end(b.0, b.1),
+                        });
                         self.pick_ends.clear();
                         let r = self.interact.structural_only(&mut self.doc);
                         self.report(r);
-                        self.status = "Joined endpoints (Congruence)".into();
+                        self.status = "Congruence between points".into();
                     } else {
-                        self.status = "Join: pick second endpoint".into();
+                        self.status = "Join: pick second point".into();
                     }
                 }
             }
@@ -220,7 +218,7 @@ impl App {
             }
             Tool::FixPoint => {
                 if let Some(expr) = self.hit_point(screen, 12.0) {
-                    let p = self.eval_point(expr);
+                    let p = self.eval_point(&expr);
                     self.doc.add_constraint(Constraint::FixPoint {
                         point: expr,
                         target: p,
@@ -240,21 +238,15 @@ fn logical_points_for(doc: &Document, filter: MeshFilter) -> Vec<PointExpr> {
     let mesh = Mesh::from_structure(&doc.structure, doc.state(), filter);
     let mut exprs = Vec::new();
     for e in &mesh.edges {
-        exprs.push(PointExpr::Endpoint {
-            geometry: e.geometry,
-            end: EndpointKind::Start,
-        });
-        exprs.push(PointExpr::Endpoint {
-            geometry: e.geometry,
-            end: EndpointKind::End,
-        });
+        exprs.push(Segment::start_expr(e.geometry));
+        exprs.push(Segment::end_expr(e.geometry));
     }
     let mut keep = Vec::new();
     for expr in exprs {
         let p = expr.evaluate(&doc.structure, doc.state());
         let duplicate = keep.iter().any(|k: &PointExpr| {
             let q = k.evaluate(&doc.structure, doc.state());
-            (p.x - q.x).hypot(p.y - q.y) < 1e-3 || congruent(doc, expr, *k)
+            (p.x - q.x).hypot(p.y - q.y) < 1e-3 || congruent(doc, &expr, k)
         });
         if !duplicate {
             keep.push(expr);
@@ -263,7 +255,15 @@ fn logical_points_for(doc: &Document, filter: MeshFilter) -> Vec<PointExpr> {
     keep
 }
 
-fn congruent(doc: &Document, a: PointExpr, b: PointExpr) -> bool {
+/// Mesh hits still tag start/end; map that tag to the matching Segment formula.
+fn point_expr_for_end(id: GeometryId, end: EndpointKind) -> PointExpr {
+    match end {
+        EndpointKind::Start => Segment::start_expr(id),
+        EndpointKind::End => Segment::end_expr(id),
+    }
+}
+
+fn congruent(doc: &Document, a: &PointExpr, b: &PointExpr) -> bool {
     if a == b {
         return true;
     }
@@ -271,7 +271,7 @@ fn congruent(doc: &Document, a: PointExpr, b: PointExpr) -> bool {
         matches!(
             c,
             Constraint::Congruence { a: ca, b: cb }
-                if (*ca == a && *cb == b) || (*ca == b && *cb == a)
+                if (ca == a && cb == b) || (ca == b && cb == a)
         )
     })
 }
