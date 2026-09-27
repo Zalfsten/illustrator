@@ -15,7 +15,7 @@ fn soft_not_persisted_after_drag() {
         target: Point2::new(0.0, 0.0),
     });
     let n = doc.constraints().len();
-    let mut interact = InteractiveSolve::default();
+    let mut interact = InteractiveSolve::new();
     let mut drag = DragSession::new();
     let expr = PointExpr::Endpoint {
         geometry: s0,
@@ -83,7 +83,7 @@ fn atomic_drag_undo() {
         },
         target: Point2::new(0.0, 0.0),
     });
-    let mut interact = InteractiveSolve::default();
+    let mut interact = InteractiveSolve::new();
     interact.structural_only(&mut doc).unwrap();
     let before = doc.clone_state();
     let mut drag = DragSession::new();

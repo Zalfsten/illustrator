@@ -34,7 +34,7 @@ fn right_angle_soft_drag_keeps_orthogonal_and_congruence() {
         target: Point2::new(0.0, 0.0),
     });
 
-    let mut interact = InteractiveSolve::default();
+    let mut interact = InteractiveSolve::new();
     interact.structural_only(&mut doc).expect("initial solve");
     assert!(residual_ok(&doc));
 
@@ -91,7 +91,7 @@ fn rectangle_drag_keeps_structure_and_stays_near() {
         target: Point2::new(0.0, 1.0),
     });
 
-    let mut interact = InteractiveSolve::default();
+    let mut interact = InteractiveSolve::new();
     interact.structural_only(&mut doc).expect("initial rectangle");
     let prev = doc.clone_state();
     assert!(residual_ok(&doc));
@@ -144,7 +144,7 @@ fn right_angle_horizontal_drag_moves_x() {
         target: Point2::new(120.0, 320.0),
     });
 
-    let mut interact = InteractiveSolve::default();
+    let mut interact = InteractiveSolve::new();
     interact.structural_only(&mut doc).expect("initial");
     let free = PointExpr::Endpoint {
         geometry: s1,
@@ -206,7 +206,7 @@ fn congruence_to_uniform_midpoint_pins_segment() {
         },
     });
 
-    let mut interact = InteractiveSolve::default();
+    let mut interact = InteractiveSolve::new();
     interact.structural_only(&mut doc).expect("midpoint congruence");
     assert!(residual_ok(&doc));
     let mid_pt = PointExpr::OnCurve {

@@ -59,7 +59,7 @@ impl App {
     pub fn with_sample() -> Self {
         let mut app = Self {
             doc: Document::new(),
-            interact: InteractiveSolve::default(),
+            interact: InteractiveSolve::new(),
             drag: DragSession::new(),
             tool: Tool::Select,
             presentation: PresentationMode::ResultOnly,

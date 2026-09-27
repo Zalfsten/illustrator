@@ -103,6 +103,12 @@ pub struct InteractiveSolve<S: SolverPort = CeresSolver> {
     pub opts: SolverOptions,
 }
 
+impl InteractiveSolve<CeresSolver> {
+    pub fn new() -> Self {
+        Self::default()
+    }
+}
+
 impl Default for InteractiveSolve<CeresSolver> {
     fn default() -> Self {
         Self {
