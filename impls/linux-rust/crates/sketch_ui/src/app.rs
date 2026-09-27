@@ -57,49 +57,46 @@ pub struct App {
 
 impl App {
     pub fn with_sample() -> Self {
-        let mut app = Self {
-            doc: Document::new(),
-            interact: InteractiveSolve::new(),
-            drag: DragSession::new(),
-            tool: Tool::Select,
-            presentation: PresentationMode::ResultOnly,
-            pick_ends: Vec::new(),
-            segment_clicks: Vec::new(),
-            status: "Sample right angle (world y-up) — drag the free end. Toggle construction to see helper."
-                .into(),
-            last_error: None,
-            logical_points: Vec::new(),
-            viewport: Viewport::new(1.0, Pos2::ZERO),
-        };
+        let mut doc = Document::new();
         // World units, y-up: horizontal then vertical leg of a right angle.
-        let s0 = app
-            .doc
-            .add_segment(Point2::new(0.0, 0.0), Point2::new(2.0, 0.0));
-        let s1 = app
-            .doc
-            .add_segment(Point2::new(2.0, 0.0), Point2::new(2.0, 2.0));
+        let s0 = doc.add_segment(Point2::new(0.0, 0.0), Point2::new(2.0, 0.0));
+        let s1 = doc.add_segment(Point2::new(2.0, 0.0), Point2::new(2.0, 2.0));
         // Demo: helper diagonal marked construction (hidden in result-only).
-        let helper = app
-            .doc
-            .add_segment(Point2::new(0.0, 0.0), Point2::new(2.0, 2.0));
-        assert!(app
-            .doc
-            .set_geometry_role(helper, GeometryRole::Construction));
-        app.doc.join_endpoints(
+        let helper = doc.add_segment(Point2::new(0.0, 0.0), Point2::new(2.0, 2.0));
+        assert!(doc.set_geometry_role(helper, GeometryRole::Construction));
+        doc.join_endpoints(
             EndpointRef::new(s0, EndpointKind::End),
             EndpointRef::new(s1, EndpointKind::Start),
         );
-        app.doc.add_constraint(Constraint::Orthogonal { a: s0, b: s1 });
-        app.doc.add_constraint(Constraint::FixPoint {
+        doc.add_constraint(Constraint::Orthogonal { a: s0, b: s1 });
+        doc.add_constraint(Constraint::FixPoint {
             point: PointExpr::Endpoint {
                 geometry: s0,
                 end: EndpointKind::Start,
             },
             target: Point2::new(0.0, 0.0),
         });
-        let _ = app.interact.structural_only(&mut app.doc);
-        app.rebuild_logical_points();
-        app
+
+        let mut interact = InteractiveSolve::new();
+        let _ = interact.structural_only(&mut doc);
+
+        let presentation = PresentationMode::ResultOnly;
+        let logical_points = logical_points_for(&doc, presentation.mesh_filter());
+
+        Self {
+            doc,
+            interact,
+            drag: DragSession::new(),
+            tool: Tool::Select,
+            presentation,
+            pick_ends: Vec::new(),
+            segment_clicks: Vec::new(),
+            status: "Sample right angle (world y-up) — drag the free end. Toggle construction to see helper."
+                .into(),
+            last_error: None,
+            logical_points,
+            viewport: Viewport::new(1.0, Pos2::ZERO),
+        }
     }
 
     fn mesh(&self) -> Mesh {
@@ -115,30 +112,8 @@ impl App {
     }
 
     fn rebuild_logical_points(&mut self) {
-        // Handles from Mesh endpoints (congruence-collapsed); not Mesh hit for drag.
-        let mut exprs = Vec::new();
-        for e in &self.mesh().edges {
-            exprs.push(PointExpr::Endpoint {
-                geometry: e.geometry,
-                end: EndpointKind::Start,
-            });
-            exprs.push(PointExpr::Endpoint {
-                geometry: e.geometry,
-                end: EndpointKind::End,
-            });
-        }
-        let mut keep = Vec::new();
-        for expr in exprs {
-            let p = expr.evaluate(&self.doc.structure, self.doc.state());
-            let duplicate = keep.iter().any(|k: &PointExpr| {
-                let q = k.evaluate(&self.doc.structure, self.doc.state());
-                (p.x - q.x).hypot(p.y - q.y) < 1e-3 || congruent(&self.doc, expr, *k)
-            });
-            if !duplicate {
-                keep.push(expr);
-            }
-        }
-        self.logical_points = keep;
+        self.logical_points =
+            logical_points_for(&self.doc, self.presentation.mesh_filter());
     }
 
     fn report(&mut self, result: Result<(), SolveError>) {
@@ -258,6 +233,34 @@ impl App {
             Tool::Select => {}
         }
     }
+}
+
+fn logical_points_for(doc: &Document, filter: MeshFilter) -> Vec<PointExpr> {
+    // Handles from Mesh endpoints (congruence-collapsed); not Mesh hit for drag.
+    let mesh = Mesh::from_structure(&doc.structure, doc.state(), filter);
+    let mut exprs = Vec::new();
+    for e in &mesh.edges {
+        exprs.push(PointExpr::Endpoint {
+            geometry: e.geometry,
+            end: EndpointKind::Start,
+        });
+        exprs.push(PointExpr::Endpoint {
+            geometry: e.geometry,
+            end: EndpointKind::End,
+        });
+    }
+    let mut keep = Vec::new();
+    for expr in exprs {
+        let p = expr.evaluate(&doc.structure, doc.state());
+        let duplicate = keep.iter().any(|k: &PointExpr| {
+            let q = k.evaluate(&doc.structure, doc.state());
+            (p.x - q.x).hypot(p.y - q.y) < 1e-3 || congruent(doc, expr, *k)
+        });
+        if !duplicate {
+            keep.push(expr);
+        }
+    }
+    keep
 }
 
 fn congruent(doc: &Document, a: PointExpr, b: PointExpr) -> bool {
