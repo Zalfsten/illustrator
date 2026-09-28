@@ -1,8 +1,9 @@
 //! Headless acceptance scenarios.
 
 use constraint_runtime::{
-    AssembledSystem, Constraint, Document, DragSession, InteractiveSolve, Point2,
-    GeometryId, SoftContribution, SystemEval, SOLVE_TOL, Segment};
+    AssembledSystem, Constraint, Document, DragSession, GeometryBody, GeometryId, GeometryRole,
+    InteractiveSolve, Point2, SoftContribution, SystemEval, SOLVE_TOL, Segment,
+};
 
 fn residual_ok(doc: &Document) -> bool {
     let soft: [SoftContribution; 0] = [];
@@ -15,8 +16,8 @@ fn residual_ok(doc: &Document) -> bool {
 #[test]
 fn right_angle_soft_drag_keeps_orthogonal_and_congruence() {
     let mut doc = Document::new();
-    let s0 = doc.add_segment(Point2::new(0.0, 0.0), Point2::new(1.0, 0.0));
-    let s1 = doc.add_segment(Point2::new(1.0, 0.0), Point2::new(1.0, 1.0));
+    let s0 = doc.add_geometry(GeometryRole::Result, GeometryBody::Segment, &Segment::params(Point2::new(0.0, 0.0), Point2::new(1.0, 0.0)));
+    let s1 = doc.add_geometry(GeometryRole::Result, GeometryBody::Segment, &Segment::params(Point2::new(1.0, 0.0), Point2::new(1.0, 1.0)));
     doc.add_constraint(Constraint::Congruence {
         a: Segment::end_expr(s0),
         b: Segment::start_expr(s1),
@@ -43,18 +44,18 @@ fn right_angle_soft_drag_keeps_orthogonal_and_congruence() {
         .expect("up");
 
     assert!(residual_ok(&doc));
-    let a = doc.segment(s0).unwrap().end(doc.state());
-    let b = doc.segment(s1).unwrap().start(doc.state());
+    let a = Segment::end(doc.geometry(s0).unwrap().param_offset, doc.state());
+    let b = Segment::start(doc.geometry(s1).unwrap().param_offset, doc.state());
     assert!((a.x - b.x).abs() < 1e-4 && (a.y - b.y).abs() < 1e-4);
 }
 
 #[test]
 fn rectangle_drag_keeps_structure_and_stays_near() {
     let mut doc = Document::new();
-    let ab = doc.add_segment(Point2::new(0.0, 1.0), Point2::new(2.0, 1.0));
-    let bc = doc.add_segment(Point2::new(2.0, 1.0), Point2::new(2.0, 0.0));
-    let cd = doc.add_segment(Point2::new(2.0, 0.0), Point2::new(0.0, 0.0));
-    let da = doc.add_segment(Point2::new(0.0, 0.0), Point2::new(0.0, 1.0));
+    let ab = doc.add_geometry(GeometryRole::Result, GeometryBody::Segment, &Segment::params(Point2::new(0.0, 1.0), Point2::new(2.0, 1.0)));
+    let bc = doc.add_geometry(GeometryRole::Result, GeometryBody::Segment, &Segment::params(Point2::new(2.0, 1.0), Point2::new(2.0, 0.0)));
+    let cd = doc.add_geometry(GeometryRole::Result, GeometryBody::Segment, &Segment::params(Point2::new(2.0, 0.0), Point2::new(0.0, 0.0)));
+    let da = doc.add_geometry(GeometryRole::Result, GeometryBody::Segment, &Segment::params(Point2::new(0.0, 0.0), Point2::new(0.0, 1.0)));
 
     doc.add_constraint(Constraint::Congruence {
         a: Segment::end_expr(ab),
@@ -113,8 +114,8 @@ fn right_angle_horizontal_drag_moves_x() {
     // end on a vertical line (axis-aligned right angle). Stay must skip mouse
     // indices so the joint can rotate under the hard constraint.
     let mut doc = Document::new();
-    let s0 = doc.add_segment(Point2::new(120.0, 320.0), Point2::new(320.0, 320.0));
-    let s1 = doc.add_segment(Point2::new(320.0, 320.0), Point2::new(320.0, 140.0));
+    let s0 = doc.add_geometry(GeometryRole::Result, GeometryBody::Segment, &Segment::params(Point2::new(120.0, 320.0), Point2::new(320.0, 320.0)));
+    let s1 = doc.add_geometry(GeometryRole::Result, GeometryBody::Segment, &Segment::params(Point2::new(320.0, 320.0), Point2::new(320.0, 140.0)));
     doc.add_constraint(Constraint::Congruence {
         a: Segment::end_expr(s0),
         b: Segment::start_expr(s1),
@@ -160,8 +161,8 @@ fn congruence_to_uniform_midpoint_pins_segment() {
     use constraint_runtime::CurveParam;
 
     let mut doc = Document::new();
-    let s0 = doc.add_segment(Point2::new(0.0, 0.0), Point2::new(4.0, 0.0));
-    let s1 = doc.add_segment(Point2::new(1.0, 2.0), Point2::new(5.0, 2.0));
+    let s0 = doc.add_geometry(GeometryRole::Result, GeometryBody::Segment, &Segment::params(Point2::new(0.0, 0.0), Point2::new(4.0, 0.0)));
+    let s1 = doc.add_geometry(GeometryRole::Result, GeometryBody::Segment, &Segment::params(Point2::new(1.0, 2.0), Point2::new(5.0, 2.0)));
     doc.add_constraint(Constraint::FixPoint {
         point: Segment::start_expr(s0),
         target: Point2::new(0.0, 0.0),

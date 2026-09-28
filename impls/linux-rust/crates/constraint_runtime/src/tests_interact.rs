@@ -1,12 +1,12 @@
 use super::*;
 use crate::constraint::Constraint;
-use crate::geom::{GeometryId, Point2, Segment};
+use crate::geom::{GeometryBody, GeometryId, GeometryRole, Point2, Segment};
 use crate::solver::StubSolver;
 
 #[test]
 fn soft_not_persisted_after_drag() {
     let mut doc = Document::new();
-    let s0 = doc.add_segment(Point2::new(0.0, 0.0), Point2::new(1.0, 0.0));
+    let s0 = doc.add_geometry(GeometryRole::Result, GeometryBody::Segment, &Segment::params(Point2::new(0.0, 0.0), Point2::new(1.0, 0.0)));
     doc.add_constraint(Constraint::FixPoint {
         point: Segment::start_expr(s0),
         target: Point2::new(0.0, 0.0),
@@ -24,7 +24,7 @@ fn soft_not_persisted_after_drag() {
 #[test]
 fn failed_solve_keeps_state() {
     let mut doc = Document::new();
-    let s0 = doc.add_segment(Point2::new(0.0, 0.0), Point2::new(1.0, 0.0));
+    let s0 = doc.add_geometry(GeometryRole::Result, GeometryBody::Segment, &Segment::params(Point2::new(0.0, 0.0), Point2::new(1.0, 0.0)));
     doc.add_constraint(Constraint::FixPoint {
         point: Segment::start_expr(s0),
         target: Point2::new(0.0, 0.0),
@@ -54,8 +54,8 @@ fn failed_solve_keeps_state() {
 #[test]
 fn atomic_drag_undo() {
     let mut doc = Document::new();
-    let s0 = doc.add_segment(Point2::new(0.0, 0.0), Point2::new(1.0, 0.0));
-    let s1 = doc.add_segment(Point2::new(1.0, 0.0), Point2::new(1.0, 1.0));
+    let s0 = doc.add_geometry(GeometryRole::Result, GeometryBody::Segment, &Segment::params(Point2::new(0.0, 0.0), Point2::new(1.0, 0.0)));
+    let s1 = doc.add_geometry(GeometryRole::Result, GeometryBody::Segment, &Segment::params(Point2::new(1.0, 0.0), Point2::new(1.0, 1.0)));
     doc.add_constraint(Constraint::Congruence {
         a: Segment::end_expr(s0),
         b: Segment::start_expr(s1),

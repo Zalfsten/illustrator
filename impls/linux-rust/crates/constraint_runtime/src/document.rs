@@ -4,7 +4,7 @@ use std::collections::HashMap;
 
 use crate::constraint::Constraint;
 use crate::geom::{
-    Geometry, GeometryId, GeometryRole, GeometryStore, Point2, Segment, SEGMENT_STRIDE,
+    Geometry, GeometryBody, GeometryId, GeometryRole, GeometryStore,
 };
 
 /// Contiguous continuous parameters for a sketch.
@@ -149,29 +149,38 @@ impl Document {
         self.structure.geometries()
     }
 
-    /// Segment geometries in document order (UI paint / pick).
-    pub fn segments(&self) -> impl Iterator<Item = &Segment> {
-        self.structure.geometries.iter().filter_map(|g| match g {
-            Geometry::Segment(s) => Some(s),
-        })
+    pub fn geometry(&self, id: GeometryId) -> Option<&Geometry> {
+        self.structure.geometry(id)
     }
 
     pub fn constraints(&self) -> &[Constraint] {
         self.structure.constraints()
     }
 
-    pub fn add_segment(&mut self, a: Point2, b: Point2) -> GeometryId {
+    /// Append a geometry: extends State by `params` and registers structure.
+    ///
+    /// `params.len()` MUST equal `body.parameter_count()`.
+    pub fn add_geometry(
+        &mut self,
+        role: GeometryRole,
+        body: GeometryBody,
+        params: &[f64],
+    ) -> GeometryId {
+        assert_eq!(
+            params.len(),
+            body.parameter_count(),
+            "params length must match geometry parameter count"
+        );
         let id = GeometryId(self.structure.next_id);
         self.structure.next_id += 1;
         let param_offset = self.state.len();
-        self.state.0.extend_from_slice(&[a.x, a.y, b.x, b.y]);
-        debug_assert_eq!(self.state.len() - param_offset, SEGMENT_STRIDE);
-        self.structure
-            .push_geometry(Geometry::Segment(Segment {
-                id,
-                param_offset,
-                role: GeometryRole::Result,
-            }));
+        self.state.0.extend_from_slice(params);
+        self.structure.push_geometry(Geometry {
+            id,
+            role,
+            param_offset,
+            body,
+        });
         id
     }
 
@@ -180,23 +189,12 @@ impl Document {
         let Some(&slot) = self.structure.geometry_index.get(&id) else {
             return false;
         };
-        match &mut self.structure.geometries[slot] {
-            Geometry::Segment(s) => {
-                s.role = role;
-                true
-            }
-        }
+        self.structure.geometries[slot].set_role(role);
+        true
     }
 
     pub fn add_constraint(&mut self, c: Constraint) {
         self.structure.add_constraint(c);
-    }
-
-    /// Look up a segment by id (UI / tests). Prefer [`GeometryStore::geometry`] in the solver path.
-    pub fn segment(&self, id: GeometryId) -> Option<&Segment> {
-        match self.structure.geometry(id)? {
-            Geometry::Segment(s) => Some(s),
-        }
     }
 
     /// Remove a geometry: compact State, remap offsets, drop orphan constraints.
@@ -211,9 +209,7 @@ impl Document {
             }
         }
 
-        let (start, removed_len) = match &removed {
-            Geometry::Segment(s) => (s.param_offset, SEGMENT_STRIDE),
-        };
+        let (start, removed_len) = (removed.param_offset, removed.body.parameter_count());
         let end = start + removed_len;
         assert!(end <= self.state.len());
         self.state.0.drain(start..end);

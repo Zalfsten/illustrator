@@ -17,8 +17,8 @@ pub use connectivity::Connectivity;
 pub use constraint::Constraint;
 pub use document::{Document, DocumentStructure, State};
 pub use geom::{
-    Curve, CurveParam, EndpointKind, Geometry, GeometryId, GeometryRole, GeometryStore, Point2,
-    PointExpr, Segment, SegmentId, Vec2, VecExpr, SEGMENT_STRIDE,
+    Curve, CurveParam, Geometry, GeometryBody, GeometryId, GeometryRole, GeometryStore, Point2,
+    PointExpr, Segment, SegmentId, Vec2, VecExpr,
 };
 pub use interact::{DragSession, InteractiveSolve, SoftTerms, SolveError};
 pub use mesh::{Mesh, MeshEdge, MeshFilter};

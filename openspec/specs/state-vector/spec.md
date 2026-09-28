@@ -62,9 +62,27 @@ Each geometry in DocumentStructure SHALL associate its local parameters with ent
 - **THEN** those parameters are obtained from the corresponding entries of \(p\) identified by the geometry's connectivity
 - **AND** changing those entries of \(p\) changes the evaluated quantity accordingly
 
+### Requirement: Contiguous parameter block per geometry
+
+Under the current Model E layout, each geometry SHALL own a **contiguous** block of scalar slots in State \(p\): there exists an offset \(o\) and a count \(n_G\) (the geometry's parameter count) such that local index \(i \in \{0,\ldots,n_G-1\}\) maps to global index \(o+i\). Connectivity for that geometry SHALL be exactly those \(n_G\) consecutive indices (or an equivalent derivation from \(o\) and \(n_G\)). Distinct geometries SHALL NOT share State indices; geometric coincidence and other relationships SHALL be expressed as constraints (residuals) over point/vector expressions, not by aliasing the same entries of \(p\) across geometries.
+
+This contiguous-block assumption MAY later be relaxed to an arbitrary per-geometry index list still owned by the geometry record in DocumentStructure; until such a change is specified, implementations SHALL use contiguous blocks.
+
+#### Scenario: Segment parameters form one block
+
+- **WHEN** a line segment with four endpoint parameters is added
+- **THEN** those four scalars occupy four consecutive indices in \(p\)
+- **AND** the segment's connectivity is those four indices in local order
+
+#### Scenario: Joining endpoints does not merge parameter slots
+
+- **WHEN** two segment endpoints are made coincident via Congruence
+- **THEN** each endpoint retains its own entries in \(p\)
+- **AND** coincidence is enforced by the Congruence residual, not by a shared global index
+
 ### Requirement: Connectivity is explicit for assembly
 
-The local→global index mapping for each geometry (and for each constraint contribution that introduces residuals) SHALL be part of DocumentStructure (or derived solely from it) and available as explicit connectivity for residual and Jacobian assembly. Implicit convenience views MAY exist for reading \(p\), but SHALL NOT replace connectivity as the rule for placing derivative contributions into the global Jacobian.
+The local→global index mapping for each geometry (and for each constraint contribution that introduces residuals) SHALL be part of DocumentStructure (or derived solely from it) and available as explicit connectivity for residual and Jacobian assembly. Implicit convenience views MAY exist for reading \(p\), but SHALL NOT replace connectivity as the rule for placing derivative contributions into the global Jacobian. Under the contiguous-block requirement, that mapping MAY be stored as a block offset plus parameter count on the geometry; the assembly-visible connectivity SHALL still enumerate the global indices.
 
 #### Scenario: Mapping answers where local DOFs land globally
 

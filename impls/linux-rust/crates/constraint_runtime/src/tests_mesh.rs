@@ -1,11 +1,11 @@
 use super::*;
 use crate::document::Document;
-use crate::geom::{GeometryRole, Point2};
+use crate::geom::{GeometryBody, GeometryRole, Point2, Segment};
 
 #[test]
 fn one_segment_becomes_one_edge() {
     let mut doc = Document::new();
-    let id = doc.add_segment(Point2::new(0.0, 0.0), Point2::new(3.0, 4.0));
+    let id = doc.add_geometry(GeometryRole::Result, GeometryBody::Segment, &Segment::params(Point2::new(0.0, 0.0), Point2::new(3.0, 4.0)));
     let mesh = Mesh::from_structure(&doc.structure, doc.state(), MeshFilter::RESULT_ONLY);
     assert_eq!(mesh.edges.len(), 1);
     let e = &mesh.edges[0];
@@ -18,14 +18,14 @@ fn one_segment_becomes_one_edge() {
 #[test]
 fn hit_endpoint_near_start_end_and_miss() {
     let mut doc = Document::new();
-    let id = doc.add_segment(Point2::new(0.0, 0.0), Point2::new(10.0, 0.0));
+    let id = doc.add_geometry(GeometryRole::Result, GeometryBody::Segment, &Segment::params(Point2::new(0.0, 0.0), Point2::new(10.0, 0.0)));
     let mesh = Mesh::from_structure(&doc.structure, doc.state(), MeshFilter::RESULT_ONLY);
 
     let hit_s = mesh.hit_endpoint(Point2::new(0.1, 0.0), 1.0);
-    assert_eq!(hit_s, Some((id, EndpointKind::Start)));
+    assert_eq!(hit_s, Some(Segment::start_expr(id)));
 
     let hit_e = mesh.hit_endpoint(Point2::new(9.9, 0.0), 1.0);
-    assert_eq!(hit_e, Some((id, EndpointKind::End)));
+    assert_eq!(hit_e, Some(Segment::end_expr(id)));
 
     assert_eq!(mesh.hit_endpoint(Point2::new(5.0, 5.0), 1.0), None);
 }
@@ -33,7 +33,7 @@ fn hit_endpoint_near_start_end_and_miss() {
 #[test]
 fn hit_geometry_near_midpoint_and_miss() {
     let mut doc = Document::new();
-    let id = doc.add_segment(Point2::new(0.0, 0.0), Point2::new(10.0, 0.0));
+    let id = doc.add_geometry(GeometryRole::Result, GeometryBody::Segment, &Segment::params(Point2::new(0.0, 0.0), Point2::new(10.0, 0.0)));
     let mesh = Mesh::from_structure(&doc.structure, doc.state(), MeshFilter::RESULT_ONLY);
 
     assert_eq!(
@@ -46,7 +46,7 @@ fn hit_geometry_near_midpoint_and_miss() {
 #[test]
 fn mesh_tracks_state_change() {
     let mut doc = Document::new();
-    let id = doc.add_segment(Point2::new(0.0, 0.0), Point2::new(1.0, 0.0));
+    let id = doc.add_geometry(GeometryRole::Result, GeometryBody::Segment, &Segment::params(Point2::new(0.0, 0.0), Point2::new(1.0, 0.0)));
     doc.state_mut()[2] = 5.0;
     doc.state_mut()[3] = 0.0;
     let mesh = Mesh::from_structure(&doc.structure, doc.state(), MeshFilter::RESULT_ONLY);
@@ -57,8 +57,8 @@ fn mesh_tracks_state_change() {
 #[test]
 fn construction_omitted_from_result_only_mesh() {
     let mut doc = Document::new();
-    let result = doc.add_segment(Point2::new(0.0, 0.0), Point2::new(1.0, 0.0));
-    let construction = doc.add_segment(Point2::new(0.0, 1.0), Point2::new(1.0, 1.0));
+    let result = doc.add_geometry(GeometryRole::Result, GeometryBody::Segment, &Segment::params(Point2::new(0.0, 0.0), Point2::new(1.0, 0.0)));
+    let construction = doc.add_geometry(GeometryRole::Result, GeometryBody::Segment, &Segment::params(Point2::new(0.0, 1.0), Point2::new(1.0, 1.0)));
     assert!(doc.set_geometry_role(construction, GeometryRole::Construction));
 
     let result_only =
@@ -83,25 +83,19 @@ fn construction_omitted_from_result_only_mesh() {
 #[test]
 fn result_only_hits_ignore_construction() {
     let mut doc = Document::new();
-    let _result = doc.add_segment(Point2::new(0.0, 0.0), Point2::new(10.0, 0.0));
-    let construction = doc.add_segment(Point2::new(0.0, 5.0), Point2::new(10.0, 5.0));
+    let _result = doc.add_geometry(GeometryRole::Result, GeometryBody::Segment, &Segment::params(Point2::new(0.0, 0.0), Point2::new(10.0, 0.0)));
+    let construction = doc.add_geometry(GeometryRole::Result, GeometryBody::Segment, &Segment::params(Point2::new(0.0, 5.0), Point2::new(10.0, 5.0)));
     assert!(doc.set_geometry_role(construction, GeometryRole::Construction));
 
     let mesh = Mesh::from_structure(&doc.structure, doc.state(), MeshFilter::RESULT_ONLY);
-    assert_eq!(
-        mesh.hit_endpoint(Point2::new(0.0, 5.0), 1.0),
-        None
-    );
-    assert_eq!(
-        mesh.hit_geometry(Point2::new(5.0, 5.0), 1.0),
-        None
-    );
+    assert_eq!(mesh.hit_endpoint(Point2::new(0.0, 5.0), 1.0), None);
+    assert_eq!(mesh.hit_geometry(Point2::new(5.0, 5.0), 1.0), None);
 
     let full =
         Mesh::from_structure(&doc.structure, doc.state(), MeshFilter::INCLUDE_CONSTRUCTION);
     assert_eq!(
         full.hit_endpoint(Point2::new(0.0, 5.0), 1.0),
-        Some((construction, EndpointKind::Start))
+        Some(Segment::start_expr(construction))
     );
     assert_eq!(
         full.hit_geometry(Point2::new(5.0, 5.0), 1.0),

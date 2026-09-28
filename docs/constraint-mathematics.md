@@ -49,7 +49,7 @@ Conceptually a point expression is always a map \(\mathrm{State}\to\mathrm{Point
 #### A. Closed enum on `PointExpr`
 
 ```text
-PointExpr = Endpoint { geometry, end } | OnCurve { geometry, param }
+PointExpr = StartPoint { geometry } | EndPoint { geometry } | OnCurve { geometry, param }
 evaluate / jacobian = central match on those constructors
 ```
 
@@ -166,7 +166,12 @@ Evaluation of geometry and constraints always takes an explicit State $p$
 ## Local geometry maps
 
 A geometry $G$ has local parameters $p_{\mathrm{loc}} \in \mathbb{R}^{n_G}$
-identified with a block of the global State via connectivity.
+identified with a **contiguous block** of the global State via connectivity:
+indices \(o, o+1, \ldots, o+n_G-1\) for a block offset \(o\) owned by the
+geometry record in DocumentStructure. Distinct geometries do not share
+entries of \(p\); coincidence is a constraint residual, not index aliasing.
+(If a future layout needs non-contiguous maps, the index list still belongs
+on the geometry record — see OpenSpec `state-vector`.)
 
 Example (line segment): local parameters
 $(x_a,y_a,x_b,y_b)$. Endpoint expressions:
@@ -248,10 +253,11 @@ On failure, the committed State is left unchanged.
 
 ## Structural edits and $p$
 
-Adding a geometry appends its parameter block to State and records connectivity.
-Removing a geometry rebuilds/compacts State, remaps remaining connectivities, and
-drops constraints that referenced the removed geometry id. Constraints store
-stable geometry identities; raw indices in $p$ are always derived via connectivity.
+Adding a geometry appends its contiguous parameter block to State and records
+connectivity (block offset + parameter count). Removing a geometry
+rebuilds/compacts State, remaps remaining block offsets, and drops constraints
+that referenced the removed geometry id. Constraints store stable geometry
+identities; raw indices in $p$ are always derived via connectivity.
 
 ## See also
 

@@ -52,6 +52,13 @@ context: |
   Interact only evaluate them. See docs/constraint-mathematics.md
   (Design decision: opaque expressions).
 
+  State layout (contiguous blocks):
+  Each geometry owns a contiguous parameter block in the global State vector
+  (offset + parameter count). Geometries do not share State indices; joins are
+  constraints (e.g. Congruence), not aliased DOFs. Connectivity for assembly is
+  derived from that block. See openspec/specs/state-vector/spec.md
+  (Contiguous parameter block per geometry).
+
   Rust module and unit-test layout (impls/linux-rust):
   Prefer sibling files once a module has unit tests: src/<module>.rs for
   production code and src/tests_<module>.rs for that module's unit tests,

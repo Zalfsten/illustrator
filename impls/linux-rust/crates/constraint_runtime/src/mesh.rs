@@ -3,7 +3,7 @@
 //! Derived view only — not authoritative for parameters or constraints.
 
 use crate::document::DocumentStructure;
-use crate::geom::{EndpointKind, Geometry, GeometryId, GeometryRole, Point2};
+use crate::geom::{GeometryBody, GeometryId, GeometryRole, Point2, PointExpr, Segment};
 
 /// Which geometries contribute edges to a Mesh.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -32,9 +32,9 @@ impl Default for MeshFilter {
 pub struct MeshEdge {
     pub geometry: GeometryId,
     pub role: GeometryRole,
-    /// Start endpoint for segment edges (`EndpointKind::Start`).
+    /// Start endpoint for segment edges.
     pub a: Point2,
-    /// End endpoint for segment edges (`EndpointKind::End`).
+    /// End endpoint for segment edges.
     pub b: Point2,
 }
 
@@ -55,13 +55,13 @@ impl Mesh {
             if !filter.include_construction && g.role() == GeometryRole::Construction {
                 continue;
             }
-            match g {
-                Geometry::Segment(s) => {
+            match g.body {
+                GeometryBody::Segment => {
                     edges.push(MeshEdge {
-                        geometry: s.id,
-                        role: s.role,
-                        a: s.start(p),
-                        b: s.end(p),
+                        geometry: g.id(),
+                        role: g.role(),
+                        a: Segment::start(g.param_offset, p),
+                        b: Segment::end(g.param_offset, p),
                     });
                 }
             }
@@ -71,19 +71,18 @@ impl Mesh {
 
     /// Nearest Mesh endpoint within `radius`, or `None`.
     /// For segment edges, `a` is start and `b` is end.
-    pub fn hit_endpoint(
-        &self,
-        query: Point2,
-        radius: f64,
-    ) -> Option<(GeometryId, EndpointKind)> {
-        let mut best: Option<(GeometryId, EndpointKind)> = None;
+    pub fn hit_endpoint(&self, query: Point2, radius: f64) -> Option<PointExpr> {
+        let mut best: Option<PointExpr> = None;
         let mut best_d = radius;
         for e in &self.edges {
-            for (kind, pt) in [(EndpointKind::Start, e.a), (EndpointKind::End, e.b)] {
+            for (expr, pt) in [
+                (Segment::start_expr(e.geometry), e.a),
+                (Segment::end_expr(e.geometry), e.b),
+            ] {
                 let d = (pt.x - query.x).hypot(pt.y - query.y);
                 if d < best_d {
                     best_d = d;
-                    best = Some((e.geometry, kind));
+                    best = Some(expr);
                 }
             }
         }

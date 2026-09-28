@@ -1,8 +1,9 @@
 //! Application shell: Document, Interact, tools, and Canvas painting.
 
 use constraint_runtime::{
-    Constraint, Document, DragSession, EndpointKind, GeometryId, GeometryRole,
-    InteractiveSolve, Mesh, MeshFilter, Point2, PointExpr, SolveError, Segment};
+    Constraint, Document, DragSession, GeometryBody, GeometryId, GeometryRole, InteractiveSolve,
+    Mesh, MeshFilter, Point2, PointExpr, SolveError, Segment,
+};
 use eframe::egui::{self, Color32, Pos2, Rect, Sense, Stroke};
 
 use crate::viewport::Viewport;
@@ -45,7 +46,8 @@ pub struct App {
     drag: DragSession,
     tool: Tool,
     presentation: PresentationMode,
-    pick_ends: Vec<(GeometryId, EndpointKind)>,
+    pick_points: Vec<PointExpr>,
+    pick_geoms: Vec<GeometryId>,
     segment_clicks: Vec<Point2>,
     status: String,
     last_error: Option<String>,
@@ -58,10 +60,10 @@ impl App {
     pub fn with_sample() -> Self {
         let mut doc = Document::new();
         // World units, y-up: horizontal then vertical leg of a right angle.
-        let s0 = doc.add_segment(Point2::new(0.0, 0.0), Point2::new(2.0, 0.0));
-        let s1 = doc.add_segment(Point2::new(2.0, 0.0), Point2::new(2.0, 2.0));
+        let s0 = doc.add_geometry(GeometryRole::Result, GeometryBody::Segment, &Segment::params(Point2::new(0.0, 0.0), Point2::new(2.0, 0.0)));
+        let s1 = doc.add_geometry(GeometryRole::Result, GeometryBody::Segment, &Segment::params(Point2::new(2.0, 0.0), Point2::new(2.0, 2.0)));
         // Demo: helper diagonal marked construction (hidden in result-only).
-        let helper = doc.add_segment(Point2::new(0.0, 0.0), Point2::new(2.0, 2.0));
+        let helper = doc.add_geometry(GeometryRole::Result, GeometryBody::Segment, &Segment::params(Point2::new(0.0, 0.0), Point2::new(2.0, 2.0)));
         assert!(doc.set_geometry_role(helper, GeometryRole::Construction));
         doc.add_constraint(Constraint::Congruence {
             a: Segment::end_expr(s0),
@@ -85,7 +87,8 @@ impl App {
             drag: DragSession::new(),
             tool: Tool::Select,
             presentation,
-            pick_ends: Vec::new(),
+            pick_points: Vec::new(),
+            pick_geoms: Vec::new(),
             segment_clicks: Vec::new(),
             status: "Sample right angle (world y-up) — drag the free end. Toggle construction to see helper."
                 .into(),
@@ -146,7 +149,7 @@ impl App {
         best
     }
 
-    fn hit_end(&self, screen: Pos2, radius_px: f64) -> Option<(GeometryId, EndpointKind)> {
+    fn hit_end(&self, screen: Pos2, radius_px: f64) -> Option<PointExpr> {
         let query = self.viewport.to_world(screen);
         let radius = self.viewport.px_to_world(radius_px);
         self.mesh().hit_endpoint(query, radius)
@@ -166,7 +169,7 @@ impl App {
                 if self.segment_clicks.len() >= 2 {
                     let a = self.segment_clicks[0];
                     let b = self.segment_clicks[1];
-                    self.doc.add_segment(a, b);
+                    self.doc.add_geometry(GeometryRole::Result, GeometryBody::Segment, &Segment::params(a, b));
                     self.segment_clicks.clear();
                     self.rebuild_logical_points();
                     self.status = format!(
@@ -178,16 +181,13 @@ impl App {
                 }
             }
             Tool::Join => {
-                if let Some(h) = self.hit_end(screen, 12.0) {
-                    self.pick_ends.push(h);
-                    if self.pick_ends.len() >= 2 {
-                        let a = self.pick_ends[0];
-                        let b = self.pick_ends[1];
-                        self.doc.add_constraint(Constraint::Congruence {
-                            a: point_expr_for_end(a.0, a.1),
-                            b: point_expr_for_end(b.0, b.1),
-                        });
-                        self.pick_ends.clear();
+                if let Some(expr) = self.hit_end(screen, 12.0) {
+                    self.pick_points.push(expr);
+                    if self.pick_points.len() >= 2 {
+                        let a = self.pick_points[0];
+                        let b = self.pick_points[1];
+                        self.doc.add_constraint(Constraint::Congruence { a, b });
+                        self.pick_points.clear();
                         let r = self.interact.structural_only(&mut self.doc);
                         self.report(r);
                         self.status = "Congruence between points".into();
@@ -198,17 +198,17 @@ impl App {
             }
             Tool::Parallel | Tool::Orthogonal => {
                 if let Some(id) = self.hit_edge(screen, 24.0) {
-                    self.pick_ends.push((id, EndpointKind::Start));
-                    if self.pick_ends.len() >= 2 {
-                        let a = self.pick_ends[0].0;
-                        let b = self.pick_ends[1].0;
+                    self.pick_geoms.push(id);
+                    if self.pick_geoms.len() >= 2 {
+                        let a = self.pick_geoms[0];
+                        let b = self.pick_geoms[1];
                         let c = if self.tool == Tool::Parallel {
                             Constraint::Parallel { a, b }
                         } else {
                             Constraint::Orthogonal { a, b }
                         };
                         self.doc.add_constraint(c);
-                        self.pick_ends.clear();
+                        self.pick_geoms.clear();
                         let r = self.interact.structural_only(&mut self.doc);
                         self.report(r);
                     } else {
@@ -255,14 +255,6 @@ fn logical_points_for(doc: &Document, filter: MeshFilter) -> Vec<PointExpr> {
     keep
 }
 
-/// Mesh hits still tag start/end; map that tag to the matching Segment formula.
-fn point_expr_for_end(id: GeometryId, end: EndpointKind) -> PointExpr {
-    match end {
-        EndpointKind::Start => Segment::start_expr(id),
-        EndpointKind::End => Segment::end_expr(id),
-    }
-}
-
 fn congruent(doc: &Document, a: &PointExpr, b: &PointExpr) -> bool {
     if a == b {
         return true;
@@ -292,7 +284,8 @@ impl eframe::App for App {
                     self.rebuild_logical_points();
                 }
                 if ui.button("Clear picks").clicked() {
-                    self.pick_ends.clear();
+                    self.pick_points.clear();
+                    self.pick_geoms.clear();
                     self.segment_clicks.clear();
                 }
             });

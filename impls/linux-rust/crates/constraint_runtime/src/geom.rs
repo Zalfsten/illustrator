@@ -10,8 +10,6 @@
 use crate::connectivity::Connectivity;
 use std::ops::{Add, Mul, Neg, Sub};
 
-pub const SEGMENT_STRIDE: usize = 4;
-
 /// Free vector in the plane (displacement, direction, difference of points).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Vec2 {
@@ -165,6 +163,8 @@ impl CurveParam {
 }
 
 /// Curve evaluation at normalized chart parameter \(t \in [0,1]\).
+/// Curve-shaped document geometries expose this via [`Geometry::position_at`] /
+/// [`Geometry::tangent_at`] / [`Geometry::normal_at`].
 pub trait Curve {
     fn position_at(&self, t: f64, p: &[f64]) -> Point2;
     fn tangent_at(&self, t: f64, p: &[f64]) -> Vec2;
@@ -187,54 +187,76 @@ pub enum GeometryRole {
     Construction,
 }
 
-/// Document-level sum of geometry kinds (Model E storage).
+/// Document geometry: shared identity, role, State block offset, plus kind-specific body.
 #[derive(Clone, Debug, PartialEq)]
-pub enum Geometry {
-    Segment(Segment),
+pub struct Geometry {
+    pub id: GeometryId,
+    pub role: GeometryRole,
+    /// Start index of this geometry's contiguous parameter block in State.
+    pub param_offset: usize,
+    pub body: GeometryBody,
+}
+
+/// Kind-specific payload (charts). Shared fields live on [`Geometry`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum GeometryBody {
+    Segment,
+}
+
+impl GeometryBody {
+    pub fn parameter_count(self) -> usize {
+        match self {
+            GeometryBody::Segment => Segment::STRIDE,
+        }
+    }
 }
 
 impl Geometry {
     pub fn id(&self) -> GeometryId {
-        match self {
-            Geometry::Segment(s) => s.id,
-        }
+        self.id
     }
 
     pub fn role(&self) -> GeometryRole {
-        match self {
-            Geometry::Segment(s) => s.role,
-        }
+        self.role
+    }
+
+    pub fn set_role(&mut self, role: GeometryRole) {
+        self.role = role;
     }
 
     pub fn parameter_count(&self) -> usize {
-        match self {
-            Geometry::Segment(_) => SEGMENT_STRIDE,
-        }
+        self.body.parameter_count()
     }
 
     pub fn connectivity(&self) -> Connectivity {
-        match self {
-            Geometry::Segment(s) => s.connectivity(),
-        }
+        let o = self.param_offset;
+        let n = self.parameter_count();
+        Connectivity::new((o..o + n).collect())
     }
 
     /// After a contiguous block was removed from State, shift this geometry's
     /// local→global indices that lay after the hole.
     pub fn reindex_after_removal(&mut self, removed_start: usize, removed_len: usize) {
-        match self {
-            Geometry::Segment(s) => {
-                if s.param_offset > removed_start {
-                    s.param_offset -= removed_len;
-                }
-            }
+        if self.param_offset > removed_start {
+            self.param_offset -= removed_len;
         }
     }
 
-    /// Curve capability when this geometry is a curve (segment, later circle, …).
-    pub fn curve(&self) -> Option<&dyn Curve> {
-        match self {
-            Geometry::Segment(s) => Some(s),
+    /// Curve sample at normalized chart \(t\) (segment, later circle, …).
+    pub fn position_at(&self, t: f64, p: &[f64]) -> Point2 {
+        match self.body {
+            GeometryBody::Segment => Segment::position_at(self.param_offset, t, p),
         }
+    }
+
+    pub fn tangent_at(&self, t: f64, p: &[f64]) -> Vec2 {
+        match self.body {
+            GeometryBody::Segment => Segment::tangent_at(self.param_offset, t, p),
+        }
+    }
+
+    pub fn normal_at(&self, t: f64, p: &[f64]) -> Vec2 {
+        self.tangent_at(t, p).left_normal()
     }
 }
 
@@ -249,47 +271,69 @@ pub trait GeometryStore {
     }
 }
 
-/// Line segment: endpoint chart, parameters live at `p[param_offset..param_offset+4]`.
-#[derive(Clone, Debug, PartialEq)]
-pub struct Segment {
-    pub id: GeometryId,
-    pub param_offset: usize,
-    pub role: GeometryRole,
-}
+/// Line-segment chart helpers. Parameters live at
+/// `p[offset..offset+STRIDE]` on the enclosing [`Geometry`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct Segment;
 
 impl Segment {
-    pub fn connectivity(&self) -> Connectivity {
-        let o = self.param_offset;
-        Connectivity::new(vec![o, o + 1, o + 2, o + 3])
+    /// Number of State parameters for one segment (`x1,y1,x2,y2`).
+    pub const STRIDE: usize = 4;
+
+    /// Initial State parameters for a segment from endpoints `(a, b)`.
+    pub fn params(a: Point2, b: Point2) -> [f64; 4] {
+        [a.x, a.y, b.x, b.y]
     }
 
-    pub fn start(&self, p: &[f64]) -> Point2 {
-        Point2::new(p[self.param_offset], p[self.param_offset + 1])
+    /// Build a document [`Geometry`] with a segment body.
+    pub fn into_geometry(id: GeometryId, role: GeometryRole, param_offset: usize) -> Geometry {
+        Geometry {
+            id,
+            role,
+            param_offset,
+            body: GeometryBody::Segment,
+        }
     }
 
-    pub fn end(&self, p: &[f64]) -> Point2 {
-        Point2::new(p[self.param_offset + 2], p[self.param_offset + 3])
+    pub fn start(offset: usize, p: &[f64]) -> Point2 {
+        Point2::new(p[offset], p[offset + 1])
+    }
+
+    pub fn end(offset: usize, p: &[f64]) -> Point2 {
+        Point2::new(p[offset + 2], p[offset + 3])
     }
 
     /// Free direction vector from start to end (`end - start`).
-    pub fn direction(&self, p: &[f64]) -> Vec2 {
-        self.end(p) - self.start(p)
+    pub fn direction(offset: usize, p: &[f64]) -> Vec2 {
+        Self::end(offset, p) - Self::start(offset, p)
+    }
+
+    pub fn position_at(offset: usize, t: f64, p: &[f64]) -> Point2 {
+        let a = Self::start(offset, p);
+        let b = Self::end(offset, p);
+        Point2::new(
+            (1.0 - t) * a.x + t * b.x,
+            (1.0 - t) * a.y + t * b.y,
+        )
+    }
+
+    pub fn tangent_at(offset: usize, _t: f64, p: &[f64]) -> Vec2 {
+        // γ'(t) = B - A (constant); length = segment length
+        Self::direction(offset, p)
+    }
+
+    pub fn all_param_indices(offset: usize) -> [usize; 4] {
+        [offset, offset + 1, offset + 2, offset + 3]
     }
 
     /// Point formula for the start endpoint of the segment identified by `id`.
     pub fn start_expr(id: GeometryId) -> PointExpr {
-        PointExpr(PointFormula::Endpoint {
-            geometry: id,
-            end: EndpointKind::Start,
-        })
+        PointExpr(PointFormula::StartPoint { geometry: id })
     }
 
     /// Point formula for the end endpoint of the segment identified by `id`.
     pub fn end_expr(id: GeometryId) -> PointExpr {
-        PointExpr(PointFormula::Endpoint {
-            geometry: id,
-            end: EndpointKind::End,
-        })
+        PointExpr(PointFormula::EndPoint { geometry: id })
     }
 
     /// Point formula for a chart sample on the segment identified by `id`.
@@ -298,22 +342,6 @@ impl Segment {
             geometry: id,
             param,
         })
-    }
-
-    pub fn start_point(&self) -> PointExpr {
-        Self::start_expr(self.id)
-    }
-
-    pub fn end_point(&self) -> PointExpr {
-        Self::end_expr(self.id)
-    }
-
-    pub fn point_at(&self, param: CurveParam) -> PointExpr {
-        Self::on_curve_expr(self.id, param)
-    }
-
-    pub fn endpoints(&self) -> (PointExpr, PointExpr) {
-        (self.start_point(), self.end_point())
     }
 
     /// Free-vector formula: segment direction (`end - start`).
@@ -336,54 +364,13 @@ impl Segment {
             param,
         })
     }
-
-    pub fn direction_vec(&self) -> VecExpr {
-        Self::direction_expr(self.id)
-    }
-
-    pub fn tangent_vec(&self, param: CurveParam) -> VecExpr {
-        Self::tangent_expr(self.id, param)
-    }
-
-    pub fn normal_vec(&self, param: CurveParam) -> VecExpr {
-        Self::normal_expr(self.id, param)
-    }
-
-    pub fn all_param_indices(&self) -> [usize; 4] {
-        let o = self.param_offset;
-        [o, o + 1, o + 2, o + 3]
-    }
-}
-
-impl Curve for Segment {
-    fn position_at(&self, t: f64, p: &[f64]) -> Point2 {
-        let a = self.start(p);
-        let b = self.end(p);
-        Point2::new(
-            (1.0 - t) * a.x + t * b.x,
-            (1.0 - t) * a.y + t * b.y,
-        )
-    }
-
-    fn tangent_at(&self, _t: f64, p: &[f64]) -> Vec2 {
-        // γ'(t) = B - A (constant); length = segment length
-        self.direction(p)
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum EndpointKind {
-    Start,
-    End,
 }
 
 /// Private formula catalog for [`PointExpr`] (Model B: opaque handle, closed enum).
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum PointFormula {
-    Endpoint {
-        geometry: GeometryId,
-        end: EndpointKind,
-    },
+    StartPoint { geometry: GeometryId },
+    EndPoint { geometry: GeometryId },
     OnCurve {
         geometry: GeometryId,
         param: CurveParam,
@@ -392,7 +379,7 @@ enum PointFormula {
 
 /// Opaque point expression: map from State parameters to a [`Point2`].
 ///
-/// Construct via geometry factories (e.g. [`Segment::start_point`]); constraints
+/// Construct via geometry factories (e.g. [`Segment::start_expr`]); constraints
 /// and Interact only call [`Self::evaluate`] / Jacobian helpers — they do not
 /// match on formula kinds.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -401,29 +388,36 @@ pub struct PointExpr(PointFormula);
 impl PointExpr {
     pub fn evaluate(&self, store: &impl GeometryStore, p: &[f64]) -> Point2 {
         match self.0 {
-            PointFormula::Endpoint { geometry, end } => {
-                let Geometry::Segment(s) = store.expect_geometry(geometry);
-                match end {
-                    EndpointKind::Start => s.start(p),
-                    EndpointKind::End => s.end(p),
-                }
+            PointFormula::StartPoint { geometry } => {
+                let g = store.expect_geometry(geometry);
+                debug_assert!(matches!(g.body, GeometryBody::Segment));
+                Segment::start(g.param_offset, p)
             }
-            PointFormula::OnCurve { geometry, param } => store
-                .expect_geometry(geometry)
-                .curve()
-                .expect("OnCurve requires a curve geometry")
-                .position_at(param.chart_t(), p),
+            PointFormula::EndPoint { geometry } => {
+                let g = store.expect_geometry(geometry);
+                debug_assert!(matches!(g.body, GeometryBody::Segment));
+                Segment::end(g.param_offset, p)
+            }
+            PointFormula::OnCurve { geometry, param } => {
+                store
+                    .expect_geometry(geometry)
+                    .position_at(param.chart_t(), p)
+            }
         }
     }
 
     pub fn param_indices(&self, store: &impl GeometryStore) -> Vec<usize> {
         match self.0 {
-            PointFormula::Endpoint { geometry, end } => {
-                let Geometry::Segment(s) = store.expect_geometry(geometry);
-                let o = match end {
-                    EndpointKind::Start => s.param_offset,
-                    EndpointKind::End => s.param_offset + 2,
-                };
+            PointFormula::StartPoint { geometry } => {
+                let g = store.expect_geometry(geometry);
+                debug_assert!(matches!(g.body, GeometryBody::Segment));
+                let o = g.param_offset;
+                vec![o, o + 1]
+            }
+            PointFormula::EndPoint { geometry } => {
+                let g = store.expect_geometry(geometry);
+                debug_assert!(matches!(g.body, GeometryBody::Segment));
+                let o = g.param_offset + 2;
                 vec![o, o + 1]
             }
             PointFormula::OnCurve { geometry, .. } => {
@@ -440,7 +434,7 @@ impl PointExpr {
         dy: &mut [f64],
     ) {
         match self.0 {
-            PointFormula::Endpoint { .. } => {
+            PointFormula::StartPoint { .. } | PointFormula::EndPoint { .. } => {
                 assert_eq!(dx.len(), 2);
                 assert_eq!(dy.len(), 2);
                 dx.fill(0.0);
@@ -449,12 +443,13 @@ impl PointExpr {
                 dy[1] = 1.0;
             }
             PointFormula::OnCurve { geometry, param } => {
-                let n = store.expect_geometry(geometry).connectivity().len();
+                let g = store.expect_geometry(geometry);
+                let n = g.connectivity().len();
                 assert_eq!(dx.len(), n);
                 assert_eq!(dy.len(), n);
                 dx.fill(0.0);
                 dy.fill(0.0);
-                let Geometry::Segment(_) = store.expect_geometry(geometry);
+                debug_assert!(matches!(g.body, GeometryBody::Segment));
                 let t = param.chart_t();
                 dx[0] = 1.0 - t;
                 dy[1] = 1.0 - t;
@@ -466,7 +461,8 @@ impl PointExpr {
 
     pub fn referenced_geometry(&self) -> GeometryId {
         match self.0 {
-            PointFormula::Endpoint { geometry, .. }
+            PointFormula::StartPoint { geometry }
+            | PointFormula::EndPoint { geometry }
             | PointFormula::OnCurve { geometry, .. } => geometry,
         }
     }
@@ -494,18 +490,15 @@ impl VecExpr {
     pub fn evaluate(&self, store: &impl GeometryStore, p: &[f64]) -> Vec2 {
         match self.0 {
             VecFormula::SegmentDirection { geometry } => {
-                let Geometry::Segment(s) = store.expect_geometry(geometry);
-                s.direction(p)
+                let g = store.expect_geometry(geometry);
+                debug_assert!(matches!(g.body, GeometryBody::Segment));
+                Segment::direction(g.param_offset, p)
             }
             VecFormula::TangentAt { geometry, param } => store
                 .expect_geometry(geometry)
-                .curve()
-                .expect("TangentAt requires a curve geometry")
                 .tangent_at(param.chart_t(), p),
             VecFormula::NormalAt { geometry, param } => store
                 .expect_geometry(geometry)
-                .curve()
-                .expect("NormalAt requires a curve geometry")
                 .normal_at(param.chart_t(), p),
         }
     }

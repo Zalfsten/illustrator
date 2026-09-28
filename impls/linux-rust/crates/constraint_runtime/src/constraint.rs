@@ -1,7 +1,7 @@
 //! Structural constraints: local residuals and analytical local Jacobians.
 
 use crate::connectivity::Connectivity;
-use crate::geom::{Geometry, GeometryId, GeometryStore, Point2, PointExpr};
+use crate::geom::{GeometryId, GeometryStore, Point2, PointExpr, Segment};
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Constraint {
@@ -12,8 +12,7 @@ pub enum Constraint {
 }
 
 fn segment_direction(store: &impl GeometryStore, id: GeometryId, p: &[f64]) -> crate::geom::Vec2 {
-    let Geometry::Segment(s) = store.expect_geometry(id);
-    s.direction(p)
+    Segment::direction_expr(id).evaluate(store, p)
 }
 
 impl Constraint {
