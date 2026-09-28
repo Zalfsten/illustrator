@@ -43,13 +43,14 @@ context: |
   must respect the distinction: point − point → vector; point + vector →
   point; vector + vector → vector; point + point is not meaningful.
 
-  Point expressions (open formulas):
-  A point expression is an opaque handle to a geometry-owned formula that
-  maps State parameters to a Point2 (plus connectivity/Jacobian). Do not
-  maintain a central closed catalog of formula kinds on the expression type
-  (no Endpoint|OnCurve-style match in the constraint path). Geometries
-  construct formulas; constraints and Interact only evaluate them. See
-  docs/constraint-mathematics.md (Design decision: open point formulas).
+  Point / vector expressions (opaque, Model B):
+  A point or vector expression is an opaque handle to a geometry-owned formula
+  that maps State parameters to a Point2 or Vec2 (plus connectivity/Jacobian
+  for points). Do not expose formula-kind variants on the public expression
+  type (no Endpoint|OnCurve match in the constraint path). Internally a
+  private closed enum is fine. Geometries construct formulas; constraints and
+  Interact only evaluate them. See docs/constraint-mathematics.md
+  (Design decision: opaque expressions).
 
   Rust module and unit-test layout (impls/linux-rust):
   Prefer sibling files once a module has unit tests: src/<module>.rs for

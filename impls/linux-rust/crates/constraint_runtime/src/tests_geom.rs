@@ -110,16 +110,8 @@ fn vec_expr_tangent_and_normal() {
         role: GeometryRole::Result,
     });
     let p = vec![0.0, 0.0, 0.0, 3.0];
-    let t = VecExpr::TangentAt {
-        geometry: GeometryId(0),
-        param: CurveParam::Normalized(0.0),
-    }
-    .evaluate(&store, &p);
-    let n = VecExpr::NormalAt {
-        geometry: GeometryId(0),
-        param: CurveParam::Uniform(0.5),
-    }
-    .evaluate(&store, &p);
+    let t = Segment::tangent_expr(GeometryId(0), CurveParam::Normalized(0.0)).evaluate(&store, &p);
+    let n = Segment::normal_expr(GeometryId(0), CurveParam::Uniform(0.5)).evaluate(&store, &p);
     assert_eq!(t, Vec2::new(0.0, 3.0));
     assert_eq!(n, Vec2::new(-3.0, 0.0));
 }

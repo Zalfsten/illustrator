@@ -8,9 +8,7 @@
 //! / arc-length fraction on \([0,1]\). For line segments the two coincide.
 
 use crate::connectivity::Connectivity;
-use std::any::Any;
 use std::ops::{Add, Mul, Neg, Sub};
-use std::sync::Arc;
 
 pub const SEGMENT_STRIDE: usize = 4;
 
@@ -278,73 +276,28 @@ impl Segment {
         self.end(p) - self.start(p)
     }
 
-    /// Shared endpoint formula: `point` is `Segment::start` or `Segment::end`,
-    /// `xy_offset` is the local parameter base (0 or 2).
-    fn endpoint_expr(
-        id: GeometryId,
-        point: fn(&Segment, &[f64]) -> Point2,
-        xy_offset: usize,
-    ) -> PointExpr {
-        PointExpr::from_closures(
-            id,
-            (id, point, xy_offset),
-            move |store, p| {
-                let Geometry::Segment(s) = store.expect_geometry(id);
-                point(s, p)
-            },
-            move |store| {
-                let Geometry::Segment(s) = store.expect_geometry(id);
-                let o = s.param_offset + xy_offset;
-                vec![o, o + 1]
-            },
-            move |_store, _p, dx, dy| {
-                assert_eq!(dx.len(), 2);
-                assert_eq!(dy.len(), 2);
-                dx.fill(0.0);
-                dy.fill(0.0);
-                dx[0] = 1.0;
-                dy[1] = 1.0;
-            },
-        )
-    }
-
     /// Point formula for the start endpoint of the segment identified by `id`.
     pub fn start_expr(id: GeometryId) -> PointExpr {
-        Self::endpoint_expr(id, Segment::start, 0)
+        PointExpr(PointFormula::Endpoint {
+            geometry: id,
+            end: EndpointKind::Start,
+        })
     }
 
     /// Point formula for the end endpoint of the segment identified by `id`.
     pub fn end_expr(id: GeometryId) -> PointExpr {
-        Self::endpoint_expr(id, Segment::end, 2)
+        PointExpr(PointFormula::Endpoint {
+            geometry: id,
+            end: EndpointKind::End,
+        })
     }
 
     /// Point formula for a chart sample on the segment identified by `id`.
     pub fn on_curve_expr(id: GeometryId, param: CurveParam) -> PointExpr {
-        PointExpr::from_closures(
-            id,
-            ("segment_on_curve", id, param),
-            move |store, p| {
-                store
-                    .expect_geometry(id)
-                    .curve()
-                    .expect("segment on-curve formula requires a curve geometry")
-                    .position_at(param.chart_t(), p)
-            },
-            move |store| store.expect_geometry(id).connectivity().global_indices,
-            move |store, _p, dx, dy| {
-                let n = store.expect_geometry(id).connectivity().len();
-                assert_eq!(dx.len(), n);
-                assert_eq!(dy.len(), n);
-                dx.fill(0.0);
-                dy.fill(0.0);
-                let Geometry::Segment(_) = store.expect_geometry(id);
-                let t = param.chart_t();
-                dx[0] = 1.0 - t;
-                dy[1] = 1.0 - t;
-                dx[2] = t;
-                dy[3] = t;
-            },
-        )
+        PointExpr(PointFormula::OnCurve {
+            geometry: id,
+            param,
+        })
     }
 
     pub fn start_point(&self) -> PointExpr {
@@ -361,6 +314,39 @@ impl Segment {
 
     pub fn endpoints(&self) -> (PointExpr, PointExpr) {
         (self.start_point(), self.end_point())
+    }
+
+    /// Free-vector formula: segment direction (`end - start`).
+    pub fn direction_expr(id: GeometryId) -> VecExpr {
+        VecExpr(VecFormula::SegmentDirection { geometry: id })
+    }
+
+    /// Free-vector formula: curve tangent at `param`.
+    pub fn tangent_expr(id: GeometryId, param: CurveParam) -> VecExpr {
+        VecExpr(VecFormula::TangentAt {
+            geometry: id,
+            param,
+        })
+    }
+
+    /// Free-vector formula: curve normal at `param`.
+    pub fn normal_expr(id: GeometryId, param: CurveParam) -> VecExpr {
+        VecExpr(VecFormula::NormalAt {
+            geometry: id,
+            param,
+        })
+    }
+
+    pub fn direction_vec(&self) -> VecExpr {
+        Self::direction_expr(self.id)
+    }
+
+    pub fn tangent_vec(&self, param: CurveParam) -> VecExpr {
+        Self::tangent_expr(self.id, param)
+    }
+
+    pub fn normal_vec(&self, param: CurveParam) -> VecExpr {
+        Self::normal_expr(self.id, param)
     }
 
     pub fn all_param_indices(&self) -> [usize; 4] {
@@ -391,176 +377,104 @@ pub enum EndpointKind {
     End,
 }
 
-/// Open point formula: geometry-owned map \(p \mapsto\) [`Point2`].
+/// Private formula catalog for [`PointExpr`] (Model B: opaque handle, closed enum).
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum PointFormula {
+    Endpoint {
+        geometry: GeometryId,
+        end: EndpointKind,
+    },
+    OnCurve {
+        geometry: GeometryId,
+        param: CurveParam,
+    },
+}
+
+/// Opaque point expression: map from State parameters to a [`Point2`].
 ///
-/// Prefer [`PointExpr::from_closures`] when a geometry builds a formula. Custom
-/// types may still implement this trait and use [`PointExpr::new`].
-pub trait PointFormula: Send + Sync + std::fmt::Debug {
-    fn evaluate(&self, store: &dyn GeometryStore, p: &[f64]) -> Point2;
-    fn param_indices(&self, store: &dyn GeometryStore) -> Vec<usize>;
-    fn eval_point_jacobian(
-        &self,
-        store: &dyn GeometryStore,
-        p: &[f64],
-        dx: &mut [f64],
-        dy: &mut [f64],
-    );
-    fn referenced_geometry(&self) -> GeometryId;
-    fn eq_formula(&self, other: &dyn PointFormula) -> bool;
-    fn as_any(&self) -> &dyn Any;
-}
-
-/// Opaque handle to a [`PointFormula`]. Constraints and Interact only see this type.
-#[derive(Clone, Debug)]
-pub struct PointExpr {
-    formula: Arc<dyn PointFormula>,
-}
-
-impl PartialEq for PointExpr {
-    fn eq(&self, other: &Self) -> bool {
-        self.formula.eq_formula(other.formula.as_ref())
-    }
-}
+/// Construct via geometry factories (e.g. [`Segment::start_point`]); constraints
+/// and Interact only call [`Self::evaluate`] / Jacobian helpers — they do not
+/// match on formula kinds.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct PointExpr(PointFormula);
 
 impl PointExpr {
-    pub fn new(formula: impl PointFormula + 'static) -> Self {
-        Self {
-            formula: Arc::new(formula),
+    pub fn evaluate(&self, store: &impl GeometryStore, p: &[f64]) -> Point2 {
+        match self.0 {
+            PointFormula::Endpoint { geometry, end } => {
+                let Geometry::Segment(s) = store.expect_geometry(geometry);
+                match end {
+                    EndpointKind::Start => s.start(p),
+                    EndpointKind::End => s.end(p),
+                }
+            }
+            PointFormula::OnCurve { geometry, param } => store
+                .expect_geometry(geometry)
+                .curve()
+                .expect("OnCurve requires a curve geometry")
+                .position_at(param.chart_t(), p),
         }
     }
 
-    /// Build a point expression from closures (typical path for geometry factories).
-    ///
-    /// `key` is only for [`PartialEq`] (closures are not comparable); it should
-    /// identify the formula uniquely (e.g. geometry id + chart parameters).
-    pub fn from_closures<K, E, I, J>(
-        geometry: GeometryId,
-        key: K,
-        evaluate: E,
-        param_indices: I,
-        jacobian: J,
-    ) -> Self
-    where
-        K: PartialEq + Clone + Send + Sync + std::fmt::Debug + 'static,
-        E: Fn(&dyn GeometryStore, &[f64]) -> Point2 + Send + Sync + 'static,
-        I: Fn(&dyn GeometryStore) -> Vec<usize> + Send + Sync + 'static,
-        J: Fn(&dyn GeometryStore, &[f64], &mut [f64], &mut [f64]) + Send + Sync + 'static,
-    {
-        Self::new(ClosurePointFormula {
-            geometry,
-            key: Arc::new(TypedFormulaKey(key)),
-            evaluate: Arc::new(evaluate),
-            param_indices: Arc::new(param_indices),
-            jacobian: Arc::new(jacobian),
-        })
-    }
-
-    pub fn evaluate(&self, store: &impl GeometryStore, p: &[f64]) -> Point2 {
-        self.formula.evaluate(store, p)
-    }
-
     pub fn param_indices(&self, store: &impl GeometryStore) -> Vec<usize> {
-        self.formula.param_indices(store)
+        match self.0 {
+            PointFormula::Endpoint { geometry, end } => {
+                let Geometry::Segment(s) = store.expect_geometry(geometry);
+                let o = match end {
+                    EndpointKind::Start => s.param_offset,
+                    EndpointKind::End => s.param_offset + 2,
+                };
+                vec![o, o + 1]
+            }
+            PointFormula::OnCurve { geometry, .. } => {
+                store.expect_geometry(geometry).connectivity().global_indices
+            }
+        }
     }
 
     pub fn eval_point_jacobian(
         &self,
         store: &impl GeometryStore,
-        p: &[f64],
+        _p: &[f64],
         dx: &mut [f64],
         dy: &mut [f64],
     ) {
-        self.formula.eval_point_jacobian(store, p, dx, dy)
+        match self.0 {
+            PointFormula::Endpoint { .. } => {
+                assert_eq!(dx.len(), 2);
+                assert_eq!(dy.len(), 2);
+                dx.fill(0.0);
+                dy.fill(0.0);
+                dx[0] = 1.0;
+                dy[1] = 1.0;
+            }
+            PointFormula::OnCurve { geometry, param } => {
+                let n = store.expect_geometry(geometry).connectivity().len();
+                assert_eq!(dx.len(), n);
+                assert_eq!(dy.len(), n);
+                dx.fill(0.0);
+                dy.fill(0.0);
+                let Geometry::Segment(_) = store.expect_geometry(geometry);
+                let t = param.chart_t();
+                dx[0] = 1.0 - t;
+                dy[1] = 1.0 - t;
+                dx[2] = t;
+                dy[3] = t;
+            }
+        }
     }
 
     pub fn referenced_geometry(&self) -> GeometryId {
-        self.formula.referenced_geometry()
+        match self.0 {
+            PointFormula::Endpoint { geometry, .. }
+            | PointFormula::OnCurve { geometry, .. } => geometry,
+        }
     }
 }
 
-trait FormulaKey: Send + Sync + std::fmt::Debug {
-    fn eq_key(&self, other: &dyn FormulaKey) -> bool;
-    fn as_any(&self) -> &dyn Any;
-}
-
-#[derive(Clone, Debug)]
-struct TypedFormulaKey<K>(K);
-
-impl<K> FormulaKey for TypedFormulaKey<K>
-where
-    K: PartialEq + Clone + Send + Sync + std::fmt::Debug + 'static,
-{
-    fn eq_key(&self, other: &dyn FormulaKey) -> bool {
-        other
-            .as_any()
-            .downcast_ref::<Self>()
-            .is_some_and(|o| o.0 == self.0)
-    }
-
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-}
-
-struct ClosurePointFormula {
-    geometry: GeometryId,
-    key: Arc<dyn FormulaKey>,
-    evaluate: Arc<dyn Fn(&dyn GeometryStore, &[f64]) -> Point2 + Send + Sync>,
-    param_indices: Arc<dyn Fn(&dyn GeometryStore) -> Vec<usize> + Send + Sync>,
-    jacobian:
-        Arc<dyn Fn(&dyn GeometryStore, &[f64], &mut [f64], &mut [f64]) + Send + Sync>,
-}
-
-impl std::fmt::Debug for ClosurePointFormula {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("ClosurePointFormula")
-            .field("geometry", &self.geometry)
-            .field("key", &self.key)
-            .finish_non_exhaustive()
-    }
-}
-
-impl PointFormula for ClosurePointFormula {
-    fn evaluate(&self, store: &dyn GeometryStore, p: &[f64]) -> Point2 {
-        (self.evaluate)(store, p)
-    }
-
-    fn param_indices(&self, store: &dyn GeometryStore) -> Vec<usize> {
-        (self.param_indices)(store)
-    }
-
-    fn eval_point_jacobian(
-        &self,
-        store: &dyn GeometryStore,
-        p: &[f64],
-        dx: &mut [f64],
-        dy: &mut [f64],
-    ) {
-        (self.jacobian)(store, p, dx, dy)
-    }
-
-    fn referenced_geometry(&self) -> GeometryId {
-        self.geometry
-    }
-
-    fn eq_formula(&self, other: &dyn PointFormula) -> bool {
-        other
-            .as_any()
-            .downcast_ref::<Self>()
-            .is_some_and(|o| {
-                self.geometry == o.geometry && self.key.eq_key(o.key.as_ref())
-            })
-    }
-
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-}
-
-/// Free-vector expression over geometry parameters.
+/// Private formula catalog for [`VecExpr`] (same opacity principle as [`PointExpr`]).
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub enum VecExpr {
-    /// Direction of a line segment (`end - start`).
+enum VecFormula {
     SegmentDirection { geometry: GeometryId },
     TangentAt {
         geometry: GeometryId,
@@ -572,23 +486,35 @@ pub enum VecExpr {
     },
 }
 
+/// Opaque free-vector expression: map from State parameters to a [`Vec2`].
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct VecExpr(VecFormula);
+
 impl VecExpr {
     pub fn evaluate(&self, store: &impl GeometryStore, p: &[f64]) -> Vec2 {
-        match *self {
-            VecExpr::SegmentDirection { geometry } => {
+        match self.0 {
+            VecFormula::SegmentDirection { geometry } => {
                 let Geometry::Segment(s) = store.expect_geometry(geometry);
                 s.direction(p)
             }
-            VecExpr::TangentAt { geometry, param } => store
+            VecFormula::TangentAt { geometry, param } => store
                 .expect_geometry(geometry)
                 .curve()
                 .expect("TangentAt requires a curve geometry")
                 .tangent_at(param.chart_t(), p),
-            VecExpr::NormalAt { geometry, param } => store
+            VecFormula::NormalAt { geometry, param } => store
                 .expect_geometry(geometry)
                 .curve()
                 .expect("NormalAt requires a curve geometry")
                 .normal_at(param.chart_t(), p),
+        }
+    }
+
+    pub fn referenced_geometry(&self) -> GeometryId {
+        match self.0 {
+            VecFormula::SegmentDirection { geometry }
+            | VecFormula::TangentAt { geometry, .. }
+            | VecFormula::NormalAt { geometry, .. } => geometry,
         }
     }
 }
