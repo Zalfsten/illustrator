@@ -16,10 +16,11 @@ Behavioral contracts live in OpenSpec capabilities (`geometry-ir`, `state-vector
 | **Point2 / point** | Affine location. May be written as a position vector relative to an origin, but is not a free vector. $P - Q$ is a vector; $P + v$ is a point; $P + Q$ is not meaningful. |
 | **World coordinates** | Durable planar frame for Document State and Mesh edge positions. **y-up** (scientific/mathematical): $+y$ points upward. Not window pixels. |
 | **Viewport** | App/UI session mapping between world and screen coordinates: uniform scale, origin, and y-flip for toolkits with $+y$ downward. Paint uses world→screen; pointer input and pixel pick radii use screen→world (`r_{\mathrm{world}}=r_{\mathrm{px}}/\mathrm{scale}`). |
-| **Point expression** | Opaque handle to a (private catalog of) **point formula**(s): a map from geometry State parameters to a 2D **point**. Not a free-standing point entity and not a coordinate snapshot. Geometries construct formulas (e.g. segment start/end / on-curve); constraints and Interact only evaluate them — they do not match on formula kinds. |
-| **Point formula** | Concrete eval / parameter indices / Jacobian for one point expression. In linux-rust the formula kinds are a private enum behind `PointExpr` (Model B): `StartPoint`, `EndPoint`, `OnCurve { param }`. |
+| **Point expression** | Opaque handle to a (private catalog of) **point formula**(s): a map from geometry State parameters to a 2D **point**. Not a free-standing point entity and not a coordinate snapshot. Geometry kinds construct formulas (e.g. segment start/end / on-curve); constraints and Interact only evaluate them — they do not match on formula kinds. |
+| **Point formula** | Concrete eval / parameter indices / Jacobian for one point expression. Owned by a geometry kind; linux-rust keeps per-kind private enums (e.g. segment `StartPoint` / `EndPoint` / `OnCurve`) behind opaque `PointExpr` (Model B), with an outer kind sum in `geometries/expr.rs`. |
+| **GeometryBody** | Kind discriminant / payload sum on a document geometry (linux-rust: lives with `geometries/`, not in shared `geom`). |
 | **GeometryStore** | Read-only port to resolve `GeometryId` → geometry metadata for expression evaluation (linux-rust: `store.rs`; `DocumentStructure` / `Document` implement it). |
-| **Vector expression** | Opaque handle to a map from geometry parameters to a free **vector** (e.g. segment direction, curve tangent or normal). Same opacity principle as point expressions. |
+| **Vector expression** | Opaque handle to a map from geometry parameters to a free **vector** (e.g. segment direction, curve tangent or normal). Same opacity principle as point expressions; kind-owned formulas behind an outer kind sum. |
 | **Normalized curve parameter** | Chart coordinate \(t \in [0,1]\): the curve's native formula domain affinely mapped to the unit interval. Equal \(\Delta t\) need not mean equal arc length. |
 | **Uniform curve parameter** | Arc-length fraction \(u \in [0,1]\): equal \(\Delta u\) means equal arc length along the curve. For a line segment, Normalized and Uniform coincide. |
 | **Curve tangent** | Chart derivative \(\gamma'(t)\) as a free vector; length is parametric speed (segment: segment length). Not required to be unit length. |
@@ -37,11 +38,11 @@ Behavioral contracts live in OpenSpec capabilities (`geometry-ir`, `state-vector
 
 ## Design decision: opaque expressions (Model B)
 
-**Choice:** `PointExpr` and `VecExpr` are opaque newtypes over a **private** closed formula enum. Constraints and Interact never match on formula kinds; they only call `evaluate` / connectivity / Jacobian helpers. Geometries construct expressions via factories (`start_point`, `point_at`, `direction_vec`, …).
+**Choice:** `PointExpr` and `VecExpr` are opaque newtypes over a **private** closed formula catalog (outer sum by geometry kind; inner enums per kind). Constraints and Interact never match on formula kinds; they only call `evaluate` / connectivity / Jacobian helpers. Geometry kinds construct expressions via factories (`start_expr`, `on_curve_expr`, `direction_expr`, …).
 
 **Why:** Call sites should see “a point/vector map”, not `Endpoint | OnCurve | …`. A small fixed catalog stays data-driven (`PartialEq`, `Copy`, easy Debug/serde) without exposing variants. True openness (trait objects / closures) was tried and rejected for this codebase in favor of this facade — see approaches below.
 
-**Consequences (linux-rust):** Private formula enums live with each geometry kind under `geometries/` (today: `segment.rs`). Opaque `PointExpr` / `VecExpr` and the outer kind catalog live in `geometries/expr.rs`. Segment factories: `start_expr` / `end_expr` / `on_curve_expr` and `direction_expr` / `tangent_expr` / `normal_expr`. Shared layout types live in `geom`. Constraints never match on formula kinds.
+**Consequences (linux-rust):** Per-kind private formula enums under `geometries/<kind>.rs`. Outer kind catalog and opaque `PointExpr` / `VecExpr` in `geometries/expr.rs`. `GeometryBody` kind sum beside them in `geometries/`. Shared affine/shell types in `geom`; identity resolution port in `store`. Constraints never match on formula kinds.
 
 ### Approaches considered
 

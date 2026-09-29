@@ -8,7 +8,7 @@ Defines that geometries (and derived constraint contributions) expose evaluable 
 
 ### Requirement: Expressions evaluate geometry quantities from State
 
-The production evaluate/solve path SHALL obtain geometric quantities needed by residuals and assembly (endpoint locations, on-curve samples, tangent and normal vectors, segment direction, and other chart-defined outputs) by evaluating **point expressions** and **vector expressions** against DocumentStructure (or an equivalent geometry-resolution port) and an explicit State \(p\). Those expressions SHALL map the involved geometries' local parameters (via connectivity into \(p\)) to points or free vectors. Point-valued outputs SHALL be distinguished from free-vector-valued outputs.
+The production evaluate/solve path SHALL obtain geometric quantities needed by residuals and assembly (endpoint locations, on-curve samples, tangent and normal vectors, segment direction, and other chart-defined outputs) by evaluating **opaque point expressions** and **opaque vector expressions** against DocumentStructure (or an equivalent geometry-resolution port) and an explicit State \(p\). Those expressions SHALL map the involved geometries' local parameters (via connectivity into \(p\)) to points or free vectors by applying the **kind-owned** chart formulas of the named geometries. Point-valued outputs SHALL be distinguished from free-vector-valued outputs. Constraint and assembly code SHALL NOT match on private formula kinds.
 
 #### Scenario: Endpoint expression depends on local parameters
 

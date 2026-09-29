@@ -131,7 +131,7 @@ Operations that involve more than one geometry (for example intersection of two 
 
 ### Requirement: Geometry set includes curves with segment as proving kind
 
-The system SHALL treat parameterized curves as the primary geometry kind for path-like primitives. A line segment SHALL be a curve in this sense and SHALL remain supported. DocumentStructure SHALL store geometries as a sum of kinds (of which line segment is the only required kind in this slice). Each stored geometry SHALL carry shared metadata (stable identity, result/construction role, and its State parameter block layout) alongside kind-specific payload. Shared geometry operations (parameter count, connectivity, reindex after removal, optional curve capability, role) SHALL apply uniformly; kind-specific behavior SHALL be obtained by matching on kind or by querying a capability (for example curve), not by a privileged segment-only store API in the core evaluate/solve path. Additional curve kinds (circles, arcs, splines, function graphs) MAY be introduced in later changes that conform to the curve contract; this capability does not require them to be implemented yet. First-class point geometry entities and face/region geometries remain outside this requirement. Canvas paint and Mesh-backed pick SHALL use the display Mesh (or equivalent) rather than iterating document geometries by kind.
+The system SHALL treat parameterized curves as the primary geometry kind for path-like primitives. A line segment SHALL be a curve in this sense and SHALL remain supported. DocumentStructure SHALL store geometries as a sum of kinds (of which line segment is the only required kind in this slice). Each stored geometry SHALL carry shared metadata (stable identity, result/construction role, and its State parameter block layout) alongside kind-specific payload. Shared geometry operations (parameter count, connectivity, reindex after removal, optional curve capability, role) SHALL apply uniformly across kinds. Kind-specific chart behavior and formula catalogs SHALL live with each kind (see *Geometry kinds own chart formulas*). Callers SHALL obtain kind-specific behavior by matching on kind or by querying a capability only where a kind discriminant is required (for example Mesh tessellation); the core evaluate/solve path SHALL NOT use a privileged segment-only store API. Additional curve kinds (circles, arcs, splines, function graphs) MAY be introduced in later changes that conform to the curve contract; this capability does not require them to be implemented yet. First-class point geometry entities and face/region geometries remain outside this requirement. Canvas paint and Mesh-backed pick SHALL use the display Mesh (or equivalent) rather than iterating document geometries by kind.
 
 #### Scenario: Segment remains an admitted curve
 
@@ -167,9 +167,25 @@ Each geometry in DocumentStructure SHALL have a role that is either **result** o
 - **WHEN** DocumentStructure is inspected without reading State \(p\)
 - **THEN** each geometry's result vs construction role is determined by DocumentStructure alone
 
+### Requirement: Geometry kinds own chart formulas; shared shell is kind-agnostic
+
+Each document geometry SHALL combine **shared metadata** (stable identity, result/construction role, contiguous State parameter-block layout) with a **kind-specific payload** drawn from a closed sum of admitted geometry kinds (line segment today). Chart formulas that map that kind's local parameters to points or free vectors (endpoints where applicable, on-curve samples, tangents, normals, segment direction, and similar) SHALL be defined with that kind. Opaque point and vector expressions SHALL evaluate those formulas without requiring constraint, assembly, or Interact code to match on geometry kind or on private formula kinds. Extending the admitted kind set SHALL extend the kind sum and the expression formula catalog; it SHALL NOT require changing shared identity or role types, and SHALL NOT reintroduce a privileged segment-only identity or store API on the evaluate/solve path.
+
+#### Scenario: Adding a kind does not change identity or role types
+
+- **WHEN** a future curve kind is admitted under this capability
+- **THEN** geometries of that kind still use the same stable geometry identity type and result/construction role
+- **AND** constraints that already consume opaque point or vector expressions continue to evaluate without matching on the new kind's formula variants
+
+#### Scenario: Segment formulas are kind-owned
+
+- **WHEN** a segment endpoint or on-curve sample is needed for constraints or Mesh
+- **THEN** the corresponding point expression is constructed from the segment kind's formula catalog
+- **AND** evaluation resolves the named geometry identity and applies that segment formula against State
+
 ### Requirement: Curve quantities are exposed through expressions
 
-For evaluate/solve and constraint assembly, derived locations and frame vectors on curves (endpoints where applicable, on-curve samples, tangent, normal, segment direction) SHALL be obtained through **point expressions** and **vector expressions** that name geometries by stable identity. Implementations SHALL NOT require callers on the production evaluate/solve path to invoke geometry-kind-specific imperative sampling APIs that take State directly in place of those expressions. Geometries (or their chart helpers) MAY construct the expressions; evaluation, connectivity, and analytical Jacobians for constraints SHALL go through the expression layer.
+For evaluate/solve and constraint assembly, derived locations and frame vectors on curves (endpoints where applicable, on-curve samples, tangent, normal, segment direction) SHALL be obtained through **opaque point expressions** and **opaque vector expressions** that name geometries by stable identity. Implementations SHALL NOT require callers on the production evaluate/solve path to invoke geometry-kind-specific imperative sampling APIs that take State directly in place of those expressions. Geometry kinds SHALL construct the expressions via factories; evaluation, connectivity, and analytical Jacobians for constraints SHALL go through the opaque expression API.
 
 #### Scenario: Midpoint constraint uses an on-curve expression
 

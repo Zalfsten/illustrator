@@ -44,15 +44,14 @@ context: |
   point; vector + vector → vector; point + point is not meaningful.
 
   Point / vector expressions (opaque, Model B):
-  A point or vector expression is an opaque handle to a geometry-owned formula
-  that maps State parameters to a Point2 or Vec2 (plus connectivity/Jacobian
-  for points). Do not expose formula-kind variants on the public expression
-  type (no formula-kind match in the constraint path). Internally a private
-  closed enum is fine (e.g. start/end/on-curve point maps; segment direction,
-  tangent, normal vector maps). Geometries construct expressions via factories;
-  constraints, Mesh, and Interact only evaluate them. Evaluation and Jacobians
-  live in the expression layer, not on geometry layout types. See
-  docs/constraint-mathematics.md (Design decision: opaque expressions).
+  A point or vector expression is an opaque handle to a geometry-kind-owned
+  formula that maps State parameters to a Point2 or Vec2 (plus connectivity/
+  Jacobian for points). Do not expose formula-kind variants on the public
+  expression type (no formula-kind match in the constraint path). Internally
+  each kind keeps a private formula catalog; an outer closed sum dispatches by
+  geometry kind. Geometries construct expressions via factories; constraints,
+  Mesh, and Interact only evaluate them. See docs/constraint-mathematics.md
+  (Design decision: opaque expressions).
 
   Geometry identity and resolution:
   One stable GeometryId for all kinds (no segment-only id type). Expression
@@ -67,12 +66,14 @@ context: |
   (Contiguous parameter block per geometry).
 
   Rust module and unit-test layout (impls/linux-rust):
-  constraint_runtime splits geometry concerns: geom (shared types: Point2/Vec2,
-  Geometry shell, CurveParam, ids/roles),   geometries/ (GeometryBody catalog, opaque PointExpr/VecExpr kind wrappers,
-  plus one file per kind — Segment owns layout, chart sampling, and its
-  Point/Vec formulas + factories), store
-  (GeometryStore port), document (structure + State + id index). Prefer sibling
-  files once a module has unit tests: src/<module>.rs for
+  constraint_runtime splits geometry concerns as follows:
+  - geom: shared types (Point2/Vec2, Geometry shell, CurveParam, ids/roles)
+  - geometries/: kind catalog (GeometryBody), opaque PointExpr/VecExpr wrappers
+    (geometries/expr.rs), and one file per kind (e.g. segment.rs owns STRIDE,
+    params, chart sampling, private formulas, and expression factories)
+  - store: GeometryStore port
+  - document: DocumentStructure + State + id→slot index
+  Prefer sibling files once a module has unit tests: src/<module>.rs for
   production code and src/tests_<module>.rs for that module's unit tests,
   declared with `#[cfg(test)] #[path = "tests_<module>.rs"] mod tests_<module>;`
   in <module>.rs. Do not create a src/<module>/ directory solely to hold
