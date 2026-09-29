@@ -2,7 +2,8 @@ use super::*;
 use crate::assemble::AssembledSystem;
 use crate::constraint::Constraint;
 use crate::document::Document;
-use crate::geom::{GeometryBody, GeometryRole, Point2, Segment};
+use crate::geom::{GeometryBody, GeometryRole, Point2};
+use crate::geometries::Segment;
 use crate::SOLVE_TOL;
 
 #[test]

@@ -1,6 +1,7 @@
 use super::*;
 use crate::document::DocumentStructure;
-use crate::geom::{GeometryId, GeometryRole, Segment};
+use crate::geom::{GeometryId, GeometryRole};
+use crate::geometries::Segment;
 
 fn two_segs() -> (DocumentStructure, Vec<f64>) {
     let mut structure = DocumentStructure::new();

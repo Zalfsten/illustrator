@@ -8,6 +8,7 @@ pub mod constraint;
 pub mod document;
 pub mod expr;
 pub mod geom;
+pub mod geometries;
 pub mod interact;
 pub mod mesh;
 pub mod solver;
@@ -20,8 +21,9 @@ pub use constraint::Constraint;
 pub use document::{Document, DocumentStructure, State};
 pub use expr::{PointExpr, VecExpr};
 pub use geom::{
-    CurveParam, Geometry, GeometryBody, GeometryId, GeometryRole, Point2, Segment, Vec2,
+    CurveParam, Geometry, GeometryBody, GeometryId, GeometryRole, Point2, Vec2,
 };
+pub use geometries::Segment;
 pub use store::GeometryStore;
 pub use interact::{DragSession, InteractiveSolve, SoftTerms, SolveError};
 pub use mesh::{Mesh, MeshEdge, MeshFilter};

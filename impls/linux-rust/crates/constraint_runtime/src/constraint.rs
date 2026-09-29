@@ -2,7 +2,8 @@
 
 use crate::connectivity::Connectivity;
 use crate::expr::PointExpr;
-use crate::geom::{GeometryId, Point2, Segment};
+use crate::geom::{GeometryId, Point2};
+use crate::geometries::Segment;
 use crate::store::GeometryStore;
 
 #[derive(Clone, Debug, PartialEq)]

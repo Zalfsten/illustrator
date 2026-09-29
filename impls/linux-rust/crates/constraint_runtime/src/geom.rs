@@ -7,9 +7,10 @@
 //! (native formula domain affinely mapped). [`CurveParam::Uniform`] is constant-speed
 //! / arc-length fraction on \([0,1]\). For line segments the two coincide.
 //!
-//! Sampling and State evaluation live in [`crate::expr`] (`PointExpr` / `VecExpr`).
+//! Concrete kinds (layout + formulas) live under [`crate::geometries`].
 
 use crate::connectivity::Connectivity;
+use crate::geometries::Segment;
 use std::ops::{Add, Mul, Neg, Sub};
 
 /// Free vector in the plane (displacement, direction, difference of points).
@@ -228,38 +229,6 @@ impl Geometry {
         if self.param_offset > removed_start {
             self.param_offset -= removed_len;
         }
-    }
-}
-
-/// Line-segment chart helpers. Parameters live at
-/// `p[offset..offset+STRIDE]` on the enclosing [`Geometry`].
-///
-/// Endpoint / sample / tangent formulas: [`Segment::start_expr`] and siblings
-/// in [`crate::expr`].
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct Segment;
-
-impl Segment {
-    /// Number of State parameters for one segment (`x1,y1,x2,y2`).
-    pub const STRIDE: usize = 4;
-
-    /// Initial State parameters for a segment from endpoints `(a, b)`.
-    pub fn params(a: Point2, b: Point2) -> [f64; 4] {
-        [a.x, a.y, b.x, b.y]
-    }
-
-    /// Build a document [`Geometry`] with a segment body.
-    pub fn into_geometry(id: GeometryId, role: GeometryRole, param_offset: usize) -> Geometry {
-        Geometry {
-            id,
-            role,
-            param_offset,
-            body: GeometryBody::Segment,
-        }
-    }
-
-    pub fn all_param_indices(offset: usize) -> [usize; 4] {
-        [offset, offset + 1, offset + 2, offset + 3]
     }
 }
 

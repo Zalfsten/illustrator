@@ -1,6 +1,7 @@
 use super::*;
 use crate::document::Document;
-use crate::geom::{GeometryBody, GeometryRole, Point2, Segment};
+use crate::geom::{GeometryBody, GeometryRole, Point2};
+use crate::geometries::Segment;
 
 #[test]
 fn one_segment_becomes_one_edge() {

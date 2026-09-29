@@ -41,7 +41,7 @@ Behavioral contracts live in OpenSpec capabilities (`geometry-ir`, `state-vector
 
 **Why:** Call sites should see “a point/vector map”, not `Endpoint | OnCurve | …`. A small fixed catalog stays data-driven (`PartialEq`, `Copy`, easy Debug/serde) without exposing variants. True openness (trait objects / closures) was tried and rejected for this codebase in favor of this facade — see approaches below.
 
-**Consequences (linux-rust):** Private `PointFormula` / `VecFormula` enums in `expr`; public `PointExpr` / `VecExpr`. Segment factories: `start_expr` / `end_expr` / `on_curve_expr` and `direction_expr` / `tangent_expr` / `normal_expr`. Layout lives in `geom`; State evaluation only in `expr`. Central `match` lives only inside those expression types, not in the constraint path.
+**Consequences (linux-rust):** Private formula enums live with each geometry kind under `geometries/` (today: `segment.rs`). Public `PointExpr` / `VecExpr` in `expr` wrap those catalogs. Segment factories: `start_expr` / `end_expr` / `on_curve_expr` and `direction_expr` / `tangent_expr` / `normal_expr`. Shared layout types live in `geom`; kind-specific State evaluation lives with the kind. Constraints never match on formula kinds.
 
 ### Approaches considered
 

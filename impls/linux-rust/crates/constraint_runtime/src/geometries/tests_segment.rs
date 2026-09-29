@@ -1,6 +1,6 @@
 use super::*;
 use crate::document::DocumentStructure;
-use crate::geom::{Geometry, GeometryId, GeometryRole, Point2, Segment, Vec2};
+use crate::geom::{CurveParam, Geometry, GeometryId, GeometryRole, Point2, Vec2};
 
 fn store_with(g: Geometry) -> DocumentStructure {
     let mut s = DocumentStructure::new();
@@ -10,6 +10,21 @@ fn store_with(g: Geometry) -> DocumentStructure {
 
 fn segment_geom(id: usize, param_offset: usize) -> Geometry {
     Segment::into_geometry(GeometryId(id), GeometryRole::Result, param_offset)
+}
+
+#[test]
+fn segment_layout_and_connectivity() {
+    let offset = 0;
+    assert_eq!(Segment::STRIDE, 4);
+    assert_eq!(
+        Segment::params(Point2::new(0.0, 0.0), Point2::new(1.0, 0.0)),
+        [0.0, 0.0, 1.0, 0.0]
+    );
+    assert_eq!(
+        segment_geom(0, offset).connectivity().global_indices,
+        vec![0, 1, 2, 3]
+    );
+    assert_eq!(Segment::all_param_indices(2), [2, 3, 4, 5]);
 }
 
 #[test]
