@@ -4,8 +4,8 @@
 
 use crate::document::DocumentStructure;
 use crate::expr::PointExpr;
-use crate::geom::{GeometryBody, GeometryId, GeometryRole, Point2};
-use crate::geometries::Segment;
+use crate::geom::{GeometryId, GeometryRole, Point2};
+use crate::geometries::{GeometryBody, Segment};
 
 /// Which geometries contribute edges to a Mesh.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

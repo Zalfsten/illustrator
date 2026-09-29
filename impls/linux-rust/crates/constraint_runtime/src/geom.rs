@@ -10,7 +10,7 @@
 //! Concrete kinds (layout + formulas) live under [`crate::geometries`].
 
 use crate::connectivity::Connectivity;
-use crate::geometries::Segment;
+use crate::geometries::GeometryBody;
 use std::ops::{Add, Mul, Neg, Sub};
 
 /// Free vector in the plane (displacement, direction, difference of points).
@@ -184,20 +184,6 @@ pub struct Geometry {
     /// Start index of this geometry's contiguous parameter block in State.
     pub param_offset: usize,
     pub body: GeometryBody,
-}
-
-/// Kind-specific payload (charts). Shared fields live on [`Geometry`].
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum GeometryBody {
-    Segment,
-}
-
-impl GeometryBody {
-    pub fn parameter_count(self) -> usize {
-        match self {
-            GeometryBody::Segment => Segment::STRIDE,
-        }
-    }
 }
 
 impl Geometry {

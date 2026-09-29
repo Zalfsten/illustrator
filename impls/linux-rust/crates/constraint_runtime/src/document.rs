@@ -3,7 +3,8 @@
 use std::collections::HashMap;
 
 use crate::constraint::Constraint;
-use crate::geom::{Geometry, GeometryBody, GeometryId, GeometryRole};
+use crate::geom::{Geometry, GeometryId, GeometryRole};
+use crate::geometries::GeometryBody;
 use crate::store::GeometryStore;
 
 /// Contiguous continuous parameters for a sketch.

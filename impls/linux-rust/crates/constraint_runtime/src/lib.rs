@@ -21,9 +21,9 @@ pub use constraint::Constraint;
 pub use document::{Document, DocumentStructure, State};
 pub use expr::{PointExpr, VecExpr};
 pub use geom::{
-    CurveParam, Geometry, GeometryBody, GeometryId, GeometryRole, Point2, Vec2,
+    CurveParam, Geometry, GeometryId, GeometryRole, Point2, Vec2,
 };
-pub use geometries::Segment;
+pub use geometries::{GeometryBody, Segment};
 pub use store::GeometryStore;
 pub use interact::{DragSession, InteractiveSolve, SoftTerms, SolveError};
 pub use mesh::{Mesh, MeshEdge, MeshFilter};

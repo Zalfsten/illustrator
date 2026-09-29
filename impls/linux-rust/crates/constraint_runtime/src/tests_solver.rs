@@ -2,8 +2,8 @@ use super::*;
 use crate::assemble::AssembledSystem;
 use crate::constraint::Constraint;
 use crate::document::Document;
-use crate::geom::{GeometryBody, GeometryId, GeometryRole, Point2};
-use crate::geometries::Segment;
+use crate::geom::{GeometryId, GeometryRole, Point2};
+use crate::geometries::{GeometryBody, Segment};
 
 #[test]
 fn stub_backend_swaps() {

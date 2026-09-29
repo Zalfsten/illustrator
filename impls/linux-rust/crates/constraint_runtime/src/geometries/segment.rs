@@ -1,9 +1,8 @@
 //! Line segment: State layout, chart sampling, and point/vector formulas.
 
 use crate::expr::{PointExpr, VecExpr};
-use crate::geom::{
-    CurveParam, Geometry, GeometryBody, GeometryId, GeometryRole, Point2, Vec2,
-};
+use crate::geom::{CurveParam, Geometry, GeometryId, GeometryRole, Point2, Vec2};
+use crate::geometries::GeometryBody;
 use crate::store::GeometryStore;
 
 /// Line-segment chart. Parameters live at `p[offset..offset+STRIDE]` on the

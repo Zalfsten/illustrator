@@ -68,8 +68,9 @@ context: |
 
   Rust module and unit-test layout (impls/linux-rust):
   constraint_runtime splits geometry concerns: geom (shared types: Point2/Vec2,
-  Geometry shell, CurveParam, ids/roles), geometries/ (one file per kind —
-  Segment owns layout, chart sampling, and its Point/Vec formulas + factories),
+  Geometry shell, CurveParam, ids/roles), geometries/ (GeometryBody catalog plus
+  one file per kind — Segment owns layout, chart sampling, and its Point/Vec
+  formulas + factories),
   expr (opaque PointExpr/VecExpr wrappers over kind formulas), store
   (GeometryStore port), document (structure + State + id index). Prefer sibling
   files once a module has unit tests: src/<module>.rs for

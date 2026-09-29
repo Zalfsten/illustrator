@@ -1,7 +1,7 @@
 use super::*;
 use crate::constraint::Constraint;
-use crate::geom::{GeometryBody, GeometryId, GeometryRole, Point2};
-use crate::geometries::Segment;
+use crate::geom::{GeometryId, GeometryRole, Point2};
+use crate::geometries::{GeometryBody, Segment};
 use crate::solver::StubSolver;
 
 #[test]

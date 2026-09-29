@@ -1,6 +1,6 @@
 use super::*;
-use crate::geom::{GeometryBody, GeometryRole, Point2};
-use crate::geometries::Segment;
+use crate::geom::{GeometryRole, Point2};
+use crate::geometries::{GeometryBody, Segment};
 
 #[test]
 fn two_segment_join_connectivity_indices() {
