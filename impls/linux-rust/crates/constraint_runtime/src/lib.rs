@@ -6,7 +6,6 @@ pub mod ceres_solver;
 pub mod connectivity;
 pub mod constraint;
 pub mod document;
-pub mod expr;
 pub mod geom;
 pub mod geometries;
 pub mod interact;
@@ -19,16 +18,15 @@ pub use ceres_solver::CeresSolver;
 pub use connectivity::Connectivity;
 pub use constraint::Constraint;
 pub use document::{Document, DocumentStructure, State};
-pub use expr::{PointExpr, VecExpr};
 pub use geom::{
     CurveParam, Geometry, GeometryId, GeometryRole, Point2, Vec2,
 };
-pub use geometries::{GeometryBody, Segment};
-pub use store::GeometryStore;
+pub use geometries::{GeometryBody, PointExpr, Segment, VecExpr};
 pub use interact::{DragSession, InteractiveSolve, SoftTerms, SolveError};
 pub use mesh::{Mesh, MeshEdge, MeshFilter};
 pub use solver::{
     LmSolver, SolveOutcome, SolverOptions, SolverPort, StubSolver, SystemEval, ffi,
 };
+pub use store::GeometryStore;
 
 pub const SOLVE_TOL: f64 = 1e-6;

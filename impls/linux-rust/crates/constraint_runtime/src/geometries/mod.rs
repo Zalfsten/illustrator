@@ -1,10 +1,14 @@
 //! Concrete geometry kinds (charts). One file per kind.
 //!
-//! [`GeometryBody`] is the kind catalog: extend it (and `parameter_count`) when
-//! adding a new geometry file under this module.
+//! Extend when adding a geometry:
+//! - new `mod` + file under this directory
+//! - [`GeometryBody`] variant + `parameter_count`
+//! - [`expr::PointExpr`] / [`expr::VecExpr`] outer formula catalogs
 
+pub mod expr;
 pub mod segment;
 
+pub use expr::{PointExpr, VecExpr};
 pub use segment::Segment;
 
 /// Kind-specific payload (charts). Shared fields live on [`crate::geom::Geometry`].

@@ -1,7 +1,7 @@
 //! Structural constraints: local residuals and analytical local Jacobians.
 
 use crate::connectivity::Connectivity;
-use crate::expr::PointExpr;
+use crate::geometries::PointExpr;
 use crate::geom::{GeometryId, Point2};
 use crate::geometries::Segment;
 use crate::store::GeometryStore;

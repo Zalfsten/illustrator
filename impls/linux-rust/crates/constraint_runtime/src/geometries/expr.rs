@@ -1,16 +1,17 @@
 //! Opaque point/vector expressions (Model B).
 //!
-//! Formula catalogs live with each geometry kind under [`crate::geometries`].
-//! This module only wraps those catalogs so constraints and Interact never
-//! match on formula kinds.
+//! Per-kind formula catalogs live in the kind modules (e.g. [`super::segment`]).
+//! This file only wraps those catalogs so constraints and Interact never match
+//! on formula kinds. Extend the outer enums when adding a geometry kind.
 
-use crate::geometries::segment;
 use crate::geom::{GeometryId, Point2, Vec2};
 use crate::store::GeometryStore;
 
+use super::segment;
+
 /// Opaque point expression: map from State parameters to a [`Point2`].
 ///
-/// Construct via geometry factories (e.g. [`crate::geometries::Segment::start_expr`]).
+/// Construct via geometry factories (e.g. [`super::Segment::start_expr`]).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct PointExpr(PointFormula);
 
