@@ -3,7 +3,7 @@
 use crate::assemble::{AssembledSystem, SoftContribution};
 use crate::ceres_solver::CeresSolver;
 use crate::document::Document;
-use crate::geom::PointExpr;
+use crate::expr::PointExpr;
 use crate::solver::{SolverOptions, SolverPort, SystemEval};
 
 #[derive(Clone, Debug, PartialEq)]

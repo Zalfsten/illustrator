@@ -36,7 +36,7 @@ fn lm_solves_fixpoint_analytically() {
     let out = LmSolver.solve(&sys, &mut p, &SolverOptions::default());
     assert!(matches!(out, SolveOutcome::Success { .. }), "{out:?}");
     doc.restore_state(&p);
-    let q = Segment::start(doc.geometry(s0).unwrap().param_offset, doc.state());
+    let q = Segment::start_expr(s0).evaluate(&doc, doc.state());
     assert!(q.x.abs() < 1e-5 && q.y.abs() < 1e-5);
 }
 
@@ -63,7 +63,7 @@ fn lm_solves_congruence() {
     let out = LmSolver.solve(&sys, &mut p, &SolverOptions::default());
     assert!(matches!(out, SolveOutcome::Success { .. }), "{out:?}");
     doc.restore_state(&p);
-    let a = Segment::end(doc.geometry(s0).unwrap().param_offset, doc.state());
-    let b = Segment::start(doc.geometry(GeometryId(1)).unwrap().param_offset, doc.state());
+    let a = Segment::end_expr(s0).evaluate(&doc, doc.state());
+    let b = Segment::start_expr(GeometryId(1)).evaluate(&doc, doc.state());
     assert!((a.x - b.x).abs() < 1e-5 && (a.y - b.y).abs() < 1e-5);
 }

@@ -3,7 +3,8 @@
 //! Derived view only — not authoritative for parameters or constraints.
 
 use crate::document::DocumentStructure;
-use crate::geom::{GeometryBody, GeometryId, GeometryRole, Point2, PointExpr, Segment};
+use crate::expr::PointExpr;
+use crate::geom::{GeometryBody, GeometryId, GeometryRole, Point2, Segment};
 
 /// Which geometries contribute edges to a Mesh.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -57,11 +58,12 @@ impl Mesh {
             }
             match g.body {
                 GeometryBody::Segment => {
+                    let id = g.id();
                     edges.push(MeshEdge {
-                        geometry: g.id(),
+                        geometry: id,
                         role: g.role(),
-                        a: Segment::start(g.param_offset, p),
-                        b: Segment::end(g.param_offset, p),
+                        a: Segment::start_expr(id).evaluate(structure, p),
+                        b: Segment::end_expr(id).evaluate(structure, p),
                     });
                 }
             }

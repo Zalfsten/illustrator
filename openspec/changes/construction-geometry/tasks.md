@@ -2,7 +2,7 @@
 
 ## 1. Document role (constraint_runtime)
 
-- [x] 1.1 Add `GeometryRole::{Result, Construction}` and store it on `Segment` (accessible via `Geometry`); default `Result` in `add_segment`; verify unit test round-trips role on add
+- [x] 1.1 Add `GeometryRole::{Result, Construction}` on `Geometry`; default `Result` in `add_geometry`; verify unit test round-trips role on add
 - [x] 1.2 Ensure `remove_geometry` / reindex unchanged; verify existing document tests still pass
 - [x] 1.3 Re-export `GeometryRole` from `lib.rs`; verify `cargo test -p constraint_runtime` compiles
 
@@ -20,3 +20,8 @@
 ## 4. Glossary
 
 - [x] 4.1 Add construction role / presentation mode notes to `docs/constraint-mathematics.md`; verify terms match the deltas
+
+## 5. Main specs (synced from this change)
+
+- [x] 5.1 Merge construction-role, Mesh filter, and App presentation-mode requirements into `openspec/specs/geometry-ir`, `display-mesh`, and `system-architecture`
+- [x] 5.2 Align `geometry-eval` and `openspec/config.yaml` with expression-layer evaluation and linux-rust module split (geom / expr / store)

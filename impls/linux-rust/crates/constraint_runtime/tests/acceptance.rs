@@ -44,8 +44,8 @@ fn right_angle_soft_drag_keeps_orthogonal_and_congruence() {
         .expect("up");
 
     assert!(residual_ok(&doc));
-    let a = Segment::end(doc.geometry(s0).unwrap().param_offset, doc.state());
-    let b = Segment::start(doc.geometry(s1).unwrap().param_offset, doc.state());
+    let a = Segment::end_expr(s0).evaluate(&doc, doc.state());
+    let b = Segment::start_expr(s1).evaluate(&doc, doc.state());
     assert!((a.x - b.x).abs() < 1e-4 && (a.y - b.y).abs() < 1e-4);
 }
 

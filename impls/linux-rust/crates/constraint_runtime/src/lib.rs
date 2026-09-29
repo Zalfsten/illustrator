@@ -6,20 +6,23 @@ pub mod ceres_solver;
 pub mod connectivity;
 pub mod constraint;
 pub mod document;
+pub mod expr;
 pub mod geom;
 pub mod interact;
 pub mod mesh;
 pub mod solver;
+pub mod store;
 
 pub use assemble::{AssembledSystem, SoftContribution, structural_residual_norm};
 pub use ceres_solver::CeresSolver;
 pub use connectivity::Connectivity;
 pub use constraint::Constraint;
 pub use document::{Document, DocumentStructure, State};
+pub use expr::{PointExpr, VecExpr};
 pub use geom::{
-    Curve, CurveParam, Geometry, GeometryBody, GeometryId, GeometryRole, GeometryStore, Point2,
-    PointExpr, Segment, SegmentId, Vec2, VecExpr,
+    CurveParam, Geometry, GeometryBody, GeometryId, GeometryRole, Point2, Segment, Vec2,
 };
+pub use store::GeometryStore;
 pub use interact::{DragSession, InteractiveSolve, SoftTerms, SolveError};
 pub use mesh::{Mesh, MeshEdge, MeshFilter};
 pub use solver::{

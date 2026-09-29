@@ -131,7 +131,7 @@ Operations that involve more than one geometry (for example intersection of two 
 
 ### Requirement: Geometry set includes curves with segment as proving kind
 
-The system SHALL treat parameterized curves as the primary geometry kind for path-like primitives. A line segment SHALL be a curve in this sense and SHALL remain supported. DocumentStructure SHALL store geometries as a sum of kinds (of which line segment is the only required kind in this slice). Shared geometry operations (parameter count, connectivity, reindex after removal, optional curve capability) SHALL apply uniformly; kind-specific behavior SHALL be obtained by matching on kind or by querying a capability (for example curve), not by a privileged segment-only store API in the core evaluate/solve path. Additional curve kinds (circles, arcs, splines, function graphs) MAY be introduced in later changes that conform to the curve contract; this capability does not require them to be implemented yet. First-class point geometry entities and face/region geometries remain outside this requirement. A UI or renderer MAY iterate only segment geometries for paint and pick while other kinds are absent.
+The system SHALL treat parameterized curves as the primary geometry kind for path-like primitives. A line segment SHALL be a curve in this sense and SHALL remain supported. DocumentStructure SHALL store geometries as a sum of kinds (of which line segment is the only required kind in this slice). Each stored geometry SHALL carry shared metadata (stable identity, result/construction role, and its State parameter block layout) alongside kind-specific payload. Shared geometry operations (parameter count, connectivity, reindex after removal, optional curve capability, role) SHALL apply uniformly; kind-specific behavior SHALL be obtained by matching on kind or by querying a capability (for example curve), not by a privileged segment-only store API in the core evaluate/solve path. Additional curve kinds (circles, arcs, splines, function graphs) MAY be introduced in later changes that conform to the curve contract; this capability does not require them to be implemented yet. First-class point geometry entities and face/region geometries remain outside this requirement. Canvas paint and Mesh-backed pick SHALL use the display Mesh (or equivalent) rather than iterating document geometries by kind.
 
 #### Scenario: Segment remains an admitted curve
 
@@ -145,9 +145,41 @@ The system SHALL treat parameterized curves as the primary geometry kind for pat
 - **THEN** the document satisfies this capability's geometry-set obligations
 - **AND** absence of circle or spline kinds is not a violation
 
+#### Scenario: Construction and result segments share the same kind API
+
+- **WHEN** a document contains both a construction segment and a result segment
+- **THEN** both are segment curve geometries under this capability
+- **AND** they differ by role, not by a separate geometry kind
+
+### Requirement: Geometries have a result or construction role
+
+Each geometry in DocumentStructure SHALL have a role that is either **result** or **construction**. The role SHALL be part of DocumentStructure (persistent sketch data), not solely transient UI state. Construction geometries SHALL remain parameterized geometries that participate in relationships, expression evaluation, and assembly like result geometries. The role SHALL NOT by itself remove a geometry from DocumentStructure or from the State parameter vector.
+
+#### Scenario: Construction geometry still constrains
+
+- **WHEN** a construction line segment and a result line segment are related by a structural constraint
+- **AND** the equation system is assembled and solved
+- **THEN** the construction geometry's parameters participate in residuals like any other geometry
+- **AND** the construction role does not exempt it from hard structural constraints
+
+#### Scenario: Role is inspectable without evaluating State
+
+- **WHEN** DocumentStructure is inspected without reading State \(p\)
+- **THEN** each geometry's result vs construction role is determined by DocumentStructure alone
+
+### Requirement: Curve quantities are exposed through expressions
+
+For evaluate/solve and constraint assembly, derived locations and frame vectors on curves (endpoints where applicable, on-curve samples, tangent, normal, segment direction) SHALL be obtained through **point expressions** and **vector expressions** that name geometries by stable identity. Implementations SHALL NOT require callers on the production evaluate/solve path to invoke geometry-kind-specific imperative sampling APIs that take State directly in place of those expressions. Geometries (or their chart helpers) MAY construct the expressions; evaluation, connectivity, and analytical Jacobians for constraints SHALL go through the expression layer.
+
+#### Scenario: Midpoint constraint uses an on-curve expression
+
+- **WHEN** a structural relationship binds a location on a segment at normalized mid-parameter
+- **THEN** the relationship references an on-curve point expression for that geometry
+- **AND** assembly evaluates that expression against DocumentStructure and State rather than a separate geometry-only sampling entry point
+
 ### Requirement: Geometries are resolved by stable identity without scanning the full set
 
-Each geometry in DocumentStructure SHALL have a stable geometry identity. DocumentStructure SHALL resolve a geometry identity to the corresponding geometry for expression evaluation, residual evaluation, and Jacobian assembly without scanning every geometry in the document for each lookup (lookup cost SHALL be independent of the number of geometries, aside from ordinary hash/map overhead). Constraints and expressions that name geometries SHALL use that identity. Removing a geometry SHALL drop the identity from the resolution map and invalidate or drop constraints that referenced it, consistent with existing structural-edit rules.
+Each geometry in DocumentStructure SHALL have a stable geometry identity. DocumentStructure (or an equivalent read-only geometry resolution port implemented for it) SHALL resolve a geometry identity to the corresponding geometry metadata for expression evaluation, residual evaluation, and Jacobian assembly without scanning every geometry in the document for each lookup (lookup cost SHALL be independent of the number of geometries, aside from ordinary hash/map overhead). Constraints and expressions that name geometries SHALL use that identity. Removing a geometry SHALL drop the identity from the resolution map and invalidate or drop constraints that referenced it, consistent with existing structural-edit rules.
 
 #### Scenario: Evaluate resolves a named geometry without a full scan
 

@@ -17,7 +17,8 @@ Behavioral contracts live in OpenSpec capabilities (`geometry-ir`, `state-vector
 | **World coordinates** | Durable planar frame for Document State and Mesh edge positions. **y-up** (scientific/mathematical): $+y$ points upward. Not window pixels. |
 | **Viewport** | App/UI session mapping between world and screen coordinates: uniform scale, origin, and y-flip for toolkits with $+y$ downward. Paint uses world→screen; pointer input and pixel pick radii use screen→world (`r_{\mathrm{world}}=r_{\mathrm{px}}/\mathrm{scale}`). |
 | **Point expression** | Opaque handle to a (private catalog of) **point formula**(s): a map from geometry State parameters to a 2D **point**. Not a free-standing point entity and not a coordinate snapshot. Geometries construct formulas (e.g. segment start/end / on-curve); constraints and Interact only evaluate them — they do not match on formula kinds. |
-| **Point formula** | Concrete eval / parameter indices / Jacobian for one point expression. In linux-rust the formula kinds are a private enum behind `PointExpr` (Model B). |
+| **Point formula** | Concrete eval / parameter indices / Jacobian for one point expression. In linux-rust the formula kinds are a private enum behind `PointExpr` (Model B): `StartPoint`, `EndPoint`, `OnCurve { param }`. |
+| **GeometryStore** | Read-only port to resolve `GeometryId` → geometry metadata for expression evaluation (linux-rust: `store.rs`; `DocumentStructure` / `Document` implement it). |
 | **Vector expression** | Opaque handle to a map from geometry parameters to a free **vector** (e.g. segment direction, curve tangent or normal). Same opacity principle as point expressions. |
 | **Normalized curve parameter** | Chart coordinate \(t \in [0,1]\): the curve's native formula domain affinely mapped to the unit interval. Equal \(\Delta t\) need not mean equal arc length. |
 | **Uniform curve parameter** | Arc-length fraction \(u \in [0,1]\): equal \(\Delta u\) means equal arc length along the curve. For a line segment, Normalized and Uniform coincide. |
@@ -40,7 +41,7 @@ Behavioral contracts live in OpenSpec capabilities (`geometry-ir`, `state-vector
 
 **Why:** Call sites should see “a point/vector map”, not `Endpoint | OnCurve | …`. A small fixed catalog stays data-driven (`PartialEq`, `Copy`, easy Debug/serde) without exposing variants. True openness (trait objects / closures) was tried and rejected for this codebase in favor of this facade — see approaches below.
 
-**Consequences (linux-rust):** Private `PointFormula` / `VecFormula` enums; public `PointExpr(…)` / `VecExpr(…)`. Segment factories: `start_expr` / `end_expr` / `on_curve_expr` and `direction_expr` / `tangent_expr` / `normal_expr` (plus instance helpers). Central `match` lives only inside those expression types, not in the constraint path.
+**Consequences (linux-rust):** Private `PointFormula` / `VecFormula` enums in `expr`; public `PointExpr` / `VecExpr`. Segment factories: `start_expr` / `end_expr` / `on_curve_expr` and `direction_expr` / `tangent_expr` / `normal_expr`. Layout lives in `geom`; State evaluation only in `expr`. Central `match` lives only inside those expression types, not in the constraint path.
 
 ### Approaches considered
 

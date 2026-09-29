@@ -6,32 +6,32 @@ Defines that geometries (and derived constraint contributions) expose evaluable 
 
 ## Requirements
 
-### Requirement: Geometries expose evaluation functions
+### Requirement: Expressions evaluate geometry quantities from State
 
-A geometry SHALL provide evaluation functions that map its local parameters to geometric quantities needed by the system (for example endpoint locations, curve position, tangent, and normal at a normalized parameter, direction vectors, or other chart-defined outputs). These functions express results in terms of the geometry’s local parameterization. Point-valued outputs SHALL be distinguished from free-vector-valued outputs.
+The production evaluate/solve path SHALL obtain geometric quantities needed by residuals and assembly (endpoint locations, on-curve samples, tangent and normal vectors, segment direction, and other chart-defined outputs) by evaluating **point expressions** and **vector expressions** against DocumentStructure (or an equivalent geometry-resolution port) and an explicit State \(p\). Those expressions SHALL map the involved geometries' local parameters (via connectivity into \(p\)) to points or free vectors. Point-valued outputs SHALL be distinguished from free-vector-valued outputs.
 
-#### Scenario: Endpoint evaluation depends on local parameters
+#### Scenario: Endpoint expression depends on local parameters
 
-- **WHEN** a line segment geometry is asked for an endpoint location
-- **THEN** the result is computed from that segment’s local parameters
-- **AND** those local parameters are the ones referenced in the global state vector
+- **WHEN** a point expression for a segment endpoint is evaluated at a given State
+- **THEN** the result is computed from that segment’s local parameters in \(p\)
+- **AND** those parameters are the ones referenced by the segment’s connectivity
 
-#### Scenario: Curve mid-parameter evaluation depends on local parameters
+#### Scenario: On-curve sample depends on local parameters
 
-- **WHEN** a line segment curve is asked for its position at normalized \(t = 0.5\)
-- **THEN** the result is computed from that segment’s local parameters
+- **WHEN** an on-curve point expression on a line segment is evaluated at normalized \(t = 0.5\)
+- **THEN** the result is computed from that segment’s local parameters in \(p\)
 - **AND** the result is a point, not a free vector
 
-### Requirement: Geometries expose derivatives w.r.t. local parameters
+### Requirement: Expressions expose derivatives w.r.t. local parameters
 
-A geometry SHALL provide analytical derivatives of its exposed quantities with respect to its local parameters (or equivalent analytical derivative information sufficient to form local Jacobian contributions). The production path for Jacobian assembly SHALL use those analytical derivatives. Finite-difference approximation SHALL NOT be used as a fallback or as the production Jacobian path.
+Point and vector expressions that appear in structural constraints SHALL provide analytical derivative information with respect to the local parameters they depend on (or equivalent information sufficient to form local Jacobian contributions). The production path for Jacobian assembly SHALL use those analytical derivatives. Finite-difference approximation SHALL NOT be used as a fallback or as the production Jacobian path.
 
 #### Scenario: Local Jacobian contribution can be formed analytically
 
-- **WHEN** a residual contribution depends on a geometry quantity
-- **AND** assembly requests derivatives of that residual w.r.t. the geometry’s local parameters
-- **THEN** the system can obtain those derivatives from analytical geometry/constraint derivative information
-- **AND** the resulting local Jacobian block is defined with respect to the geometry’s local parameter ordering
+- **WHEN** a residual contribution depends on a quantity obtained from a point or vector expression
+- **AND** assembly requests derivatives of that residual w.r.t. the involved geometries’ local parameters
+- **THEN** the system can obtain those derivatives from analytical expression/constraint derivative information
+- **AND** the resulting local Jacobian block is defined with respect to the involved local parameter ordering
 
 ### Requirement: Constraints contribute residuals and local Jacobians
 
@@ -43,22 +43,22 @@ Each structural constraint SHALL define a residual contribution \(r_N\) as a fun
 - **THEN** it produces a residual contribution of the specified arity
 - **AND** it produces local partial derivatives of that residual w.r.t. the involved local parameters
 
-### Requirement: Curves evaluate position, tangent, and normal with derivatives
+### Requirement: Curve frame expressions evaluate with derivatives
 
-A curve geometry SHALL evaluate its normalized position (as a point), tangent (as a free vector), and normal (as a free vector) at a requested normalized parameter \(t \in [0,1]\) from its local parameters in the supplied state, using the length and orientation semantics of the curve contract (tangent = chart derivative; normal = leftward planar rotate of tangent with equal length). It SHALL provide analytical derivatives of those quantities with respect to its local parameters sufficient to form Jacobian contributions when those quantities appear in residuals. The production Jacobian path for these quantities SHALL be analytical; finite-difference approximation SHALL NOT be used as a substitute for those derivatives.
+For curve geometries, on-curve point expressions and tangent/normal vector expressions at a stated curve parameter SHALL evaluate from local parameters in the supplied State using the length and orientation semantics of the curve contract (tangent = chart derivative; normal = leftward planar rotate of tangent with equal length). They SHALL provide analytical derivatives with respect to the involved local parameters sufficient to form Jacobian contributions when those expressions appear in residuals. The production Jacobian path for these quantities SHALL be analytical; finite-difference approximation SHALL NOT be used as a substitute for those derivatives.
 
-#### Scenario: Segment tangent derivatives feed assembly
+#### Scenario: Segment tangent expression derivatives feed assembly
 
-- **WHEN** a residual depends on a segment's tangent free vector at a normalized parameter
+- **WHEN** a residual depends on a vector expression for a segment's tangent at a normalized parameter
 - **AND** assembly requests derivatives w.r.t. that segment's local parameters
-- **THEN** analytical derivative information for the tangent map is available
+- **THEN** analytical derivative information for that vector expression is available
 - **AND** the local Jacobian block uses the segment's local parameter ordering
 
 #### Scenario: Segment normal matches rotate of tangent
 
-- **WHEN** a line segment's tangent and normal are evaluated at the same normalized \(t\)
+- **WHEN** a line segment's tangent and normal vector expressions are evaluated at the same normalized \(t\) and State
 - **THEN** the normal equals the leftward rotate of the tangent
-- **AND** analytical derivatives of the normal are consistent with differentiating that rotate of the tangent
+- **AND** analytical derivatives of the normal expression are consistent with differentiating that rotate of the tangent
 
 ### Requirement: On-curve and Uniform parameters are evaluable
 

@@ -1,7 +1,9 @@
 //! Structural constraints: local residuals and analytical local Jacobians.
 
 use crate::connectivity::Connectivity;
-use crate::geom::{GeometryId, GeometryStore, Point2, PointExpr, Segment};
+use crate::expr::PointExpr;
+use crate::geom::{GeometryId, Point2, Segment};
+use crate::store::GeometryStore;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Constraint {
@@ -36,9 +38,7 @@ impl Constraint {
                 idx.extend(store.expect_geometry(*b).connectivity().global_indices);
                 Connectivity::new(idx)
             }
-            Constraint::FixPoint { point, .. } => {
-                Connectivity::new(point.param_indices(store))
-            }
+            Constraint::FixPoint { point, .. } => Connectivity::new(point.param_indices(store)),
         }
     }
 
