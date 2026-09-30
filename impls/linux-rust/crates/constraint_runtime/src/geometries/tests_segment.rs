@@ -26,7 +26,7 @@ fn segment_layout_and_connectivity() {
         segment_geom(0, offset).connectivity().global_indices,
         vec![0, 1, 2, 3]
     );
-    assert_eq!(Segment::all_param_indices(2), [2, 3, 4, 5]);
+    assert_eq!(Segment::param_block(2), 2..6);
 }
 
 #[test]

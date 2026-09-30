@@ -37,17 +37,6 @@ impl Segment {
         }
     }
 
-    pub fn all_param_indices(offset: usize) -> [usize; 4] {
-        debug_assert_eq!(Self::PARAMETER_COUNT, 4);
-        let block = offset..offset + Self::PARAMETER_COUNT;
-        [
-            block.start,
-            block.start + 1,
-            block.start + 2,
-            block.start + 3,
-        ]
-    }
-
     /// Point formula for the start endpoint of the segment identified by `id`.
     pub fn start_expr(id: GeometryId) -> PointExpr {
         PointExpr::from_segment(PointFormula::StartPoint(StartPoint { geometry: id }))
