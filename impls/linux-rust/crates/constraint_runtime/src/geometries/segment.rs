@@ -1,6 +1,6 @@
 //! Line segment: State layout, chart sampling, and point/vector formulas.
 
-use super::{GeometryBody, PointExpr, VecExpr};
+use super::{GeometryBody, PointExpr, PointJacobian, VecExpr};
 use crate::geom::{CurveParam, Geometry, GeometryId, GeometryRole, Point2, Vec2};
 use crate::store::GeometryStore;
 
@@ -101,13 +101,11 @@ impl PointFormula {
         &self,
         store: &impl GeometryStore,
         p: &[f64],
-        dx: &mut [f64],
-        dy: &mut [f64],
-    ) {
+    ) -> PointJacobian {
         match self {
-            PointFormula::StartPoint(f) => f.eval_point_jacobian(store, p, dx, dy),
-            PointFormula::EndPoint(f) => f.eval_point_jacobian(store, p, dx, dy),
-            PointFormula::OnCurve(f) => f.eval_point_jacobian(store, p, dx, dy),
+            PointFormula::StartPoint(f) => f.eval_point_jacobian(store, p),
+            PointFormula::EndPoint(f) => f.eval_point_jacobian(store, p),
+            PointFormula::OnCurve(f) => f.eval_point_jacobian(store, p),
         }
     }
 
@@ -139,10 +137,8 @@ impl StartPoint {
         &self,
         _store: &impl GeometryStore,
         _p: &[f64],
-        dx: &mut [f64],
-        dy: &mut [f64],
-    ) {
-        endpoint_jacobian(dx, dy);
+    ) -> PointJacobian {
+        PointJacobian::endpoint_identity()
     }
 }
 
@@ -165,10 +161,8 @@ impl EndPoint {
         &self,
         _store: &impl GeometryStore,
         _p: &[f64],
-        dx: &mut [f64],
-        dy: &mut [f64],
-    ) {
-        endpoint_jacobian(dx, dy);
+    ) -> PointJacobian {
+        PointJacobian::endpoint_identity()
     }
 }
 
@@ -194,21 +188,18 @@ impl OnCurve {
         &self,
         store: &impl GeometryStore,
         _p: &[f64],
-        dx: &mut [f64],
-        dy: &mut [f64],
-    ) {
+    ) -> PointJacobian {
         let g = store.expect_geometry(self.geometry);
-        let n = g.connectivity().len();
-        assert_eq!(dx.len(), n);
-        assert_eq!(dy.len(), n);
-        dx.fill(0.0);
-        dy.fill(0.0);
         debug_assert!(matches!(g.body, GeometryBody::Segment));
+        let n = g.connectivity().len();
+        debug_assert_eq!(n, Segment::STRIDE);
+        let mut j = PointJacobian::zeros(n);
         let t = self.param.chart_t();
-        dx[0] = 1.0 - t;
-        dy[1] = 1.0 - t;
-        dx[2] = t;
-        dy[3] = t;
+        j.set_dx_dy(0, 1.0 - t, 0.0);
+        j.set_dx_dy(1, 0.0, 1.0 - t);
+        j.set_dx_dy(2, t, 0.0);
+        j.set_dx_dy(3, 0.0, t);
+        j
     }
 }
 
@@ -282,15 +273,6 @@ fn segment_offset(store: &impl GeometryStore, id: GeometryId) -> usize {
     let g = store.expect_geometry(id);
     debug_assert!(matches!(g.body, GeometryBody::Segment));
     g.param_offset
-}
-
-fn endpoint_jacobian(dx: &mut [f64], dy: &mut [f64]) {
-    assert_eq!(dx.len(), 2);
-    assert_eq!(dy.len(), 2);
-    dx.fill(0.0);
-    dy.fill(0.0);
-    dx[0] = 1.0;
-    dy[1] = 1.0;
 }
 
 fn start(offset: usize, p: &[f64]) -> Point2 {

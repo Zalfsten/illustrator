@@ -79,21 +79,19 @@ impl Constraint {
 
         match self {
             Constraint::Congruence { a, b } => {
-                let na = a.param_indices(store).len();
-                let nb = b.param_indices(store).len();
-                let mut dax = vec![0.0; na];
-                let mut day = vec![0.0; na];
-                let mut dbx = vec![0.0; nb];
-                let mut dby = vec![0.0; nb];
-                a.eval_point_jacobian(store, p, &mut dax, &mut day);
-                b.eval_point_jacobian(store, p, &mut dbx, &mut dby);
+                let ja = a.eval_point_jacobian(store, p);
+                let jb = b.eval_point_jacobian(store, p);
+                let na = ja.n();
+                let nb = jb.n();
+                debug_assert_eq!(na, a.param_indices(store).len());
+                debug_assert_eq!(nb, b.param_indices(store).len());
                 for i in 0..na {
-                    out[0 * n_local + i] = dax[i];
-                    out[1 * n_local + i] = day[i];
+                    out[0 * n_local + i] = ja.dx()[i];
+                    out[1 * n_local + i] = ja.dy()[i];
                 }
                 for j in 0..nb {
-                    out[0 * n_local + na + j] = -dbx[j];
-                    out[1 * n_local + na + j] = -dby[j];
+                    out[0 * n_local + na + j] = -jb.dx()[j];
+                    out[1 * n_local + na + j] = -jb.dy()[j];
                 }
             }
             Constraint::Parallel { a, b } => {
@@ -121,13 +119,11 @@ impl Constraint {
                 out[7] = va.y;
             }
             Constraint::FixPoint { point, .. } => {
-                let n = point.param_indices(store).len();
-                let mut dx = vec![0.0; n];
-                let mut dy = vec![0.0; n];
-                point.eval_point_jacobian(store, p, &mut dx, &mut dy);
-                for i in 0..n {
-                    out[0 * n_local + i] = dx[i];
-                    out[1 * n_local + i] = dy[i];
+                let j = point.eval_point_jacobian(store, p);
+                debug_assert_eq!(j.n(), point.param_indices(store).len());
+                for i in 0..j.n() {
+                    out[0 * n_local + i] = j.dx()[i];
+                    out[1 * n_local + i] = j.dy()[i];
                 }
             }
         }

@@ -99,16 +99,14 @@ fn oncurve_uniform_matches_normalized_on_segment() {
     assert_eq!(a, b);
     assert_eq!(a, Point2::new(2.0, 3.5));
 
-    let mut dx_n = [0.0; 4];
-    let mut dy_n = [0.0; 4];
-    let mut dx_u = [0.0; 4];
-    let mut dy_u = [0.0; 4];
-    Segment::on_curve_expr(GeometryId(0), CurveParam::Normalized(u))
-        .eval_point_jacobian(&store, &p, &mut dx_n, &mut dy_n);
-    Segment::on_curve_expr(GeometryId(0), CurveParam::Uniform(u))
-        .eval_point_jacobian(&store, &p, &mut dx_u, &mut dy_u);
-    assert_eq!(dx_n, dx_u);
-    assert_eq!(dy_n, dy_u);
+    let jn = Segment::on_curve_expr(GeometryId(0), CurveParam::Normalized(u))
+        .eval_point_jacobian(&store, &p);
+    let ju = Segment::on_curve_expr(GeometryId(0), CurveParam::Uniform(u))
+        .eval_point_jacobian(&store, &p);
+    assert_eq!(jn.n(), 4);
+    assert_eq!(ju.n(), 4);
+    assert_eq!(jn.dx(), ju.dx());
+    assert_eq!(jn.dy(), ju.dy());
 }
 
 #[test]
