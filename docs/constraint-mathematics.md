@@ -11,7 +11,9 @@ Behavioral contracts live in OpenSpec capabilities (`geometry-ir`, `state-vector
 |------|---------|
 | **DocumentStructure** | Discrete sketch: geometries, structural constraints, and the connectivity schema that maps local parameters into indices of a state vector. Independent of GUI and of any concrete solver algorithm. |
 | **State** $p$ | First-class contiguous vector of continuous scalars (degrees of freedom). One State length matches one DocumentStructure's parameter count. The Document holds a **committed** State; Interact/solvers use **working** States of the same kind. In linux-rust: `state::State` (owned), not a bare ad-hoc `Vec` as the authority. |
-| **Document** | Composite of DocumentStructure plus a **committed** State. |
+| **Document** | Composite of DocumentStructure plus a **committed** State. **Structural sync point:** add/remove geometry updates structure and State together through this composite (kinds only pack initial chart parameters). |
+| **Chart (kind)** | Kind-owned packing of initial parameters and formula catalog for that geometry kind. Does not mutate DocumentStructure or State by itself. |
+| **Parameter window** | Contiguous index range on a geometry record (offset + count) identifying that geometry's slots in State; evaluate/formulas read \(p\) through this window. |
 | **Vec2 / free vector** | Displacement or direction in the plane. Fundamental linear quantity: difference of points, segment direction, etc. |
 | **Point2 / point** | Affine location. May be written as a position vector relative to an origin, but is not a free vector. $P - Q$ is a vector; $P + v$ is a point; $P + Q$ is not meaningful. |
 | **World coordinates** | Durable planar frame for Document State and Mesh edge positions. **y-up** (scientific/mathematical): $+y$ points upward. Not window pixels. |

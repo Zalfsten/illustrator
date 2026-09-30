@@ -1,7 +1,9 @@
 //! Line segment: State layout, chart sampling, and point/vector formulas.
 
-use super::{GeometryBody, PointExpr, PointJacobian, VecExpr};
-use crate::geom::{CurveParam, Geometry, GeometryId, GeometryRole, Point2, Vec2};
+use super::{Chart, GeometryBody, PointExpr, PointJacobian, VecExpr};
+use crate::geom::{CurveParam, GeometryId, Point2, Vec2};
+#[cfg(test)]
+use crate::geom::{Geometry, GeometryRole};
 use crate::state::State;
 use crate::store::GeometryStore;
 
@@ -10,17 +12,23 @@ use crate::store::GeometryStore;
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct Segment;
 
+impl Chart for Segment {
+    type Init = (Point2, Point2);
+
+    const BODY: GeometryBody = GeometryBody::Segment;
+
+    fn pack((a, b): Self::Init) -> impl AsRef<[f64]> {
+        [a.x, a.y, b.x, b.y]
+    }
+}
+
 impl Segment {
     /// Number of State parameters for one segment (`x1,y1,x2,y2`).
     pub const STRIDE: usize = 4;
 
-    /// Initial State parameters for a segment from endpoints `(a, b)`.
-    pub fn params(a: Point2, b: Point2) -> [f64; 4] {
-        [a.x, a.y, b.x, b.y]
-    }
-
-    /// Build a document [`Geometry`] with a segment body.
-    pub fn into_geometry(id: GeometryId, role: GeometryRole, param_offset: usize) -> Geometry {
+    /// Build a document [`Geometry`] with a segment body (crate tests).
+    #[cfg(test)]
+    pub(crate) fn into_geometry(id: GeometryId, role: GeometryRole, param_offset: usize) -> Geometry {
         Geometry {
             id,
             role,
@@ -30,7 +38,13 @@ impl Segment {
     }
 
     pub fn all_param_indices(offset: usize) -> [usize; 4] {
-        [offset, offset + 1, offset + 2, offset + 3]
+        let block = offset..offset + Self::STRIDE;
+        [
+            block.start,
+            block.start + 1,
+            block.start + 2,
+            block.start + 3,
+        ]
     }
 
     /// Point formula for the start endpoint of the segment identified by `id`.
@@ -126,11 +140,11 @@ pub(crate) struct StartPoint {
 
 impl StartPoint {
     fn evaluate(&self, store: &impl GeometryStore, p: &State) -> Point2 {
-        start(segment_offset(store, self.geometry), p)
+        start(segment_block(store, self.geometry).start, p)
     }
 
     fn param_indices(&self, store: &impl GeometryStore) -> Vec<usize> {
-        let o = segment_offset(store, self.geometry);
+        let o = segment_block(store, self.geometry).start;
         vec![o, o + 1]
     }
 
@@ -150,11 +164,11 @@ pub(crate) struct EndPoint {
 
 impl EndPoint {
     fn evaluate(&self, store: &impl GeometryStore, p: &State) -> Point2 {
-        end(segment_offset(store, self.geometry), p)
+        end(segment_block(store, self.geometry).start, p)
     }
 
     fn param_indices(&self, store: &impl GeometryStore) -> Vec<usize> {
-        let o = segment_offset(store, self.geometry) + 2;
+        let o = segment_block(store, self.geometry).start + 2;
         vec![o, o + 1]
     }
 
@@ -175,7 +189,7 @@ pub(crate) struct OnCurve {
 
 impl OnCurve {
     fn evaluate(&self, store: &impl GeometryStore, p: &State) -> Point2 {
-        position_at(segment_offset(store, self.geometry), self.param.chart_t(), p)
+        position_at(segment_block(store, self.geometry).start, self.param.chart_t(), p)
     }
 
     fn param_indices(&self, store: &impl GeometryStore) -> Vec<usize> {
@@ -237,7 +251,7 @@ pub(crate) struct Direction {
 
 impl Direction {
     fn evaluate(&self, store: &impl GeometryStore, p: &State) -> Vec2 {
-        direction(segment_offset(store, self.geometry), p)
+        direction(segment_block(store, self.geometry).start, p)
     }
 }
 
@@ -252,7 +266,7 @@ pub(crate) struct TangentAt {
 impl TangentAt {
     fn evaluate(&self, store: &impl GeometryStore, p: &State) -> Vec2 {
         // γ'(t) = B - A (constant on a segment); length = segment length
-        direction(segment_offset(store, self.geometry), p)
+        direction(segment_block(store, self.geometry).start, p)
     }
 }
 
@@ -266,14 +280,14 @@ pub(crate) struct NormalAt {
 
 impl NormalAt {
     fn evaluate(&self, store: &impl GeometryStore, p: &State) -> Vec2 {
-        direction(segment_offset(store, self.geometry), p).left_normal()
+        direction(segment_block(store, self.geometry).start, p).left_normal()
     }
 }
 
-fn segment_offset(store: &impl GeometryStore, id: GeometryId) -> usize {
+fn segment_block(store: &impl GeometryStore, id: GeometryId) -> std::ops::Range<usize> {
     let g = store.expect_geometry(id);
     debug_assert!(matches!(g.body, GeometryBody::Segment));
-    g.param_offset
+    g.param_block()
 }
 
 fn start(offset: usize, p: &State) -> Point2 {

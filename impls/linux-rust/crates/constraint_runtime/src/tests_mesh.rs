@@ -1,12 +1,12 @@
 use super::*;
 use crate::document::Document;
 use crate::geom::{GeometryRole, Point2};
-use crate::geometries::{GeometryBody, Segment};
+use crate::geometries::Segment;
 
 #[test]
 fn one_segment_becomes_one_edge() {
     let mut doc = Document::new();
-    let id = doc.add_geometry(GeometryRole::Result, GeometryBody::Segment, &Segment::params(Point2::new(0.0, 0.0), Point2::new(3.0, 4.0)));
+    let id = doc.add_segment(GeometryRole::Result, Point2::new(0.0, 0.0), Point2::new(3.0, 4.0));
     let mesh = Mesh::from_structure(&doc.structure, doc.state(), MeshFilter::RESULT_ONLY);
     assert_eq!(mesh.edges.len(), 1);
     let e = &mesh.edges[0];
@@ -19,7 +19,7 @@ fn one_segment_becomes_one_edge() {
 #[test]
 fn hit_endpoint_near_start_end_and_miss() {
     let mut doc = Document::new();
-    let id = doc.add_geometry(GeometryRole::Result, GeometryBody::Segment, &Segment::params(Point2::new(0.0, 0.0), Point2::new(10.0, 0.0)));
+    let id = doc.add_segment(GeometryRole::Result, Point2::new(0.0, 0.0), Point2::new(10.0, 0.0));
     let mesh = Mesh::from_structure(&doc.structure, doc.state(), MeshFilter::RESULT_ONLY);
 
     let hit_s = mesh.hit_endpoint(Point2::new(0.1, 0.0), 1.0);
@@ -34,7 +34,7 @@ fn hit_endpoint_near_start_end_and_miss() {
 #[test]
 fn hit_geometry_near_midpoint_and_miss() {
     let mut doc = Document::new();
-    let id = doc.add_geometry(GeometryRole::Result, GeometryBody::Segment, &Segment::params(Point2::new(0.0, 0.0), Point2::new(10.0, 0.0)));
+    let id = doc.add_segment(GeometryRole::Result, Point2::new(0.0, 0.0), Point2::new(10.0, 0.0));
     let mesh = Mesh::from_structure(&doc.structure, doc.state(), MeshFilter::RESULT_ONLY);
 
     assert_eq!(
@@ -47,7 +47,7 @@ fn hit_geometry_near_midpoint_and_miss() {
 #[test]
 fn mesh_tracks_state_change() {
     let mut doc = Document::new();
-    let id = doc.add_geometry(GeometryRole::Result, GeometryBody::Segment, &Segment::params(Point2::new(0.0, 0.0), Point2::new(1.0, 0.0)));
+    let id = doc.add_segment(GeometryRole::Result, Point2::new(0.0, 0.0), Point2::new(1.0, 0.0));
     doc.state_mut()[2] = 5.0;
     doc.state_mut()[3] = 0.0;
     let mesh = Mesh::from_structure(&doc.structure, doc.state(), MeshFilter::RESULT_ONLY);
@@ -58,8 +58,8 @@ fn mesh_tracks_state_change() {
 #[test]
 fn construction_omitted_from_result_only_mesh() {
     let mut doc = Document::new();
-    let result = doc.add_geometry(GeometryRole::Result, GeometryBody::Segment, &Segment::params(Point2::new(0.0, 0.0), Point2::new(1.0, 0.0)));
-    let construction = doc.add_geometry(GeometryRole::Result, GeometryBody::Segment, &Segment::params(Point2::new(0.0, 1.0), Point2::new(1.0, 1.0)));
+    let result = doc.add_segment(GeometryRole::Result, Point2::new(0.0, 0.0), Point2::new(1.0, 0.0));
+    let construction = doc.add_segment(GeometryRole::Result, Point2::new(0.0, 1.0), Point2::new(1.0, 1.0));
     assert!(doc.set_geometry_role(construction, GeometryRole::Construction));
 
     let result_only =
@@ -84,8 +84,8 @@ fn construction_omitted_from_result_only_mesh() {
 #[test]
 fn result_only_hits_ignore_construction() {
     let mut doc = Document::new();
-    let _result = doc.add_geometry(GeometryRole::Result, GeometryBody::Segment, &Segment::params(Point2::new(0.0, 0.0), Point2::new(10.0, 0.0)));
-    let construction = doc.add_geometry(GeometryRole::Result, GeometryBody::Segment, &Segment::params(Point2::new(0.0, 5.0), Point2::new(10.0, 5.0)));
+    let _result = doc.add_segment(GeometryRole::Result, Point2::new(0.0, 0.0), Point2::new(10.0, 0.0));
+    let construction = doc.add_segment(GeometryRole::Result, Point2::new(0.0, 5.0), Point2::new(10.0, 5.0));
     assert!(doc.set_geometry_role(construction, GeometryRole::Construction));
 
     let mesh = Mesh::from_structure(&doc.structure, doc.state(), MeshFilter::RESULT_ONLY);

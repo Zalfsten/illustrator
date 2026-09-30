@@ -1,6 +1,7 @@
 use super::*;
 use crate::document::DocumentStructure;
 use crate::geom::{CurveParam, Geometry, GeometryId, GeometryRole, Point2, Vec2};
+use crate::geometries::Chart;
 use crate::state::State;
 
 fn store_with(g: Geometry) -> DocumentStructure {
@@ -18,8 +19,8 @@ fn segment_layout_and_connectivity() {
     let offset = 0;
     assert_eq!(Segment::STRIDE, 4);
     assert_eq!(
-        Segment::params(Point2::new(0.0, 0.0), Point2::new(1.0, 0.0)),
-        [0.0, 0.0, 1.0, 0.0]
+        <Segment as Chart>::pack((Point2::new(0.0, 0.0), Point2::new(1.0, 0.0))).as_ref(),
+        &[0.0, 0.0, 1.0, 0.0]
     );
     assert_eq!(
         segment_geom(0, offset).connectivity().global_indices,

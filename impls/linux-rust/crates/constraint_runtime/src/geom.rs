@@ -11,7 +11,7 @@
 
 use crate::connectivity::Connectivity;
 use crate::geometries::GeometryBody;
-use std::ops::{Add, Mul, Neg, Sub};
+use std::ops::{Add, Mul, Neg, Range, Sub};
 
 /// Free vector in the plane (displacement, direction, difference of points).
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -203,10 +203,15 @@ impl Geometry {
         self.body.parameter_count()
     }
 
-    pub fn connectivity(&self) -> Connectivity {
+    /// Contiguous State index window for this geometry's parameters.
+    pub fn param_block(&self) -> Range<usize> {
         let o = self.param_offset;
-        let n = self.parameter_count();
-        Connectivity::new((o..o + n).collect())
+        o..o + self.parameter_count()
+    }
+
+    pub fn connectivity(&self) -> Connectivity {
+        let block = self.param_block();
+        Connectivity::new(block.collect())
     }
 
     /// After a contiguous block was removed from State, shift this geometry's

@@ -22,7 +22,7 @@ pub use document::{Document, DocumentStructure};
 pub use geom::{
     CurveParam, Geometry, GeometryId, GeometryRole, Point2, Vec2,
 };
-pub use geometries::{GeometryBody, PointExpr, PointJacobian, Segment, VecExpr};
+pub use geometries::{Chart, GeometryBody, PointExpr, PointJacobian, Segment, VecExpr};
 pub use interact::{DragSession, InteractiveSolve, SoftTerms, SolveError};
 pub use mesh::{Mesh, MeshEdge, MeshFilter};
 pub use solver::{

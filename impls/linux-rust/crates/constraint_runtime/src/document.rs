@@ -3,8 +3,8 @@
 use std::collections::HashMap;
 
 use crate::constraint::Constraint;
-use crate::geom::{Geometry, GeometryId, GeometryRole};
-use crate::geometries::GeometryBody;
+use crate::geom::{Geometry, GeometryId, GeometryRole, Point2};
+use crate::geometries::{Chart, GeometryBody, Segment};
 use crate::state::State;
 use crate::store::GeometryStore;
 
@@ -40,7 +40,8 @@ impl DocumentStructure {
     }
 
     /// Register a geometry whose parameters already live in an external State.
-    pub fn push_geometry(&mut self, g: Geometry) {
+    /// Prefer [`Document::add_chart`] so Structure and State stay matched.
+    pub(crate) fn push_geometry(&mut self, g: Geometry) {
         let id = g.id();
         debug_assert!(
             !self.geometry_index.contains_key(&id),
@@ -115,10 +116,19 @@ impl Document {
         self.structure.constraints()
     }
 
-    /// Append a geometry: extends State by `params` and registers structure.
-    ///
-    /// `params.len()` MUST equal `body.parameter_count()`.
-    pub fn add_geometry(
+    /// Append a chart geometry: pack init → extend State → register structure.
+    pub fn add_chart<C: Chart>(&mut self, role: GeometryRole, init: C::Init) -> GeometryId {
+        let packed = C::pack(init);
+        self.append_geometry(role, C::BODY, packed.as_ref())
+    }
+
+    /// Convenience: add a line segment from endpoints `(a, b)`.
+    pub fn add_segment(&mut self, role: GeometryRole, a: Point2, b: Point2) -> GeometryId {
+        self.add_chart::<Segment>(role, (a, b))
+    }
+
+    /// Low-level append used by [`Self::add_chart`]. Prefer `add_chart` / `add_segment`.
+    pub(crate) fn append_geometry(
         &mut self,
         role: GeometryRole,
         body: GeometryBody,
@@ -139,6 +149,7 @@ impl Document {
             param_offset,
             body,
         });
+        debug_assert_eq!(self.state.len(), self.structure.parameter_count());
         id
     }
 
@@ -167,7 +178,8 @@ impl Document {
             }
         }
 
-        let (start, removed_len) = (removed.param_offset, removed.body.parameter_count());
+        let block = removed.param_block();
+        let (start, removed_len) = (block.start, block.len());
         let end = start + removed_len;
         assert!(end <= self.state.len());
         self.state.drain(start..end);

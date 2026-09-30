@@ -62,21 +62,24 @@ context: |
 
   State layout (contiguous blocks):
   Each geometry owns a contiguous parameter block in the global State vector
-  (offset + parameter count). Geometries do not share State indices; joins are
-  constraints (e.g. Congruence), not aliased DOFs. Connectivity for assembly is
-  derived from that block. Committed and working copies share one State type.
+  (offset + parameter count / parameter window). Geometries do not share State
+  indices; joins are constraints (e.g. Congruence), not aliased DOFs.
+  Connectivity for assembly is derived from that block. Committed and working
+  copies share one State type. Structural add/remove goes through the Document
+  composite so Structure and State stay length-matched; kinds pack chart init
+  and own formulas, and evaluate reads the geometry's recorded parameter window.
   See openspec/specs/state-vector/spec.md
-  (Contiguous parameter block per geometry).
+  (Contiguous parameter block per geometry; atomic structural edits).
 
   Rust module and unit-test layout (impls/linux-rust):
   constraint_runtime splits geometry concerns as follows:
-  - geom: shared types (Point2/Vec2, Geometry shell, CurveParam, ids/roles)
-  - geometries/: kind catalog (GeometryBody), opaque PointExpr/VecExpr and
+  - geom: shared types (Point2/Vec2, Geometry shell + param_block, CurveParam, ids/roles)
+  - geometries/: kind catalog (GeometryBody), Chart trait, opaque PointExpr/VecExpr and
     stack PointJacobian (geometries/expr.rs), one file per kind (e.g. segment.rs:
-    STRIDE, params, chart helpers, per-formula structs, factories)
+    STRIDE, Chart::pack, chart helpers, per-formula structs, factories)
   - state: owned global parameter vector State (committed + working copies)
   - store: GeometryStore port
-  - document: DocumentStructure + committed State + id→slot index
+  - document: DocumentStructure + committed State + id→slot index; add_chart/add_segment
   Prefer sibling files once a module has unit tests: src/<module>.rs for
   production code and src/tests_<module>.rs for that module's unit tests,
   declared with `#[cfg(test)] #[path = "tests_<module>.rs"] mod tests_<module>;`

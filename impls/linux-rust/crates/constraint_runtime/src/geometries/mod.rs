@@ -3,11 +3,14 @@
 //! Extend when adding a geometry:
 //! - new `mod` + file under this directory
 //! - [`GeometryBody`] variant + `parameter_count`
+//! - [`Chart`] impl for Document `add_chart`
 //! - [`expr::PointExpr`] / [`expr::VecExpr`] outer formula catalogs
 
+pub mod chart;
 pub mod expr;
 pub mod segment;
 
+pub use chart::Chart;
 pub use expr::{PointExpr, PointJacobian, VecExpr, MAX_POINT_JACOBIAN_PARAMS};
 pub use segment::Segment;
 

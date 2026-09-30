@@ -1,12 +1,12 @@
 use super::*;
 use crate::geom::{GeometryRole, Point2};
-use crate::geometries::{GeometryBody, Segment};
+use crate::geometries::Segment;
 
 #[test]
 fn two_segment_join_connectivity_indices() {
     let mut doc = Document::new();
-    let s0 = doc.add_geometry(GeometryRole::Result, GeometryBody::Segment, &Segment::params(Point2::new(0.0, 0.0), Point2::new(1.0, 0.0)));
-    let s1 = doc.add_geometry(GeometryRole::Result, GeometryBody::Segment, &Segment::params(Point2::new(2.0, 0.0), Point2::new(3.0, 1.0)));
+    let s0 = doc.add_segment(GeometryRole::Result, Point2::new(0.0, 0.0), Point2::new(1.0, 0.0));
+    let s1 = doc.add_segment(GeometryRole::Result, Point2::new(2.0, 0.0), Point2::new(3.0, 1.0));
     doc.add_constraint(Constraint::Congruence {
         a: Segment::end_expr(s0),
         b: Segment::start_expr(s1),
@@ -19,8 +19,8 @@ fn two_segment_join_connectivity_indices() {
 #[test]
 fn congruence_between_endpoint_point_exprs() {
     let mut doc = Document::new();
-    let s0 = doc.add_geometry(GeometryRole::Result, GeometryBody::Segment, &Segment::params(Point2::new(0.0, 0.0), Point2::new(1.0, 0.0)));
-    let s1 = doc.add_geometry(GeometryRole::Result, GeometryBody::Segment, &Segment::params(Point2::new(2.0, 0.0), Point2::new(3.0, 1.0)));
+    let s0 = doc.add_segment(GeometryRole::Result, Point2::new(0.0, 0.0), Point2::new(1.0, 0.0));
+    let s1 = doc.add_segment(GeometryRole::Result, Point2::new(2.0, 0.0), Point2::new(3.0, 1.0));
     doc.add_constraint(Constraint::Congruence {
         a: Segment::end_expr(s0),
         b: Segment::start_expr(s1),
@@ -38,7 +38,7 @@ fn congruence_between_endpoint_point_exprs() {
 fn add_geometry_grows_state_and_connectivity() {
     let mut doc = Document::new();
     assert_eq!(doc.state().len(), 0);
-    let s0 = doc.add_geometry(GeometryRole::Result, GeometryBody::Segment, &Segment::params(Point2::new(0.0, 0.0), Point2::new(1.0, 0.0)));
+    let s0 = doc.add_segment(GeometryRole::Result, Point2::new(0.0, 0.0), Point2::new(1.0, 0.0));
     assert_eq!(doc.state().len(), Segment::STRIDE);
     assert_eq!(doc.structure.parameter_count(), Segment::STRIDE);
     let s = doc.geometry(s0).unwrap();
@@ -47,7 +47,7 @@ fn add_geometry_grows_state_and_connectivity() {
         doc.structure.geometry(s0).unwrap().role(),
         GeometryRole::Result
     );
-    let s1 = doc.add_geometry(GeometryRole::Result, GeometryBody::Segment, &Segment::params(Point2::new(2.0, 0.0), Point2::new(3.0, 1.0)));
+    let s1 = doc.add_segment(GeometryRole::Result, Point2::new(2.0, 0.0), Point2::new(3.0, 1.0));
     assert_eq!(doc.state().len(), 2 * Segment::STRIDE);
     assert_eq!(
         doc.geometry(s1).unwrap().connectivity().global_indices,
@@ -58,7 +58,7 @@ fn add_geometry_grows_state_and_connectivity() {
 #[test]
 fn set_geometry_role_round_trips() {
     let mut doc = Document::new();
-    let id = doc.add_geometry(GeometryRole::Result, GeometryBody::Segment, &Segment::params(Point2::new(0.0, 0.0), Point2::new(1.0, 0.0)));
+    let id = doc.add_segment(GeometryRole::Result, Point2::new(0.0, 0.0), Point2::new(1.0, 0.0));
     assert_eq!(
         doc.structure.geometry(id).unwrap().role(),
         GeometryRole::Result
@@ -82,9 +82,9 @@ fn set_geometry_role_round_trips() {
 #[test]
 fn remove_geometry_compacts_state_and_drops_orphans() {
     let mut doc = Document::new();
-    let s0 = doc.add_geometry(GeometryRole::Result, GeometryBody::Segment, &Segment::params(Point2::new(0.0, 0.0), Point2::new(1.0, 0.0)));
-    let s1 = doc.add_geometry(GeometryRole::Result, GeometryBody::Segment, &Segment::params(Point2::new(1.0, 0.0), Point2::new(1.0, 1.0)));
-    let s2 = doc.add_geometry(GeometryRole::Result, GeometryBody::Segment, &Segment::params(Point2::new(5.0, 5.0), Point2::new(6.0, 5.0)));
+    let s0 = doc.add_segment(GeometryRole::Result, Point2::new(0.0, 0.0), Point2::new(1.0, 0.0));
+    let s1 = doc.add_segment(GeometryRole::Result, Point2::new(1.0, 0.0), Point2::new(1.0, 1.0));
+    let s2 = doc.add_segment(GeometryRole::Result, Point2::new(5.0, 5.0), Point2::new(6.0, 5.0));
     doc.add_constraint(Constraint::Congruence {
         a: Segment::end_expr(s0),
         b: Segment::start_expr(s1),
