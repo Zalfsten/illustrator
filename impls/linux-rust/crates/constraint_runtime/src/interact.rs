@@ -5,6 +5,7 @@ use crate::ceres_solver::CeresSolver;
 use crate::document::Document;
 use crate::geometries::PointExpr;
 use crate::solver::{SolverOptions, SolverPort, SystemEval};
+use crate::state::State;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct SolveError {
@@ -41,7 +42,7 @@ impl Default for SoftTerms {
 
 fn soft_for_drag(
     doc: &Document,
-    prev: &[f64],
+    prev: &State,
     dragged: &PointExpr,
     mouse: (f64, f64),
     weights: &SoftTerms,
@@ -120,15 +121,15 @@ impl Default for InteractiveSolve<CeresSolver> {
 }
 
 impl<S: SolverPort> InteractiveSolve<S> {
-    fn structural_norm(doc: &Document, p: &[f64]) -> f64 {
+    fn structural_norm(doc: &Document, p: &State) -> f64 {
         let soft0: [SoftContribution; 0] = [];
         let sys0 = AssembledSystem::from_structure(&doc.structure, p.len(), &soft0);
         let mut r = vec![0.0; sys0.n_residuals()];
-        sys0.residual(p, &mut r);
+        sys0.residual(p.as_slice(), &mut r);
         r.iter().map(|x| x * x).sum::<f64>().sqrt()
     }
 
-    fn structural_ok(&self, doc: &Document, p: &[f64]) -> bool {
+    fn structural_ok(&self, doc: &Document, p: &State) -> bool {
         Self::structural_norm(doc, p) <= self.opts.tol * 10.0
     }
 
@@ -137,13 +138,13 @@ impl<S: SolverPort> InteractiveSolve<S> {
         &mut self,
         doc: &mut Document,
         soft: &[SoftContribution],
-        fallback: &[f64],
+        fallback: &State,
     ) -> Result<(), SolveError> {
         let mut working = doc.clone_state();
 
         // Phase 1: soft + hard (when soft is empty, this is structural-only).
         let sys = AssembledSystem::from_structure(&doc.structure, doc.state().len(), soft);
-        let _ = self.solver.solve(&sys, &mut working, &self.opts);
+        let _ = self.solver.solve(&sys, working.as_mut_slice(), &self.opts);
 
         if self.structural_ok(doc, &working) {
             doc.commit_state(&working);
@@ -154,7 +155,7 @@ impl<S: SolverPort> InteractiveSolve<S> {
         if !soft.is_empty() {
             let soft0: [SoftContribution; 0] = [];
             let sys0 = AssembledSystem::from_structure(&doc.structure, working.len(), &soft0);
-            let _ = self.solver.solve(&sys0, &mut working, &self.opts);
+            let _ = self.solver.solve(&sys0, working.as_mut_slice(), &self.opts);
             if self.structural_ok(doc, &working) {
                 doc.commit_state(&working);
                 return Ok(());
@@ -180,15 +181,15 @@ impl<S: SolverPort> InteractiveSolve<S> {
 
 #[derive(Clone, Debug)]
 pub struct DragSession {
-    snapshot: Vec<f64>,
-    undo_stack: Vec<Vec<f64>>,
+    snapshot: State,
+    undo_stack: Vec<State>,
     active: Option<PointExpr>,
 }
 
 impl DragSession {
     pub fn new() -> Self {
         Self {
-            snapshot: Vec::new(),
+            snapshot: State::new(),
             undo_stack: Vec::new(),
             active: None,
         }

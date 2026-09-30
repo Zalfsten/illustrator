@@ -16,11 +16,11 @@ fn ceres_solves_fixpoint() {
     });
     let soft: [crate::assemble::SoftContribution; 0] = [];
     let sys = AssembledSystem::from_document(&doc, &soft);
-    let mut p = doc.state().to_vec();
+    let mut p = doc.clone_state();
     let mut solver = CeresSolver;
     let outcome = solver.solve(
         &sys,
-        &mut p,
+        p.as_mut_slice(),
         &SolverOptions {
             tol: SOLVE_TOL,
             ..Default::default()

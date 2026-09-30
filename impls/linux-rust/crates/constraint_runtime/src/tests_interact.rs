@@ -49,7 +49,7 @@ fn failed_solve_keeps_state() {
         .solve_commit(&mut doc, &soft, &before)
         .expect_err("must fail");
     assert!(!err.message.is_empty());
-    assert_eq!(doc.state(), before.as_slice());
+    assert_eq!(doc.state(), &before);
 }
 
 #[test]
@@ -80,5 +80,5 @@ fn atomic_drag_undo() {
     drag.pointer_up(&mut interact, &mut doc, (2.0, 2.0))
         .unwrap();
     assert!(drag.undo(&mut doc));
-    assert_eq!(doc.state(), before.as_slice());
+    assert_eq!(doc.state(), &before);
 }

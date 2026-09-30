@@ -11,13 +11,14 @@ pub mod geometries;
 pub mod interact;
 pub mod mesh;
 pub mod solver;
+pub mod state;
 pub mod store;
 
 pub use assemble::{AssembledSystem, SoftContribution, structural_residual_norm};
 pub use ceres_solver::CeresSolver;
 pub use connectivity::Connectivity;
 pub use constraint::Constraint;
-pub use document::{Document, DocumentStructure, State};
+pub use document::{Document, DocumentStructure};
 pub use geom::{
     CurveParam, Geometry, GeometryId, GeometryRole, Point2, Vec2,
 };
@@ -27,6 +28,7 @@ pub use mesh::{Mesh, MeshEdge, MeshFilter};
 pub use solver::{
     LmSolver, SolveOutcome, SolverOptions, SolverPort, StubSolver, SystemEval, ffi,
 };
+pub use state::State;
 pub use store::GeometryStore;
 
 pub const SOLVE_TOL: f64 = 1e-6;
