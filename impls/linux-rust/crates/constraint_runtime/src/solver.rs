@@ -1,5 +1,6 @@
 //! Swappable nonlinear solver port over residual/Jacobian evaluation.
 
+use crate::state::State;
 use crate::SOLVE_TOL;
 
 #[derive(Clone, Debug, PartialEq)]
@@ -29,15 +30,15 @@ impl Default for SolverOptions {
 pub trait SystemEval {
     fn n_params(&self) -> usize;
     fn n_residuals(&self) -> usize;
-    fn residual(&self, p: &[f64], r: &mut [f64]);
-    fn jacobian(&self, p: &[f64], j: &mut [f64]);
+    fn residual(&self, p: &State, r: &mut [f64]);
+    fn jacobian(&self, p: &State, j: &mut [f64]);
 }
 
 pub trait SolverPort {
     fn solve(
         &mut self,
         eval: &dyn SystemEval,
-        p: &mut [f64],
+        p: &mut State,
         opts: &SolverOptions,
     ) -> SolveOutcome;
 }
@@ -51,7 +52,7 @@ impl SolverPort for StubSolver {
     fn solve(
         &mut self,
         eval: &dyn SystemEval,
-        p: &mut [f64],
+        p: &mut State,
         opts: &SolverOptions,
     ) -> SolveOutcome {
         let _ = opts;
@@ -76,7 +77,7 @@ impl SolverPort for LmSolver {
     fn solve(
         &mut self,
         eval: &dyn SystemEval,
-        p: &mut [f64],
+        p: &mut State,
         opts: &SolverOptions,
     ) -> SolveOutcome {
         let n = eval.n_params();
@@ -93,7 +94,7 @@ impl SolverPort for LmSolver {
         }
 
         let mut lambda = opts.lm_lambda0;
-        let mut best_p = p.to_vec();
+        let mut best_p = p.clone();
         let mut best_norm = {
             let mut r = vec![0.0; m];
             eval.residual(p, &mut r);
@@ -107,7 +108,7 @@ impl SolverPort for LmSolver {
             let norm = r.iter().map(|x| x * x).sum::<f64>().sqrt();
             if norm < best_norm {
                 best_norm = norm;
-                best_p.copy_from_slice(p);
+                best_p.copy_from(p);
             }
             if norm <= opts.tol {
                 return SolveOutcome::Success {
@@ -143,7 +144,7 @@ impl SolverPort for LmSolver {
                 continue;
             };
 
-            let mut p_trial = p.to_vec();
+            let mut p_trial = p.clone();
             for i in 0..n {
                 p_trial[i] -= dp[i];
             }
@@ -152,7 +153,7 @@ impl SolverPort for LmSolver {
             let trial_norm = r_trial.iter().map(|x| x * x).sum::<f64>().sqrt();
 
             if trial_norm < norm {
-                p.copy_from_slice(&p_trial);
+                p.copy_from(&p_trial);
                 lambda = (lambda * 0.5).max(1e-12);
                 stagnant = 0;
             } else {
@@ -164,7 +165,7 @@ impl SolverPort for LmSolver {
             }
         }
 
-        p.copy_from_slice(&best_p);
+        p.copy_from(&best_p);
         let mut r = vec![0.0; m];
         eval.residual(p, &mut r);
         let norm = r.iter().map(|x| x * x).sum::<f64>().sqrt();

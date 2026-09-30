@@ -5,7 +5,8 @@ use std::ops::{Deref, DerefMut, Index, IndexMut};
 /// Contiguous continuous parameters for a sketch (Model E global unknowns).
 ///
 /// Owned working copies and the Document's committed state share this type.
-/// Evaluate/assemble APIs that only need reads may take `&[f64]` via [`Deref`].
+/// Evaluate / assemble / solver APIs take `&State` / `&mut State` (indexing via
+/// [`Deref`] to `[f64]` — same cost as a slice borrow).
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct State(Vec<f64>);
 

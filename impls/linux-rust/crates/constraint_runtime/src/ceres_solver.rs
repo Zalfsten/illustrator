@@ -2,6 +2,7 @@
 
 use crate::solver::ffi::{jacobian_trampoline, residual_trampoline, EvalHandle};
 use crate::solver::{SolveOutcome, SolverOptions, SolverPort, SystemEval};
+use crate::state::State;
 use std::os::raw::c_void;
 
 #[repr(C)]
@@ -44,7 +45,7 @@ impl SolverPort for CeresSolver {
     fn solve(
         &mut self,
         eval: &dyn SystemEval,
-        p: &mut [f64],
+        p: &mut State,
         opts: &SolverOptions,
     ) -> SolveOutcome {
         let n = eval.n_params();
@@ -56,7 +57,10 @@ impl SolverPort for CeresSolver {
         }
         assert_eq!(p.len(), n);
 
-        let handle = EvalHandle { eval };
+        let handle = EvalHandle {
+            eval,
+            state: p as *mut State,
+        };
         let c_opts = CrCeresOptions {
             function_tolerance: opts.tol,
             max_iterations: opts.max_iters as i32,

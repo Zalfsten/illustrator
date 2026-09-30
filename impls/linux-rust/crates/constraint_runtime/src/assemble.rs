@@ -2,6 +2,7 @@
 
 use crate::document::{Document, DocumentStructure};
 use crate::solver::SystemEval;
+use crate::state::State;
 use crate::SOLVE_TOL;
 
 /// Relative weight of structural residuals vs soft terms during interactive solves.
@@ -23,11 +24,11 @@ impl SoftContribution {
         1
     }
 
-    fn eval_residual(&self, p: &[f64], out: &mut [f64]) {
+    fn eval_residual(&self, p: &State, out: &mut [f64]) {
         out[0] = self.weight.sqrt() * (p[self.index] - self.target);
     }
 
-    fn eval_jacobian(&self, _p: &[f64], out: &mut [f64]) {
+    fn eval_jacobian(&self, _p: &State, out: &mut [f64]) {
         out[0] = self.weight.sqrt();
     }
 
@@ -86,7 +87,7 @@ impl SystemEval for AssembledSystem<'_> {
         self.n_res
     }
 
-    fn residual(&self, p: &[f64], r: &mut [f64]) {
+    fn residual(&self, p: &State, r: &mut [f64]) {
         assert_eq!(r.len(), self.n_res);
         r.fill(0.0);
         let hard = if self.soft.is_empty() {
@@ -108,7 +109,7 @@ impl SystemEval for AssembledSystem<'_> {
         }
     }
 
-    fn jacobian(&self, p: &[f64], j: &mut [f64]) {
+    fn jacobian(&self, p: &State, j: &mut [f64]) {
         let n = self.n_params;
         let m = self.n_res;
         assert_eq!(j.len(), m * n);
@@ -146,7 +147,7 @@ pub fn structural_residual_norm(doc: &Document) -> f64 {
     structural_residual_norm_at(&doc.structure, doc.state())
 }
 
-pub fn structural_residual_norm_at(structure: &DocumentStructure, p: &[f64]) -> f64 {
+pub fn structural_residual_norm_at(structure: &DocumentStructure, p: &State) -> f64 {
     let soft: [SoftContribution; 0] = [];
     let sys = AssembledSystem::from_structure(structure, p.len(), &soft);
     let mut r = vec![0.0; sys.n_residuals()];

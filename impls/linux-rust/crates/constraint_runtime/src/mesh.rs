@@ -3,8 +3,9 @@
 //! Derived view only — not authoritative for parameters or constraints.
 
 use crate::document::DocumentStructure;
-use crate::geom::{GeometryId, GeometryRole, Point2};
 use crate::geometries::{GeometryBody, PointExpr, Segment};
+use crate::geom::{GeometryId, GeometryRole, Point2};
+use crate::state::State;
 
 /// Which geometries contribute edges to a Mesh.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -48,7 +49,7 @@ pub struct Mesh {
 impl Mesh {
     pub fn from_structure(
         structure: &DocumentStructure,
-        p: &[f64],
+        p: &State,
         filter: MeshFilter,
     ) -> Self {
         let mut edges = Vec::with_capacity(structure.geometries().len());

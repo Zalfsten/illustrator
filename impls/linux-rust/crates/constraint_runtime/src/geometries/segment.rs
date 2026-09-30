@@ -2,6 +2,7 @@
 
 use super::{GeometryBody, PointExpr, PointJacobian, VecExpr};
 use crate::geom::{CurveParam, Geometry, GeometryId, GeometryRole, Point2, Vec2};
+use crate::state::State;
 use crate::store::GeometryStore;
 
 /// Line-segment chart. Parameters live at `p[offset..offset+STRIDE]` on the
@@ -81,7 +82,7 @@ pub(crate) enum PointFormula {
 }
 
 impl PointFormula {
-    pub(crate) fn evaluate(&self, store: &impl GeometryStore, p: &[f64]) -> Point2 {
+    pub(crate) fn evaluate(&self, store: &impl GeometryStore, p: &State) -> Point2 {
         match self {
             PointFormula::StartPoint(f) => f.evaluate(store, p),
             PointFormula::EndPoint(f) => f.evaluate(store, p),
@@ -100,7 +101,7 @@ impl PointFormula {
     pub(crate) fn eval_point_jacobian(
         &self,
         store: &impl GeometryStore,
-        p: &[f64],
+        p: &State,
     ) -> PointJacobian {
         match self {
             PointFormula::StartPoint(f) => f.eval_point_jacobian(store, p),
@@ -124,7 +125,7 @@ pub(crate) struct StartPoint {
 }
 
 impl StartPoint {
-    fn evaluate(&self, store: &impl GeometryStore, p: &[f64]) -> Point2 {
+    fn evaluate(&self, store: &impl GeometryStore, p: &State) -> Point2 {
         start(segment_offset(store, self.geometry), p)
     }
 
@@ -136,7 +137,7 @@ impl StartPoint {
     fn eval_point_jacobian(
         &self,
         _store: &impl GeometryStore,
-        _p: &[f64],
+        _p: &State,
     ) -> PointJacobian {
         PointJacobian::endpoint_identity()
     }
@@ -148,7 +149,7 @@ pub(crate) struct EndPoint {
 }
 
 impl EndPoint {
-    fn evaluate(&self, store: &impl GeometryStore, p: &[f64]) -> Point2 {
+    fn evaluate(&self, store: &impl GeometryStore, p: &State) -> Point2 {
         end(segment_offset(store, self.geometry), p)
     }
 
@@ -160,7 +161,7 @@ impl EndPoint {
     fn eval_point_jacobian(
         &self,
         _store: &impl GeometryStore,
-        _p: &[f64],
+        _p: &State,
     ) -> PointJacobian {
         PointJacobian::endpoint_identity()
     }
@@ -173,7 +174,7 @@ pub(crate) struct OnCurve {
 }
 
 impl OnCurve {
-    fn evaluate(&self, store: &impl GeometryStore, p: &[f64]) -> Point2 {
+    fn evaluate(&self, store: &impl GeometryStore, p: &State) -> Point2 {
         position_at(segment_offset(store, self.geometry), self.param.chart_t(), p)
     }
 
@@ -187,7 +188,7 @@ impl OnCurve {
     fn eval_point_jacobian(
         &self,
         store: &impl GeometryStore,
-        _p: &[f64],
+        _p: &State,
     ) -> PointJacobian {
         let g = store.expect_geometry(self.geometry);
         debug_assert!(matches!(g.body, GeometryBody::Segment));
@@ -212,7 +213,7 @@ pub(crate) enum VecFormula {
 }
 
 impl VecFormula {
-    pub(crate) fn evaluate(&self, store: &impl GeometryStore, p: &[f64]) -> Vec2 {
+    pub(crate) fn evaluate(&self, store: &impl GeometryStore, p: &State) -> Vec2 {
         match self {
             VecFormula::Direction(f) => f.evaluate(store, p),
             VecFormula::TangentAt(f) => f.evaluate(store, p),
@@ -235,7 +236,7 @@ pub(crate) struct Direction {
 }
 
 impl Direction {
-    fn evaluate(&self, store: &impl GeometryStore, p: &[f64]) -> Vec2 {
+    fn evaluate(&self, store: &impl GeometryStore, p: &State) -> Vec2 {
         direction(segment_offset(store, self.geometry), p)
     }
 }
@@ -249,7 +250,7 @@ pub(crate) struct TangentAt {
 }
 
 impl TangentAt {
-    fn evaluate(&self, store: &impl GeometryStore, p: &[f64]) -> Vec2 {
+    fn evaluate(&self, store: &impl GeometryStore, p: &State) -> Vec2 {
         // γ'(t) = B - A (constant on a segment); length = segment length
         direction(segment_offset(store, self.geometry), p)
     }
@@ -264,7 +265,7 @@ pub(crate) struct NormalAt {
 }
 
 impl NormalAt {
-    fn evaluate(&self, store: &impl GeometryStore, p: &[f64]) -> Vec2 {
+    fn evaluate(&self, store: &impl GeometryStore, p: &State) -> Vec2 {
         direction(segment_offset(store, self.geometry), p).left_normal()
     }
 }
@@ -275,19 +276,19 @@ fn segment_offset(store: &impl GeometryStore, id: GeometryId) -> usize {
     g.param_offset
 }
 
-fn start(offset: usize, p: &[f64]) -> Point2 {
+fn start(offset: usize, p: &State) -> Point2 {
     Point2::new(p[offset], p[offset + 1])
 }
 
-fn end(offset: usize, p: &[f64]) -> Point2 {
+fn end(offset: usize, p: &State) -> Point2 {
     Point2::new(p[offset + 2], p[offset + 3])
 }
 
-fn direction(offset: usize, p: &[f64]) -> Vec2 {
+fn direction(offset: usize, p: &State) -> Vec2 {
     end(offset, p) - start(offset, p)
 }
 
-fn position_at(offset: usize, t: f64, p: &[f64]) -> Point2 {
+fn position_at(offset: usize, t: f64, p: &State) -> Point2 {
     let a = start(offset, p);
     let b = end(offset, p);
     Point2::new((1.0 - t) * a.x + t * b.x, (1.0 - t) * a.y + t * b.y)

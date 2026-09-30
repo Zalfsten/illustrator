@@ -2,8 +2,9 @@
 
 use crate::connectivity::Connectivity;
 use crate::geometries::PointExpr;
-use crate::geom::{GeometryId, Point2};
 use crate::geometries::Segment;
+use crate::geom::{GeometryId, Point2};
+use crate::state::State;
 use crate::store::GeometryStore;
 
 #[derive(Clone, Debug, PartialEq)]
@@ -14,7 +15,7 @@ pub enum Constraint {
     FixPoint { point: PointExpr, target: Point2 },
 }
 
-fn segment_direction(store: &impl GeometryStore, id: GeometryId, p: &[f64]) -> crate::geom::Vec2 {
+fn segment_direction(store: &impl GeometryStore, id: GeometryId, p: &State) -> crate::geom::Vec2 {
     Segment::direction_expr(id).evaluate(store, p)
 }
 
@@ -44,7 +45,7 @@ impl Constraint {
     }
 
     /// Local residual `r_N` in contribution order (length = residual_arity).
-    pub fn eval_residual(&self, store: &impl GeometryStore, p: &[f64], out: &mut [f64]) {
+    pub fn eval_residual(&self, store: &impl GeometryStore, p: &State, out: &mut [f64]) {
         match self {
             Constraint::Congruence { a, b } => {
                 let pa = a.evaluate(store, p);
@@ -71,7 +72,7 @@ impl Constraint {
     }
 
     /// Local Jacobian `J_N` row-major, shape `(residual_arity × param_connectivity.len())`.
-    pub fn eval_jacobian(&self, store: &impl GeometryStore, p: &[f64], out: &mut [f64]) {
+    pub fn eval_jacobian(&self, store: &impl GeometryStore, p: &State, out: &mut [f64]) {
         let n_local = self.param_connectivity(store).len();
         let m = self.residual_arity();
         assert_eq!(out.len(), m * n_local);

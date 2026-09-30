@@ -20,7 +20,7 @@ fn ceres_solves_fixpoint() {
     let mut solver = CeresSolver;
     let outcome = solver.solve(
         &sys,
-        p.as_mut_slice(),
+        &mut p,
         &SolverOptions {
             tol: SOLVE_TOL,
             ..Default::default()

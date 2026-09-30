@@ -14,11 +14,11 @@ fn stub_backend_swaps() {
     let mut p = doc.clone_state();
     let opts = SolverOptions::default();
     assert!(matches!(
-        StubSolver { succeed: true }.solve(&sys, p.as_mut_slice(), &opts),
+        StubSolver { succeed: true }.solve(&sys, &mut p, &opts),
         SolveOutcome::Success { .. }
     ));
     assert!(matches!(
-        StubSolver { succeed: false }.solve(&sys, p.as_mut_slice(), &opts),
+        StubSolver { succeed: false }.solve(&sys, &mut p, &opts),
         SolveOutcome::Failure { .. }
     ));
 }
@@ -34,7 +34,7 @@ fn lm_solves_fixpoint_analytically() {
     let soft: [crate::assemble::SoftContribution; 0] = [];
     let sys = AssembledSystem::from_document(&doc, &soft);
     let mut p = doc.clone_state();
-    let out = LmSolver.solve(&sys, p.as_mut_slice(), &SolverOptions::default());
+    let out = LmSolver.solve(&sys, &mut p, &SolverOptions::default());
     assert!(matches!(out, SolveOutcome::Success { .. }), "{out:?}");
     doc.restore_state(&p);
     let q = Segment::start_expr(s0).evaluate(&doc, doc.state());
@@ -61,7 +61,7 @@ fn lm_solves_congruence() {
     let soft: [crate::assemble::SoftContribution; 0] = [];
     let sys = AssembledSystem::from_document(&doc, &soft);
     let mut p = doc.clone_state();
-    let out = LmSolver.solve(&sys, p.as_mut_slice(), &SolverOptions::default());
+    let out = LmSolver.solve(&sys, &mut p, &SolverOptions::default());
     assert!(matches!(out, SolveOutcome::Success { .. }), "{out:?}");
     doc.restore_state(&p);
     let a = Segment::end_expr(s0).evaluate(&doc, doc.state());

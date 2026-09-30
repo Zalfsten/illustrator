@@ -5,6 +5,7 @@
 //! on formula kinds. Extend the outer enums when adding a geometry kind.
 
 use crate::geom::{GeometryId, Point2, Vec2};
+use crate::state::State;
 use crate::store::GeometryStore;
 
 use super::segment;
@@ -83,7 +84,7 @@ impl PointExpr {
         Self(PointFormula::Segment(formula))
     }
 
-    pub fn evaluate(&self, store: &impl GeometryStore, p: &[f64]) -> Point2 {
+    pub fn evaluate(&self, store: &impl GeometryStore, p: &State) -> Point2 {
         match &self.0 {
             PointFormula::Segment(f) => f.evaluate(store, p),
         }
@@ -95,7 +96,7 @@ impl PointExpr {
         }
     }
 
-    pub fn eval_point_jacobian(&self, store: &impl GeometryStore, p: &[f64]) -> PointJacobian {
+    pub fn eval_point_jacobian(&self, store: &impl GeometryStore, p: &State) -> PointJacobian {
         match &self.0 {
             PointFormula::Segment(f) => f.eval_point_jacobian(store, p),
         }
@@ -122,7 +123,7 @@ impl VecExpr {
         Self(VecFormula::Segment(formula))
     }
 
-    pub fn evaluate(&self, store: &impl GeometryStore, p: &[f64]) -> Vec2 {
+    pub fn evaluate(&self, store: &impl GeometryStore, p: &State) -> Vec2 {
         match &self.0 {
             VecFormula::Segment(f) => f.evaluate(store, p),
         }

@@ -4,6 +4,8 @@ use crate::constraint::Constraint;
 use crate::document::Document;
 use crate::geom::{GeometryRole, Point2};
 use crate::geometries::{GeometryBody, Segment};
+use crate::state::State;
+use std::os::raw::c_void;
 
 #[test]
 fn c_calling_pattern_fills_residual() {
@@ -19,8 +21,11 @@ fn c_calling_pattern_fills_residual() {
     });
     let soft: [crate::assemble::SoftContribution; 0] = [];
     let sys = AssembledSystem::from_document(&doc, &soft);
-    let handle = EvalHandle { eval: &sys };
-    let p = doc.state().to_vec();
+    let mut p = doc.state().clone();
+    let handle = EvalHandle {
+        eval: &sys,
+        state: &mut p as *mut State,
+    };
     let mut r = vec![0.0; sys.n_residuals()];
     let rc = unsafe {
         residual_trampoline(

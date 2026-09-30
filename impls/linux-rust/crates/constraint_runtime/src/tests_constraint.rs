@@ -2,8 +2,9 @@ use super::*;
 use crate::document::DocumentStructure;
 use crate::geom::{GeometryId, GeometryRole};
 use crate::geometries::Segment;
+use crate::state::State;
 
-fn two_segs() -> (DocumentStructure, Vec<f64>) {
+fn two_segs() -> (DocumentStructure, State) {
     let mut structure = DocumentStructure::new();
     structure.push_geometry(Segment::into_geometry(
         GeometryId(0),
@@ -16,7 +17,7 @@ fn two_segs() -> (DocumentStructure, Vec<f64>) {
         Segment::STRIDE,
     ));
     // s0: (0,0)-(1,0), s1: (0,0)-(0,1) perpendicular sharing origin conceptually
-    let p = vec![0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0];
+    let p = State::from(vec![0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0]);
     (structure, p)
 }
 

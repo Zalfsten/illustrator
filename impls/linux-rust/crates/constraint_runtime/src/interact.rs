@@ -125,7 +125,7 @@ impl<S: SolverPort> InteractiveSolve<S> {
         let soft0: [SoftContribution; 0] = [];
         let sys0 = AssembledSystem::from_structure(&doc.structure, p.len(), &soft0);
         let mut r = vec![0.0; sys0.n_residuals()];
-        sys0.residual(p.as_slice(), &mut r);
+        sys0.residual(p, &mut r);
         r.iter().map(|x| x * x).sum::<f64>().sqrt()
     }
 
@@ -144,7 +144,7 @@ impl<S: SolverPort> InteractiveSolve<S> {
 
         // Phase 1: soft + hard (when soft is empty, this is structural-only).
         let sys = AssembledSystem::from_structure(&doc.structure, doc.state().len(), soft);
-        let _ = self.solver.solve(&sys, working.as_mut_slice(), &self.opts);
+        let _ = self.solver.solve(&sys, &mut working, &self.opts);
 
         if self.structural_ok(doc, &working) {
             doc.commit_state(&working);
@@ -155,7 +155,7 @@ impl<S: SolverPort> InteractiveSolve<S> {
         if !soft.is_empty() {
             let soft0: [SoftContribution; 0] = [];
             let sys0 = AssembledSystem::from_structure(&doc.structure, working.len(), &soft0);
-            let _ = self.solver.solve(&sys0, working.as_mut_slice(), &self.opts);
+            let _ = self.solver.solve(&sys0, &mut working, &self.opts);
             if self.structural_ok(doc, &working) {
                 doc.commit_state(&working);
                 return Ok(());
