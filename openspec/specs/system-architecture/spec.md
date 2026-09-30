@@ -28,7 +28,7 @@ The system SHALL provide an App component that references a Document for the act
 
 ### Requirement: Interact owns manipulation sessions
 
-Interact SHALL run manipulation sessions (including drag) against DocumentStructure and a working State derived from the committed \(p\). On successful solve, Interact SHALL commit the working State into the Document's committed State. On failed solve, Interact SHALL leave the committed State unchanged. Soft manipulation conditions SHALL exist only for the session lifetime.
+Interact SHALL run manipulation sessions (including drag) against DocumentStructure and a working State of the same kind as the Document's committed State (derived from that committed \(p\)). On successful solve, Interact SHALL commit the working State into the Document's committed State. On failed solve, Interact SHALL leave the committed State unchanged. Soft manipulation conditions SHALL exist only for the session lifetime.
 
 #### Scenario: Failed drag does not mutate committed state
 

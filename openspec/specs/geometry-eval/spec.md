@@ -24,7 +24,7 @@ The production evaluate/solve path SHALL obtain geometric quantities needed by r
 
 ### Requirement: Expressions expose derivatives w.r.t. local parameters
 
-Point and vector expressions that appear in structural constraints SHALL provide analytical derivative information with respect to the local parameters they depend on (or equivalent information sufficient to form local Jacobian contributions). The production path for Jacobian assembly SHALL use those analytical derivatives. Finite-difference approximation SHALL NOT be used as a fallback or as the production Jacobian path.
+Point and vector expressions that appear in structural constraints SHALL provide analytical derivative information with respect to the local parameters they depend on (or equivalent information sufficient to form local Jacobian contributions). For a point expression, that information SHALL be a \(2 \times n\) Jacobian of the map from the expression's **formula-local** parameters to \((x,y)\), where \(n\) is the number of parameters the formula depends on (which MAY be a sparse subset of the owning geometry's full parameter block — e.g. a segment endpoint depends on two of four segment parameters). Column order SHALL match the expression's reported parameter-index list. The production path for Jacobian assembly SHALL use those analytical derivatives. Finite-difference approximation SHALL NOT be used as a fallback or as the production Jacobian path. Formula-local point Jacobians are small (chart DOFs); implementations MAY represent them as compact stack-friendly structures before scattering into constraint-local and global Jacobians.
 
 #### Scenario: Local Jacobian contribution can be formed analytically
 
@@ -32,6 +32,13 @@ Point and vector expressions that appear in structural constraints SHALL provide
 - **AND** assembly requests derivatives of that residual w.r.t. the involved geometries’ local parameters
 - **THEN** the system can obtain those derivatives from analytical expression/constraint derivative information
 - **AND** the resulting local Jacobian block is defined with respect to the involved local parameter ordering
+
+#### Scenario: Endpoint point Jacobian is formula-sparse
+
+- **WHEN** a segment start- or end-point expression reports its parameter indices and point Jacobian
+- **THEN** both refer to the same two endpoint coordinate parameters
+- **AND** the point Jacobian width is two, not the full four-parameter segment block
+- **AND** the \(2 \times 2\) map is the identity on those coordinates
 
 ### Requirement: Constraints contribute residuals and local Jacobians
 

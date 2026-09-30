@@ -8,13 +8,19 @@ Defines the global continuous state vector as the single source of truth for unk
 
 ### Requirement: DocumentStructure and State are distinct
 
-The system SHALL distinguish DocumentStructure from State. DocumentStructure SHALL own geometries, structural constraints, and connectivity that maps each geometry's local parameters to indices in a State vector of matching length. State SHALL be a single contiguous vector \(p\) of scalars. A Document SHALL be the pairing of one DocumentStructure with one committed State whose length matches that structure's parameter count.
+The system SHALL distinguish DocumentStructure from State. DocumentStructure SHALL own geometries, structural constraints, and connectivity that maps each geometry's local parameters to indices in a State of matching length. State SHALL be a first-class contiguous vector \(p\) of scalars (the sketch's continuous unknowns): the same State concept SHALL represent both the Document's **committed** values and any **working copy** used during solve or Interact. A Document SHALL be the pairing of one DocumentStructure with one committed State whose length matches that structure's parameter count. Callers SHALL NOT treat an ad-hoc unstructured bag of scalars as a second competing authority for committed sketch values.
 
 #### Scenario: Structure and values can be reasoned about separately
 
 - **WHEN** a caller holds DocumentStructure and a State \(p\) of the correct length
 - **THEN** evaluating geometries and assembling residuals is possible without the State living inside a GUI object
-- **AND** replacing \(p\) with another vector of the same length yields a different concrete figure under the same structure
+- **AND** replacing \(p\) with another State of the same length yields a different concrete figure under the same structure
+
+#### Scenario: Working copy is the same kind of State
+
+- **WHEN** Interact or a solver iterates on a working copy of continuous parameters
+- **THEN** that working copy is a State of the same kind as the Document's committed State
+- **AND** a successful solve commits by replacing the committed State with that working State (or an equivalent write-back of its scalar entries)
 
 ### Requirement: Evaluation takes an explicit State
 
