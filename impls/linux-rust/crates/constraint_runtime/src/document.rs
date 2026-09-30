@@ -119,6 +119,11 @@ impl Document {
     /// Append a chart geometry: pack init → extend State → register structure.
     pub fn add_chart<C: Chart>(&mut self, role: GeometryRole, init: C::Init) -> GeometryId {
         let packed = C::pack(init);
+        debug_assert_eq!(
+            packed.as_ref().len(),
+            C::PARAMETER_COUNT,
+            "Chart::pack length must equal PARAMETER_COUNT"
+        );
         self.append_geometry(role, C::BODY, packed.as_ref())
     }
 

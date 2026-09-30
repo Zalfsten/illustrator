@@ -23,7 +23,7 @@ pub enum GeometryBody {
 impl GeometryBody {
     pub fn parameter_count(self) -> usize {
         match self {
-            GeometryBody::Segment => Segment::STRIDE,
+            GeometryBody::Segment => Segment::PARAMETER_COUNT,
         }
     }
 }

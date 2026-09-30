@@ -1,7 +1,7 @@
 use super::*;
 use crate::document::DocumentStructure;
 use crate::geom::{GeometryId, GeometryRole};
-use crate::geometries::Segment;
+use crate::geometries::{Chart, Segment};
 use crate::state::State;
 
 fn two_segs() -> (DocumentStructure, State) {
@@ -14,7 +14,7 @@ fn two_segs() -> (DocumentStructure, State) {
     structure.push_geometry(Segment::into_geometry(
         GeometryId(1),
         GeometryRole::Result,
-        Segment::STRIDE,
+        Segment::PARAMETER_COUNT,
     ));
     // s0: (0,0)-(1,0), s1: (0,0)-(0,1) perpendicular sharing origin conceptually
     let p = State::from(vec![0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0]);

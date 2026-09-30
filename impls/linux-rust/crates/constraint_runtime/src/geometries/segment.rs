@@ -7,8 +7,8 @@ use crate::geom::{Geometry, GeometryRole};
 use crate::state::State;
 use crate::store::GeometryStore;
 
-/// Line-segment chart. Parameters live at `p[offset..offset+STRIDE]` on the
-/// enclosing [`Geometry`].
+/// Line-segment chart. Parameters live at
+/// `p[offset..offset+PARAMETER_COUNT]` on the enclosing [`Geometry`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct Segment;
 
@@ -17,15 +17,15 @@ impl Chart for Segment {
 
     const BODY: GeometryBody = GeometryBody::Segment;
 
+    /// Four endpoint scalars: `x1,y1,x2,y2`.
+    const PARAMETER_COUNT: usize = 4;
+
     fn pack((a, b): Self::Init) -> impl AsRef<[f64]> {
         [a.x, a.y, b.x, b.y]
     }
 }
 
 impl Segment {
-    /// Number of State parameters for one segment (`x1,y1,x2,y2`).
-    pub const STRIDE: usize = 4;
-
     /// Build a document [`Geometry`] with a segment body (crate tests).
     #[cfg(test)]
     pub(crate) fn into_geometry(id: GeometryId, role: GeometryRole, param_offset: usize) -> Geometry {
@@ -38,7 +38,8 @@ impl Segment {
     }
 
     pub fn all_param_indices(offset: usize) -> [usize; 4] {
-        let block = offset..offset + Self::STRIDE;
+        debug_assert_eq!(Self::PARAMETER_COUNT, 4);
+        let block = offset..offset + Self::PARAMETER_COUNT;
         [
             block.start,
             block.start + 1,
@@ -207,7 +208,7 @@ impl OnCurve {
         let g = store.expect_geometry(self.geometry);
         debug_assert!(matches!(g.body, GeometryBody::Segment));
         let n = g.connectivity().len();
-        debug_assert_eq!(n, Segment::STRIDE);
+        debug_assert_eq!(n, Segment::PARAMETER_COUNT);
         let mut j = PointJacobian::zeros(n);
         let t = self.param.chart_t();
         j.set_dx_dy(0, 1.0 - t, 0.0);

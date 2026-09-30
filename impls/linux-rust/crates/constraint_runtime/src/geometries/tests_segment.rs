@@ -17,7 +17,7 @@ fn segment_geom(id: usize, param_offset: usize) -> Geometry {
 #[test]
 fn segment_layout_and_connectivity() {
     let offset = 0;
-    assert_eq!(Segment::STRIDE, 4);
+    assert_eq!(Segment::PARAMETER_COUNT, 4);
     assert_eq!(
         <Segment as Chart>::pack((Point2::new(0.0, 0.0), Point2::new(1.0, 0.0))).as_ref(),
         &[0.0, 0.0, 1.0, 0.0]
