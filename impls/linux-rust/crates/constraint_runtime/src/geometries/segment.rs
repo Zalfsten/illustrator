@@ -102,7 +102,10 @@ impl PointFormula {
                 vec![o, o + 1]
             }
             PointFormula::OnCurve { geometry, .. } => {
-                store.expect_geometry(geometry).connectivity().global_indices
+                store
+                    .expect_chart::<Segment>(geometry)
+                    .connectivity()
+                    .global_indices
             }
         }
     }
@@ -117,8 +120,7 @@ impl PointFormula {
                 PointJacobian::endpoint_identity()
             }
             PointFormula::OnCurve { geometry, param } => {
-                let g = store.expect_geometry(geometry);
-                debug_assert!(matches!(g.body, GeometryBody::Segment));
+                let g = store.expect_chart::<Segment>(geometry);
                 let n = g.connectivity().len();
                 debug_assert_eq!(n, Segment::PARAMETER_COUNT);
                 let mut j = PointJacobian::zeros(n);
@@ -173,8 +175,10 @@ impl VecFormula {
     }
 
     pub(crate) fn param_indices(&self, store: &impl GeometryStore) -> Vec<usize> {
-        let geometry = self.referenced_geometry();
-        store.expect_geometry(geometry).connectivity().global_indices
+        store
+            .expect_chart::<Segment>(self.referenced_geometry())
+            .connectivity()
+            .global_indices
     }
 
     pub(crate) fn eval_vec_jacobian(
@@ -214,9 +218,7 @@ impl VecFormula {
 }
 
 fn segment_block(store: &impl GeometryStore, id: GeometryId) -> std::ops::Range<usize> {
-    let g = store.expect_geometry(id);
-    debug_assert!(matches!(g.body, GeometryBody::Segment));
-    g.param_block()
+    store.expect_chart::<Segment>(id).param_block()
 }
 
 fn start(offset: usize, p: &State) -> Point2 {
