@@ -1,9 +1,9 @@
 //! Opaque point/vector expressions (Model B).
 //!
 //! Per-kind formula catalogs live in the kind modules (e.g. [`super::segment`]).
-//! This file only wraps those catalogs so constraints and Interact never match
-//! on formula kinds. Store→chart resolution happens here; kind formulas stay
-//! pure in unpacked chart data. Extend the outer enums when adding a geometry kind.
+//! This file wraps those catalogs and owns the geometry identity so constraints
+//! and Interact never match on formula kinds. Store→chart resolution happens
+//! here; kind formulas stay pure in unpacked chart data.
 
 use crate::geom::{GeometryId, Point2, Vec2};
 use crate::state::State;
@@ -73,48 +73,52 @@ impl PointJacobian {
 ///
 /// Construct via geometry factories (e.g. [`super::Segment::start_expr`]).
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub struct PointExpr(PointFormula);
+pub struct PointExpr {
+    geometry: GeometryId,
+    formula: PointFormula,
+}
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum PointFormula {
     Segment(segment::PointFormula),
 }
 
-impl From<segment::PointFormula> for PointExpr {
-    fn from(formula: segment::PointFormula) -> Self {
-        Self(PointFormula::Segment(formula))
+impl From<(GeometryId, segment::PointFormula)> for PointExpr {
+    fn from((geometry, formula): (GeometryId, segment::PointFormula)) -> Self {
+        Self {
+            geometry,
+            formula: PointFormula::Segment(formula),
+        }
     }
 }
 
 impl PointExpr {
     pub fn evaluate(&self, store: &impl GeometryStore, p: &State) -> Point2 {
-        match &self.0 {
+        match &self.formula {
             PointFormula::Segment(f) => {
-                let init = store.unpack_chart::<Segment>(f.referenced_geometry(), p);
+                let init = store.unpack_chart::<Segment>(self.geometry, p);
                 f.evaluate(init)
             }
         }
     }
 
     pub fn param_indices(&self, store: &impl GeometryStore) -> Vec<usize> {
-        match &self.0 {
+        match &self.formula {
             PointFormula::Segment(f) => {
-                let block = store.chart_param_block::<Segment>(f.referenced_geometry());
+                let block = store.chart_param_block::<Segment>(self.geometry);
                 f.param_indices(block)
             }
         }
     }
 
     pub fn eval_point_jacobian(&self, _store: &impl GeometryStore, _p: &State) -> PointJacobian {
-        match &self.0 {
+        match &self.formula {
             PointFormula::Segment(f) => f.eval_point_jacobian(),
         }
     }
 
     pub fn referenced_geometry(&self) -> GeometryId {
-        match &self.0 {
-            PointFormula::Segment(f) => f.referenced_geometry(),
-        }
+        self.geometry
     }
 }
 
@@ -124,47 +128,51 @@ pub type VecJacobian = PointJacobian;
 
 /// Opaque free-vector expression: map from State parameters to a [`Vec2`].
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub struct VecExpr(VecFormula);
+pub struct VecExpr {
+    geometry: GeometryId,
+    formula: VecFormula,
+}
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum VecFormula {
     Segment(segment::VecFormula),
 }
 
-impl From<segment::VecFormula> for VecExpr {
-    fn from(formula: segment::VecFormula) -> Self {
-        Self(VecFormula::Segment(formula))
+impl From<(GeometryId, segment::VecFormula)> for VecExpr {
+    fn from((geometry, formula): (GeometryId, segment::VecFormula)) -> Self {
+        Self {
+            geometry,
+            formula: VecFormula::Segment(formula),
+        }
     }
 }
 
 impl VecExpr {
     pub fn evaluate(&self, store: &impl GeometryStore, p: &State) -> Vec2 {
-        match &self.0 {
+        match &self.formula {
             VecFormula::Segment(f) => {
-                let init = store.unpack_chart::<Segment>(f.referenced_geometry(), p);
+                let init = store.unpack_chart::<Segment>(self.geometry, p);
                 f.evaluate(init)
             }
         }
     }
 
     pub fn param_indices(&self, store: &impl GeometryStore) -> Vec<usize> {
-        match &self.0 {
+        match &self.formula {
             VecFormula::Segment(f) => {
-                let block = store.chart_param_block::<Segment>(f.referenced_geometry());
+                let block = store.chart_param_block::<Segment>(self.geometry);
                 f.param_indices(block)
             }
         }
     }
 
     pub fn eval_vec_jacobian(&self, _store: &impl GeometryStore, _p: &State) -> VecJacobian {
-        match &self.0 {
+        match &self.formula {
             VecFormula::Segment(f) => f.eval_vec_jacobian(),
         }
     }
 
     pub fn referenced_geometry(&self) -> GeometryId {
-        match &self.0 {
-            VecFormula::Segment(f) => f.referenced_geometry(),
-        }
+        self.geometry
     }
 }

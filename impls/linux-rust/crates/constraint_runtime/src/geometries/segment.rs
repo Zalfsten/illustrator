@@ -34,65 +34,51 @@ impl Chart for Segment {
 impl Segment {
     /// Point formula for the start endpoint of the segment identified by `id`.
     pub fn start_expr(id: GeometryId) -> PointExpr {
-        PointFormula::StartPoint { geometry: id }.into()
+        (id, PointFormula::StartPoint).into()
     }
 
     /// Point formula for the end endpoint of the segment identified by `id`.
     pub fn end_expr(id: GeometryId) -> PointExpr {
-        PointFormula::EndPoint { geometry: id }.into()
+        (id, PointFormula::EndPoint).into()
     }
 
     /// Point formula for a chart sample on the segment identified by `id`.
     pub fn on_curve_expr(id: GeometryId, param: CurveParam) -> PointExpr {
-        PointFormula::OnCurve {
-            geometry: id,
-            param,
-        }
-        .into()
+        (id, PointFormula::OnCurve { param }).into()
     }
 
     /// Free-vector formula: segment direction (`end - start`).
     pub fn direction_expr(id: GeometryId) -> VecExpr {
-        VecFormula::Direction { geometry: id }.into()
+        (id, VecFormula::Direction).into()
     }
 
     /// Free-vector formula: curve tangent at `param`.
     pub fn tangent_expr(id: GeometryId, param: CurveParam) -> VecExpr {
-        VecFormula::TangentAt {
-            geometry: id,
-            param,
-        }
-        .into()
+        (id, VecFormula::TangentAt { param }).into()
     }
 
     /// Free-vector formula: curve normal at `param`.
     pub fn normal_expr(id: GeometryId, param: CurveParam) -> VecExpr {
-        VecFormula::NormalAt {
-            geometry: id,
-            param,
-        }
-        .into()
+        (id, VecFormula::NormalAt { param }).into()
     }
 }
 
 /// Segment-owned point formulas (private to the crate; wrapped by [`PointExpr`]).
+/// Geometry identity lives on the outer expr; formulas are pure chart ops.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum PointFormula {
-    StartPoint { geometry: GeometryId },
-    EndPoint { geometry: GeometryId },
-    OnCurve {
-        geometry: GeometryId,
-        param: CurveParam,
-    },
+    StartPoint,
+    EndPoint,
+    OnCurve { param: CurveParam },
 }
 
 impl PointFormula {
     /// Evaluate against already-unpacked chart endpoints `(start, end)`.
     pub(crate) fn evaluate(&self, (a, b): (Point2, Point2)) -> Point2 {
         match *self {
-            PointFormula::StartPoint { .. } => a,
-            PointFormula::EndPoint { .. } => b,
-            PointFormula::OnCurve { param, .. } => {
+            PointFormula::StartPoint => a,
+            PointFormula::EndPoint => b,
+            PointFormula::OnCurve { param } => {
                 let t = param.chart_t();
                 Point2::new((1.0 - t) * a.x + t * b.x, (1.0 - t) * a.y + t * b.y)
             }
@@ -102,11 +88,11 @@ impl PointFormula {
     /// Local→global indices given the segment's State parameter window.
     pub(crate) fn param_indices(&self, block: Range<usize>) -> Vec<usize> {
         match *self {
-            PointFormula::StartPoint { .. } => {
+            PointFormula::StartPoint => {
                 let o = block.start;
                 vec![o, o + 1]
             }
-            PointFormula::EndPoint { .. } => {
+            PointFormula::EndPoint => {
                 let o = block.start + 2;
                 vec![o, o + 1]
             }
@@ -116,10 +102,8 @@ impl PointFormula {
 
     pub(crate) fn eval_point_jacobian(&self) -> PointJacobian {
         match *self {
-            PointFormula::StartPoint { .. } | PointFormula::EndPoint { .. } => {
-                PointJacobian::endpoint_identity()
-            }
-            PointFormula::OnCurve { param, .. } => {
+            PointFormula::StartPoint | PointFormula::EndPoint => PointJacobian::endpoint_identity(),
+            PointFormula::OnCurve { param } => {
                 let mut j = PointJacobian::zeros(Segment::PARAMETER_COUNT);
                 let t = param.chart_t();
                 j.set_dx_dy(0, 1.0 - t, 0.0);
@@ -130,28 +114,18 @@ impl PointFormula {
             }
         }
     }
-
-    pub(crate) fn referenced_geometry(&self) -> GeometryId {
-        match *self {
-            PointFormula::StartPoint { geometry }
-            | PointFormula::EndPoint { geometry }
-            | PointFormula::OnCurve { geometry, .. } => geometry,
-        }
-    }
 }
 
 /// Segment-owned free-vector formulas (private to the crate; wrapped by [`VecExpr`]).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum VecFormula {
-    Direction { geometry: GeometryId },
+    Direction,
     TangentAt {
-        geometry: GeometryId,
         /// Chart parameter; unused on a segment (γ' is constant).
         #[allow(dead_code)]
         param: CurveParam,
     },
     NormalAt {
-        geometry: GeometryId,
         /// Chart parameter; unused on a segment (normal from constant tangent).
         #[allow(dead_code)]
         param: CurveParam,
@@ -163,7 +137,7 @@ impl VecFormula {
     pub(crate) fn evaluate(&self, (a, b): (Point2, Point2)) -> Vec2 {
         match *self {
             // γ'(t) = B - A (constant on a segment); length = segment length
-            VecFormula::Direction { .. } | VecFormula::TangentAt { .. } => b - a,
+            VecFormula::Direction | VecFormula::TangentAt { .. } => b - a,
             VecFormula::NormalAt { .. } => (b - a).left_normal(),
         }
     }
@@ -174,7 +148,7 @@ impl VecFormula {
 
     pub(crate) fn eval_vec_jacobian(&self) -> VecJacobian {
         match *self {
-            VecFormula::Direction { .. } | VecFormula::TangentAt { .. } => {
+            VecFormula::Direction | VecFormula::TangentAt { .. } => {
                 // v = end - start on params [x1,y1,x2,y2]
                 let mut j = VecJacobian::zeros(Segment::PARAMETER_COUNT);
                 j.set_dx_dy(0, -1.0, 0.0);
@@ -192,14 +166,6 @@ impl VecFormula {
                 j.set_dx_dy(3, -1.0, 0.0);
                 j
             }
-        }
-    }
-
-    pub(crate) fn referenced_geometry(&self) -> GeometryId {
-        match *self {
-            VecFormula::Direction { geometry }
-            | VecFormula::TangentAt { geometry, .. }
-            | VecFormula::NormalAt { geometry, .. } => geometry,
         }
     }
 }
