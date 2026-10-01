@@ -9,7 +9,6 @@
 //!
 //! Concrete kinds (layout + formulas) live under [`crate::geometries`].
 
-use crate::connectivity::Connectivity;
 use crate::geometries::GeometryBody;
 use std::ops::{Add, Mul, Neg, Range, Sub};
 
@@ -207,11 +206,6 @@ impl Geometry {
     pub fn param_block(&self) -> Range<usize> {
         let o = self.param_offset;
         o..o + self.parameter_count()
-    }
-
-    pub fn connectivity(&self) -> Connectivity {
-        let block = self.param_block();
-        Connectivity::new(block.collect())
     }
 
     /// After a contiguous block was removed from State, shift this geometry's

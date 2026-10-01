@@ -35,24 +35,21 @@ fn congruence_between_endpoint_point_exprs() {
 }
 
 #[test]
-fn add_geometry_grows_state_and_connectivity() {
+fn add_geometry_grows_state_and_param_block() {
     let mut doc = Document::new();
     assert_eq!(doc.state().len(), 0);
     let s0 = doc.add_segment(GeometryRole::Result, Point2::new(0.0, 0.0), Point2::new(1.0, 0.0));
     assert_eq!(doc.state().len(), Segment::PARAMETER_COUNT);
     assert_eq!(doc.structure.parameter_count(), Segment::PARAMETER_COUNT);
     let s = doc.geometry(s0).unwrap();
-    assert_eq!(s.connectivity().global_indices, vec![0, 1, 2, 3]);
+    assert_eq!(s.param_block(), 0..4);
     assert_eq!(
         doc.structure.geometry(s0).unwrap().role(),
         GeometryRole::Result
     );
     let s1 = doc.add_segment(GeometryRole::Result, Point2::new(2.0, 0.0), Point2::new(3.0, 1.0));
     assert_eq!(doc.state().len(), 2 * Segment::PARAMETER_COUNT);
-    assert_eq!(
-        doc.geometry(s1).unwrap().connectivity().global_indices,
-        vec![4, 5, 6, 7]
-    );
+    assert_eq!(doc.geometry(s1).unwrap().param_block(), 4..8);
 }
 
 #[test]

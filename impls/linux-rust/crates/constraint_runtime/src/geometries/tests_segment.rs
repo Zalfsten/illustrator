@@ -20,7 +20,7 @@ fn segment_geom(id: usize, param_offset: usize) -> Geometry {
 }
 
 #[test]
-fn segment_layout_and_connectivity() {
+fn segment_layout_and_param_block() {
     let offset = 0;
     assert_eq!(Segment::PARAMETER_COUNT, 4);
     let init = (Point2::new(0.0, 0.0), Point2::new(1.0, 0.0));
@@ -29,10 +29,7 @@ fn segment_layout_and_connectivity() {
         &[0.0, 0.0, 1.0, 0.0]
     );
     assert_eq!(Segment::unpack(&[0.0, 0.0, 1.0, 0.0]), init);
-    assert_eq!(
-        segment_geom(0, offset).connectivity().global_indices,
-        vec![0, 1, 2, 3]
-    );
+    assert_eq!(segment_geom(0, offset).param_block(), 0..4);
     assert_eq!(Segment::param_block(2), 2..6);
 }
 
