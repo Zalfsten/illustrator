@@ -1,9 +1,9 @@
 //! Line segment: State layout, chart sampling, and point/vector formulas.
 
+use std::ops::Range;
+
 use super::{Chart, GeometryBody, PointExpr, PointJacobian, VecExpr, VecJacobian};
 use crate::geom::{CurveParam, GeometryId, Point2, Vec2};
-use crate::state::State;
-use crate::store::GeometryStore;
 
 /// Line-segment chart. Parameters live at
 /// `p[offset..offset+PARAMETER_COUNT]` on the enclosing [`Geometry`].
@@ -87,57 +87,40 @@ pub(crate) enum PointFormula {
 }
 
 impl PointFormula {
-    pub(crate) fn evaluate(&self, store: &impl GeometryStore, p: &State) -> Point2 {
+    /// Evaluate against already-unpacked chart endpoints `(start, end)`.
+    pub(crate) fn evaluate(&self, (a, b): (Point2, Point2)) -> Point2 {
         match *self {
-            PointFormula::StartPoint { geometry } => {
-                let (a, _) = store.unpack_chart::<Segment>(geometry, p);
-                a
-            }
-            PointFormula::EndPoint { geometry } => {
-                let (_, b) = store.unpack_chart::<Segment>(geometry, p);
-                b
-            }
-            PointFormula::OnCurve { geometry, param } => {
-                let (a, b) = store.unpack_chart::<Segment>(geometry, p);
+            PointFormula::StartPoint { .. } => a,
+            PointFormula::EndPoint { .. } => b,
+            PointFormula::OnCurve { param, .. } => {
                 let t = param.chart_t();
                 Point2::new((1.0 - t) * a.x + t * b.x, (1.0 - t) * a.y + t * b.y)
             }
         }
     }
 
-    pub(crate) fn param_indices(&self, store: &impl GeometryStore) -> Vec<usize> {
+    /// Local→global indices given the segment's State parameter window.
+    pub(crate) fn param_indices(&self, block: Range<usize>) -> Vec<usize> {
         match *self {
-            PointFormula::StartPoint { geometry } => {
-                let o = store.chart_param_block::<Segment>(geometry).start;
+            PointFormula::StartPoint { .. } => {
+                let o = block.start;
                 vec![o, o + 1]
             }
-            PointFormula::EndPoint { geometry } => {
-                let o = store.chart_param_block::<Segment>(geometry).start + 2;
+            PointFormula::EndPoint { .. } => {
+                let o = block.start + 2;
                 vec![o, o + 1]
             }
-            PointFormula::OnCurve { geometry, .. } => {
-                store
-                    .expect_chart::<Segment>(geometry)
-                    .connectivity()
-                    .global_indices
-            }
+            PointFormula::OnCurve { .. } => block.collect(),
         }
     }
 
-    pub(crate) fn eval_point_jacobian(
-        &self,
-        store: &impl GeometryStore,
-        _p: &State,
-    ) -> PointJacobian {
+    pub(crate) fn eval_point_jacobian(&self) -> PointJacobian {
         match *self {
             PointFormula::StartPoint { .. } | PointFormula::EndPoint { .. } => {
                 PointJacobian::endpoint_identity()
             }
-            PointFormula::OnCurve { geometry, param } => {
-                let g = store.expect_chart::<Segment>(geometry);
-                let n = g.connectivity().len();
-                debug_assert_eq!(n, Segment::PARAMETER_COUNT);
-                let mut j = PointJacobian::zeros(n);
+            PointFormula::OnCurve { param, .. } => {
+                let mut j = PointJacobian::zeros(Segment::PARAMETER_COUNT);
                 let t = param.chart_t();
                 j.set_dx_dy(0, 1.0 - t, 0.0);
                 j.set_dx_dy(1, 0.0, 1.0 - t);
@@ -176,32 +159,20 @@ pub(crate) enum VecFormula {
 }
 
 impl VecFormula {
-    pub(crate) fn evaluate(&self, store: &impl GeometryStore, p: &State) -> Vec2 {
+    /// Evaluate against already-unpacked chart endpoints `(start, end)`.
+    pub(crate) fn evaluate(&self, (a, b): (Point2, Point2)) -> Vec2 {
         match *self {
-            VecFormula::Direction { geometry } | VecFormula::TangentAt { geometry, .. } => {
-                // γ'(t) = B - A (constant on a segment); length = segment length
-                let (a, b) = store.unpack_chart::<Segment>(geometry, p);
-                b - a
-            }
-            VecFormula::NormalAt { geometry, .. } => {
-                let (a, b) = store.unpack_chart::<Segment>(geometry, p);
-                (b - a).left_normal()
-            }
+            // γ'(t) = B - A (constant on a segment); length = segment length
+            VecFormula::Direction { .. } | VecFormula::TangentAt { .. } => b - a,
+            VecFormula::NormalAt { .. } => (b - a).left_normal(),
         }
     }
 
-    pub(crate) fn param_indices(&self, store: &impl GeometryStore) -> Vec<usize> {
-        store
-            .expect_chart::<Segment>(self.referenced_geometry())
-            .connectivity()
-            .global_indices
+    pub(crate) fn param_indices(&self, block: Range<usize>) -> Vec<usize> {
+        block.collect()
     }
 
-    pub(crate) fn eval_vec_jacobian(
-        &self,
-        _store: &impl GeometryStore,
-        _p: &State,
-    ) -> VecJacobian {
+    pub(crate) fn eval_vec_jacobian(&self) -> VecJacobian {
         match *self {
             VecFormula::Direction { .. } | VecFormula::TangentAt { .. } => {
                 // v = end - start on params [x1,y1,x2,y2]
