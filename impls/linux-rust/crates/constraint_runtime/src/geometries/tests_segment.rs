@@ -28,10 +28,7 @@ fn segment_layout_and_connectivity() {
         <Segment as Chart>::pack(init).as_ref(),
         &[0.0, 0.0, 1.0, 0.0]
     );
-    assert_eq!(
-        Segment::unpack(&[0.0, 0.0, 1.0, 0.0]),
-        init
-    );
+    assert_eq!(Segment::unpack(&[0.0, 0.0, 1.0, 0.0]), init);
     assert_eq!(
         segment_geom(0, offset).connectivity().global_indices,
         vec![0, 1, 2, 3]
