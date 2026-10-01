@@ -24,7 +24,7 @@ The production evaluate/solve path SHALL obtain geometric quantities needed by r
 
 ### Requirement: Expressions expose derivatives w.r.t. local parameters
 
-Point and vector expressions that appear in structural constraints SHALL provide analytical derivative information with respect to the local parameters they depend on (or equivalent information sufficient to form local Jacobian contributions). For a point expression, that information SHALL be a \(2 \times n\) Jacobian of the map from the expression's **formula-local** parameters to \((x,y)\), where \(n\) is the number of parameters the formula depends on (which MAY be a sparse subset of the owning geometry's full parameter block — e.g. a segment endpoint depends on two of four segment parameters). Column order SHALL match the expression's reported parameter-index list. The production path for Jacobian assembly SHALL use those analytical derivatives. Finite-difference approximation SHALL NOT be used as a fallback or as the production Jacobian path. Formula-local point Jacobians are small (chart DOFs); implementations MAY represent them as compact stack-friendly structures before scattering into constraint-local and global Jacobians.
+Point and vector expressions that appear in structural constraints SHALL provide analytical derivative information with respect to the local parameters they depend on (or equivalent information sufficient to form local Jacobian contributions). For a point expression, that information SHALL be a \(2 \times n\) Jacobian of the map from the expression's **formula-local** parameters to \((x,y)\), where \(n\) is the number of parameters the formula depends on (which MAY be a sparse subset of the owning geometry's full parameter block — e.g. a segment endpoint depends on two of four segment parameters). For a free-vector expression, that information SHALL be a \(2 \times n\) Jacobian of the map from formula-local parameters to \((v_x,v_y)\) with the same layout and column-order rules. Column order SHALL match the expression's reported parameter-index list. The production path for Jacobian assembly SHALL use those analytical derivatives. Finite-difference approximation SHALL NOT be used as a fallback or as the production Jacobian path. Formula-local Jacobians are small (chart DOFs); implementations MAY represent them as compact stack-friendly structures before scattering into constraint-local and global Jacobians. Structural constraints that combine two vector expressions (Parallel, Orthogonal) SHALL form residuals and local Jacobians by composing those vector evaluations and vector Jacobians — they SHALL NOT bypass the opaque vector-expression API with geometry-kind-specific direction tables.
 
 #### Scenario: Local Jacobian contribution can be formed analytically
 
@@ -46,9 +46,10 @@ Each structural constraint SHALL define a residual contribution \(r_N\) as a fun
 
 #### Scenario: Orthogonal constraint yields residual and local derivatives
 
-- **WHEN** an Orthogonal constraint between two segments is assembled at a given state
+- **WHEN** an Orthogonal constraint between two free-vector expressions (v1: segment directions) is assembled at a given state
 - **THEN** it produces a residual contribution of the specified arity
 - **AND** it produces local partial derivatives of that residual w.r.t. the involved local parameters
+- **AND** those derivatives are obtained by composing the vector expressions' analytical Jacobians
 
 ### Requirement: Curve frame expressions evaluate with derivatives
 

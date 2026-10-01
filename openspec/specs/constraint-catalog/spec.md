@@ -16,25 +16,25 @@ The system SHALL provide a Congruence relationship between two point expressions
 - **AND** a successful solve completes
 - **THEN** both expressions evaluate to the same location within solve tolerance
 
-### Requirement: Parallel constrains segment directions
+### Requirement: Parallel constrains two free-vector expressions
 
-The system SHALL provide a Parallel relationship between two segments. Parallel SHALL contribute exactly one residual component that is zero if and only if the segments' direction vectors are linearly dependent (parallel or anti-parallel), including the degenerate case where either direction has zero length.
+The system SHALL provide a Parallel relationship between two **opaque free-vector expressions**. Parallel SHALL contribute exactly one residual component that is zero if and only if the two evaluated free vectors are linearly dependent (parallel or anti-parallel), including the degenerate case where either vector has zero length. In the v1 catalog, tools SHALL typically supply segment-direction vector expressions; the residual SHALL NOT hard-wire segment identity outside those expressions.
 
-#### Scenario: Parallel segments keep aligned directions under edit
+#### Scenario: Parallel segment directions stay aligned under edit
 
-- **WHEN** two segments are constrained Parallel
+- **WHEN** Parallel is applied to the direction vector expressions of two segments
 - **AND** the document is edited through a successful solve
-- **THEN** the segments' direction vectors remain linearly dependent within solve tolerance
+- **THEN** those direction vectors remain linearly dependent within solve tolerance
 
-### Requirement: Orthogonal constrains a right angle
+### Requirement: Orthogonal constrains two free-vector expressions
 
-The system SHALL provide an Orthogonal relationship between two segments. Orthogonal SHALL contribute exactly one residual component that is zero if and only if the segments' direction vectors are perpendicular (dot product zero), including the degenerate case where either direction has zero length.
+The system SHALL provide an Orthogonal relationship between two **opaque free-vector expressions**. Orthogonal SHALL contribute exactly one residual component that is zero if and only if the two evaluated free vectors are perpendicular (dot product zero), including the degenerate case where either vector has zero length. In the v1 catalog, tools SHALL typically supply segment-direction vector expressions; the residual SHALL NOT hard-wire segment identity outside those expressions.
 
-#### Scenario: Orthogonal segments keep a right angle under edit
+#### Scenario: Orthogonal segment directions keep a right angle under edit
 
-- **WHEN** two segments are constrained Orthogonal
+- **WHEN** Orthogonal is applied to the direction vector expressions of two segments
 - **AND** the document is edited through a successful solve
-- **THEN** the segments' direction vectors remain perpendicular within solve tolerance
+- **THEN** those direction vectors remain perpendicular within solve tolerance
 
 ### Requirement: FixPoint anchors a point expression
 
@@ -55,12 +55,12 @@ Congruence, Parallel, Orthogonal, and FixPoint SHALL be structural constraints. 
 - **WHEN** a solve succeeds and its result is committed as the document state
 - **THEN** every structural constraint in the document is satisfied within solve tolerance
 
-### Requirement: Degenerate segments do not crash the catalog
+### Requirement: Degenerate zero vectors do not crash the catalog
 
-If a segment has zero length, Parallel and Orthogonal residuals involving that segment MAY be algebraically satisfied without conveying a meaningful angle. The system SHALL still accept such configurations without undefined behavior; improving or rejecting degeneracy is outside this catalog's normative behavior.
+If either free-vector expression involved in Parallel or Orthogonal evaluates to the zero vector (e.g. a zero-length segment direction), the residual MAY be algebraically satisfied without conveying a meaningful angle. The system SHALL still accept such configurations without undefined behavior; improving or rejecting degeneracy is outside this catalog's normative behavior.
 
-#### Scenario: Zero-length segment does not make assembly fail by itself
+#### Scenario: Zero-length segment direction does not make assembly fail by itself
 
 - **WHEN** a segment has coincident endpoints
-- **AND** Parallel or Orthogonal involving that segment is present
+- **AND** Parallel or Orthogonal is applied to vector expressions that include that segment's direction
 - **THEN** equation assembly completes without runtime failure attributable solely to that degeneracy
