@@ -39,41 +39,44 @@ impl Segment {
 
     /// Point formula for the start endpoint of the segment identified by `id`.
     pub fn start_expr(id: GeometryId) -> PointExpr {
-        PointExpr::from_segment(PointFormula::StartPoint(StartPoint { geometry: id }))
+        PointFormula::StartPoint(StartPoint { geometry: id }).into()
     }
 
     /// Point formula for the end endpoint of the segment identified by `id`.
     pub fn end_expr(id: GeometryId) -> PointExpr {
-        PointExpr::from_segment(PointFormula::EndPoint(EndPoint { geometry: id }))
+        PointFormula::EndPoint(EndPoint { geometry: id }).into()
     }
 
     /// Point formula for a chart sample on the segment identified by `id`.
     pub fn on_curve_expr(id: GeometryId, param: CurveParam) -> PointExpr {
-        PointExpr::from_segment(PointFormula::OnCurve(OnCurve {
+        PointFormula::OnCurve(OnCurve {
             geometry: id,
             param,
-        }))
+        })
+        .into()
     }
 
     /// Free-vector formula: segment direction (`end - start`).
     pub fn direction_expr(id: GeometryId) -> VecExpr {
-        VecExpr::from_segment(VecFormula::Direction(Direction { geometry: id }))
+        VecFormula::Direction(Direction { geometry: id }).into()
     }
 
     /// Free-vector formula: curve tangent at `param`.
     pub fn tangent_expr(id: GeometryId, param: CurveParam) -> VecExpr {
-        VecExpr::from_segment(VecFormula::TangentAt(TangentAt {
+        VecFormula::TangentAt(TangentAt {
             geometry: id,
             param,
-        }))
+        })
+        .into()
     }
 
     /// Free-vector formula: curve normal at `param`.
     pub fn normal_expr(id: GeometryId, param: CurveParam) -> VecExpr {
-        VecExpr::from_segment(VecFormula::NormalAt(NormalAt {
+        VecFormula::NormalAt(NormalAt {
             geometry: id,
             param,
-        }))
+        })
+        .into()
     }
 }
 

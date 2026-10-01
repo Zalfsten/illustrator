@@ -79,11 +79,13 @@ enum PointFormula {
     Segment(segment::PointFormula),
 }
 
-impl PointExpr {
-    pub(crate) fn from_segment(formula: segment::PointFormula) -> Self {
+impl From<segment::PointFormula> for PointExpr {
+    fn from(formula: segment::PointFormula) -> Self {
         Self(PointFormula::Segment(formula))
     }
+}
 
+impl PointExpr {
     pub fn evaluate(&self, store: &impl GeometryStore, p: &State) -> Point2 {
         match &self.0 {
             PointFormula::Segment(f) => f.evaluate(store, p),
@@ -118,11 +120,13 @@ enum VecFormula {
     Segment(segment::VecFormula),
 }
 
-impl VecExpr {
-    pub(crate) fn from_segment(formula: segment::VecFormula) -> Self {
+impl From<segment::VecFormula> for VecExpr {
+    fn from(formula: segment::VecFormula) -> Self {
         Self(VecFormula::Segment(formula))
     }
+}
 
+impl VecExpr {
     pub fn evaluate(&self, store: &impl GeometryStore, p: &State) -> Vec2 {
         match &self.0 {
             VecFormula::Segment(f) => f.evaluate(store, p),
