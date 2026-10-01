@@ -1,7 +1,7 @@
 use super::*;
 use crate::document::DocumentStructure;
 use crate::geom::{CurveParam, Geometry, GeometryId, GeometryRole, Point2, Vec2};
-use crate::geometries::Chart;
+use crate::geometries::{Chart, GeometryBody};
 use crate::state::State;
 
 fn store_with(g: Geometry) -> DocumentStructure {
@@ -11,7 +11,12 @@ fn store_with(g: Geometry) -> DocumentStructure {
 }
 
 fn segment_geom(id: usize, param_offset: usize) -> Geometry {
-    Segment::into_geometry(GeometryId(id), GeometryRole::Result, param_offset)
+    Geometry {
+        id: GeometryId(id),
+        role: GeometryRole::Result,
+        param_offset,
+        body: GeometryBody::Segment,
+    }
 }
 
 #[test]

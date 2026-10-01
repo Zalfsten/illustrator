@@ -1,21 +1,23 @@
 use super::*;
 use crate::document::DocumentStructure;
-use crate::geom::{GeometryId, GeometryRole};
-use crate::geometries::{Chart, Segment};
+use crate::geom::{Geometry, GeometryId, GeometryRole};
+use crate::geometries::{Chart, GeometryBody, Segment};
 use crate::state::State;
 
 fn two_segs() -> (DocumentStructure, State) {
     let mut structure = DocumentStructure::new();
-    structure.push_geometry(Segment::into_geometry(
-        GeometryId(0),
-        GeometryRole::Result,
-        0,
-    ));
-    structure.push_geometry(Segment::into_geometry(
-        GeometryId(1),
-        GeometryRole::Result,
-        Segment::PARAMETER_COUNT,
-    ));
+    structure.push_geometry(Geometry {
+        id: GeometryId(0),
+        role: GeometryRole::Result,
+        param_offset: 0,
+        body: GeometryBody::Segment,
+    });
+    structure.push_geometry(Geometry {
+        id: GeometryId(1),
+        role: GeometryRole::Result,
+        param_offset: Segment::PARAMETER_COUNT,
+        body: GeometryBody::Segment,
+    });
     // s0: (0,0)-(1,0), s1: (0,0)-(0,1) perpendicular sharing origin conceptually
     let p = State::from(vec![0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0]);
     (structure, p)

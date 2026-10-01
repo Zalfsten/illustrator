@@ -2,8 +2,6 @@
 
 use super::{Chart, GeometryBody, PointExpr, PointJacobian, VecExpr};
 use crate::geom::{CurveParam, GeometryId, Point2, Vec2};
-#[cfg(test)]
-use crate::geom::{Geometry, GeometryRole};
 use crate::state::State;
 use crate::store::GeometryStore;
 
@@ -26,17 +24,6 @@ impl Chart for Segment {
 }
 
 impl Segment {
-    /// Build a document [`Geometry`] with a segment body (crate tests).
-    #[cfg(test)]
-    pub(crate) fn into_geometry(id: GeometryId, role: GeometryRole, param_offset: usize) -> Geometry {
-        Geometry {
-            id,
-            role,
-            param_offset,
-            body: GeometryBody::Segment,
-        }
-    }
-
     /// Point formula for the start endpoint of the segment identified by `id`.
     pub fn start_expr(id: GeometryId) -> PointExpr {
         PointFormula::StartPoint(StartPoint { geometry: id }).into()
