@@ -90,15 +90,15 @@ impl PointFormula {
     pub(crate) fn evaluate(&self, store: &impl GeometryStore, p: &State) -> Point2 {
         match *self {
             PointFormula::StartPoint { geometry } => {
-                let (a, _) = endpoints(store, geometry, p);
+                let (a, _) = store.unpack_chart::<Segment>(geometry, p);
                 a
             }
             PointFormula::EndPoint { geometry } => {
-                let (_, b) = endpoints(store, geometry, p);
+                let (_, b) = store.unpack_chart::<Segment>(geometry, p);
                 b
             }
             PointFormula::OnCurve { geometry, param } => {
-                let (a, b) = endpoints(store, geometry, p);
+                let (a, b) = store.unpack_chart::<Segment>(geometry, p);
                 let t = param.chart_t();
                 Point2::new((1.0 - t) * a.x + t * b.x, (1.0 - t) * a.y + t * b.y)
             }
@@ -108,11 +108,11 @@ impl PointFormula {
     pub(crate) fn param_indices(&self, store: &impl GeometryStore) -> Vec<usize> {
         match *self {
             PointFormula::StartPoint { geometry } => {
-                let o = segment_block(store, geometry).start;
+                let o = store.chart_param_block::<Segment>(geometry).start;
                 vec![o, o + 1]
             }
             PointFormula::EndPoint { geometry } => {
-                let o = segment_block(store, geometry).start + 2;
+                let o = store.chart_param_block::<Segment>(geometry).start + 2;
                 vec![o, o + 1]
             }
             PointFormula::OnCurve { geometry, .. } => {
@@ -180,11 +180,11 @@ impl VecFormula {
         match *self {
             VecFormula::Direction { geometry } | VecFormula::TangentAt { geometry, .. } => {
                 // γ'(t) = B - A (constant on a segment); length = segment length
-                let (a, b) = endpoints(store, geometry, p);
+                let (a, b) = store.unpack_chart::<Segment>(geometry, p);
                 b - a
             }
             VecFormula::NormalAt { geometry, .. } => {
-                let (a, b) = endpoints(store, geometry, p);
+                let (a, b) = store.unpack_chart::<Segment>(geometry, p);
                 (b - a).left_normal()
             }
         }
@@ -231,14 +231,6 @@ impl VecFormula {
             | VecFormula::NormalAt { geometry, .. } => geometry,
         }
     }
-}
-
-fn segment_block(store: &impl GeometryStore, id: GeometryId) -> std::ops::Range<usize> {
-    store.expect_chart::<Segment>(id).param_block()
-}
-
-fn endpoints(store: &impl GeometryStore, id: GeometryId, p: &State) -> (Point2, Point2) {
-    Segment::unpack(&p.as_slice()[segment_block(store, id)])
 }
 
 #[cfg(test)]
