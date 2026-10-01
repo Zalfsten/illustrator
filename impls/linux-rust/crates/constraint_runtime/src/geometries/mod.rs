@@ -11,7 +11,9 @@ pub mod expr;
 pub mod segment;
 
 pub use chart::Chart;
-pub use expr::{PointExpr, PointJacobian, VecExpr, MAX_POINT_JACOBIAN_PARAMS};
+pub use expr::{
+    PointExpr, PointJacobian, VecExpr, VecJacobian, MAX_POINT_JACOBIAN_PARAMS,
+};
 pub use segment::Segment;
 
 /// Kind-specific payload (charts). Shared fields live on [`crate::geom::Geometry`].

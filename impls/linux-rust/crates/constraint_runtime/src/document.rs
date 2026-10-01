@@ -59,7 +59,9 @@ impl DocumentStructure {
             Constraint::Congruence { a, b } => {
                 a.referenced_geometry() == id || b.referenced_geometry() == id
             }
-            Constraint::Parallel { a, b } | Constraint::Orthogonal { a, b } => *a == id || *b == id,
+            Constraint::Parallel { a, b } | Constraint::Orthogonal { a, b } => {
+                a.referenced_geometry() == id || b.referenced_geometry() == id
+            }
             Constraint::FixPoint { point, .. } => point.referenced_geometry() == id,
         }
     }

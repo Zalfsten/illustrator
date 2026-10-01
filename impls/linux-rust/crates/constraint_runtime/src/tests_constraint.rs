@@ -32,12 +32,12 @@ fn jacobian_matches_fd_for_catalog() {
             b: Segment::start_expr(GeometryId(1)),
         },
         Constraint::Parallel {
-            a: GeometryId(0),
-            b: GeometryId(1),
+            a: Segment::direction_expr(GeometryId(0)),
+            b: Segment::direction_expr(GeometryId(1)),
         },
         Constraint::Orthogonal {
-            a: GeometryId(0),
-            b: GeometryId(1),
+            a: Segment::direction_expr(GeometryId(0)),
+            b: Segment::direction_expr(GeometryId(1)),
         },
         Constraint::FixPoint {
             point: Segment::start_expr(GeometryId(0)),

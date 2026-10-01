@@ -89,7 +89,10 @@ fn remove_geometry_compacts_state_and_drops_orphans() {
         a: Segment::end_expr(s0),
         b: Segment::start_expr(s1),
     });
-    doc.add_constraint(Constraint::Orthogonal { a: s0, b: s1 });
+    doc.add_constraint(Constraint::Orthogonal {
+        a: Segment::direction_expr(s0),
+        b: Segment::direction_expr(s1),
+    });
     doc.add_constraint(Constraint::FixPoint {
         point: Segment::start_expr(s2),
         target: Point2::new(5.0, 5.0),

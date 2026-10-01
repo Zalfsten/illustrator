@@ -1,22 +1,17 @@
 //! Structural constraints: local residuals and analytical local Jacobians.
 
 use crate::connectivity::Connectivity;
-use crate::geometries::PointExpr;
-use crate::geometries::Segment;
-use crate::geom::{GeometryId, Point2};
+use crate::geometries::{PointExpr, VecExpr};
+use crate::geom::Point2;
 use crate::state::State;
 use crate::store::GeometryStore;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Constraint {
     Congruence { a: PointExpr, b: PointExpr },
-    Parallel { a: GeometryId, b: GeometryId },
-    Orthogonal { a: GeometryId, b: GeometryId },
+    Parallel { a: VecExpr, b: VecExpr },
+    Orthogonal { a: VecExpr, b: VecExpr },
     FixPoint { point: PointExpr, target: Point2 },
-}
-
-fn segment_direction(store: &impl GeometryStore, id: GeometryId, p: &State) -> crate::geom::Vec2 {
-    Segment::direction_expr(id).evaluate(store, p)
 }
 
 impl Constraint {
@@ -36,8 +31,8 @@ impl Constraint {
                 Connectivity::new(idx)
             }
             Constraint::Parallel { a, b } | Constraint::Orthogonal { a, b } => {
-                let mut idx = store.expect_geometry(*a).connectivity().global_indices;
-                idx.extend(store.expect_geometry(*b).connectivity().global_indices);
+                let mut idx = a.param_indices(store);
+                idx.extend(b.param_indices(store));
                 Connectivity::new(idx)
             }
             Constraint::FixPoint { point, .. } => Connectivity::new(point.param_indices(store)),
@@ -54,13 +49,13 @@ impl Constraint {
                 out[1] = pa.y - pb.y;
             }
             Constraint::Parallel { a, b } => {
-                let va = segment_direction(store, *a, p);
-                let vb = segment_direction(store, *b, p);
+                let va = a.evaluate(store, p);
+                let vb = b.evaluate(store, p);
                 out[0] = va.cross(vb);
             }
             Constraint::Orthogonal { a, b } => {
-                let va = segment_direction(store, *a, p);
-                let vb = segment_direction(store, *b, p);
+                let va = a.evaluate(store, p);
+                let vb = b.evaluate(store, p);
                 out[0] = va.dot(vb);
             }
             Constraint::FixPoint { point, target } => {
@@ -96,28 +91,38 @@ impl Constraint {
                 }
             }
             Constraint::Parallel { a, b } => {
-                let va = segment_direction(store, *a, p);
-                let vb = segment_direction(store, *b, p);
-                out[0] = -vb.y;
-                out[1] = vb.x;
-                out[2] = vb.y;
-                out[3] = -vb.x;
-                out[4] = va.y;
-                out[5] = -va.x;
-                out[6] = -va.y;
-                out[7] = va.x;
+                let va = a.evaluate(store, p);
+                let vb = b.evaluate(store, p);
+                let ja = a.eval_vec_jacobian(store, p);
+                let jb = b.eval_vec_jacobian(store, p);
+                let na = ja.n();
+                let nb = jb.n();
+                debug_assert_eq!(na, a.param_indices(store).len());
+                debug_assert_eq!(nb, b.param_indices(store).len());
+                // r = va × vb; ∂r/∂va = (vb.y, -vb.x), ∂r/∂vb = (-va.y, va.x)
+                for i in 0..na {
+                    out[i] = vb.y * ja.dx()[i] - vb.x * ja.dy()[i];
+                }
+                for j in 0..nb {
+                    out[na + j] = -va.y * jb.dx()[j] + va.x * jb.dy()[j];
+                }
             }
             Constraint::Orthogonal { a, b } => {
-                let va = segment_direction(store, *a, p);
-                let vb = segment_direction(store, *b, p);
-                out[0] = -vb.x;
-                out[1] = -vb.y;
-                out[2] = vb.x;
-                out[3] = vb.y;
-                out[4] = -va.x;
-                out[5] = -va.y;
-                out[6] = va.x;
-                out[7] = va.y;
+                let va = a.evaluate(store, p);
+                let vb = b.evaluate(store, p);
+                let ja = a.eval_vec_jacobian(store, p);
+                let jb = b.eval_vec_jacobian(store, p);
+                let na = ja.n();
+                let nb = jb.n();
+                debug_assert_eq!(na, a.param_indices(store).len());
+                debug_assert_eq!(nb, b.param_indices(store).len());
+                // r = va · vb; ∂r/∂va = vb, ∂r/∂vb = va
+                for i in 0..na {
+                    out[i] = vb.x * ja.dx()[i] + vb.y * ja.dy()[i];
+                }
+                for j in 0..nb {
+                    out[na + j] = va.x * jb.dx()[j] + va.y * jb.dy()[j];
+                }
             }
             Constraint::FixPoint { point, .. } => {
                 let j = point.eval_point_jacobian(store, p);

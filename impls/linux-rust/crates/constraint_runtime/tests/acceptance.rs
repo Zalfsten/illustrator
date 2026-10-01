@@ -1,7 +1,7 @@
 //! Headless acceptance scenarios.
 
 use constraint_runtime::{
-    AssembledSystem, Constraint, Document, DragSession, GeometryId, GeometryRole,
+    AssembledSystem, Constraint, Document, DragSession, GeometryRole,
     InteractiveSolve, Point2, SoftContribution, SystemEval, SOLVE_TOL, Segment,
 };
 
@@ -23,8 +23,8 @@ fn right_angle_soft_drag_keeps_orthogonal_and_congruence() {
         b: Segment::start_expr(s1),
     });
     doc.add_constraint(Constraint::Orthogonal {
-        a: GeometryId(0),
-        b: GeometryId(1),
+        a: Segment::direction_expr(s0),
+        b: Segment::direction_expr(s1),
     });
     doc.add_constraint(Constraint::FixPoint {
         point: Segment::start_expr(s0),
@@ -74,9 +74,18 @@ fn rectangle_drag_keeps_structure_and_stays_near() {
         b: Segment::start_expr(ab),
     });
 
-    doc.add_constraint(Constraint::Parallel { a: ab, b: cd });
-    doc.add_constraint(Constraint::Parallel { a: da, b: bc });
-    doc.add_constraint(Constraint::Orthogonal { a: ab, b: da });
+    doc.add_constraint(Constraint::Parallel {
+        a: Segment::direction_expr(ab),
+        b: Segment::direction_expr(cd),
+    });
+    doc.add_constraint(Constraint::Parallel {
+        a: Segment::direction_expr(da),
+        b: Segment::direction_expr(bc),
+    });
+    doc.add_constraint(Constraint::Orthogonal {
+        a: Segment::direction_expr(ab),
+        b: Segment::direction_expr(da),
+    });
     doc.add_constraint(Constraint::FixPoint {
         point: Segment::start_expr(ab),
         target: Point2::new(0.0, 1.0),
@@ -121,8 +130,8 @@ fn right_angle_horizontal_drag_moves_x() {
         b: Segment::start_expr(s1),
     });
     doc.add_constraint(Constraint::Orthogonal {
-        a: GeometryId(0),
-        b: GeometryId(1),
+        a: Segment::direction_expr(s0),
+        b: Segment::direction_expr(s1),
     });
     doc.add_constraint(Constraint::FixPoint {
         point: Segment::start_expr(s0),

@@ -1,6 +1,6 @@
 use super::*;
 use crate::constraint::Constraint;
-use crate::geom::{GeometryId, GeometryRole, Point2};
+use crate::geom::{GeometryRole, Point2};
 use crate::geometries::Segment;
 use crate::solver::StubSolver;
 
@@ -62,8 +62,8 @@ fn atomic_drag_undo() {
         b: Segment::start_expr(s1),
     });
     doc.add_constraint(Constraint::Orthogonal {
-        a: GeometryId(0),
-        b: GeometryId(1),
+        a: Segment::direction_expr(s0),
+        b: Segment::direction_expr(s1),
     });
     doc.add_constraint(Constraint::FixPoint {
         point: Segment::start_expr(s0),

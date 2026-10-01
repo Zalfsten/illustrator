@@ -1,6 +1,6 @@
 //! Line segment: State layout, chart sampling, and point/vector formulas.
 
-use super::{Chart, GeometryBody, PointExpr, PointJacobian, VecExpr};
+use super::{Chart, GeometryBody, PointExpr, PointJacobian, VecExpr, VecJacobian};
 use crate::geom::{CurveParam, GeometryId, Point2, Vec2};
 use crate::state::State;
 use crate::store::GeometryStore;
@@ -26,43 +26,43 @@ impl Chart for Segment {
 impl Segment {
     /// Point formula for the start endpoint of the segment identified by `id`.
     pub fn start_expr(id: GeometryId) -> PointExpr {
-        PointFormula::StartPoint(StartPoint { geometry: id }).into()
+        PointFormula::StartPoint { geometry: id }.into()
     }
 
     /// Point formula for the end endpoint of the segment identified by `id`.
     pub fn end_expr(id: GeometryId) -> PointExpr {
-        PointFormula::EndPoint(EndPoint { geometry: id }).into()
+        PointFormula::EndPoint { geometry: id }.into()
     }
 
     /// Point formula for a chart sample on the segment identified by `id`.
     pub fn on_curve_expr(id: GeometryId, param: CurveParam) -> PointExpr {
-        PointFormula::OnCurve(OnCurve {
+        PointFormula::OnCurve {
             geometry: id,
             param,
-        })
+        }
         .into()
     }
 
     /// Free-vector formula: segment direction (`end - start`).
     pub fn direction_expr(id: GeometryId) -> VecExpr {
-        VecFormula::Direction(Direction { geometry: id }).into()
+        VecFormula::Direction { geometry: id }.into()
     }
 
     /// Free-vector formula: curve tangent at `param`.
     pub fn tangent_expr(id: GeometryId, param: CurveParam) -> VecExpr {
-        VecFormula::TangentAt(TangentAt {
+        VecFormula::TangentAt {
             geometry: id,
             param,
-        })
+        }
         .into()
     }
 
     /// Free-vector formula: curve normal at `param`.
     pub fn normal_expr(id: GeometryId, param: CurveParam) -> VecExpr {
-        VecFormula::NormalAt(NormalAt {
+        VecFormula::NormalAt {
             geometry: id,
             param,
-        })
+        }
         .into()
     }
 }
@@ -70,197 +70,146 @@ impl Segment {
 /// Segment-owned point formulas (private to the crate; wrapped by [`PointExpr`]).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum PointFormula {
-    StartPoint(StartPoint),
-    EndPoint(EndPoint),
-    OnCurve(OnCurve),
+    StartPoint { geometry: GeometryId },
+    EndPoint { geometry: GeometryId },
+    OnCurve {
+        geometry: GeometryId,
+        param: CurveParam,
+    },
 }
 
 impl PointFormula {
     pub(crate) fn evaluate(&self, store: &impl GeometryStore, p: &State) -> Point2 {
-        match self {
-            PointFormula::StartPoint(f) => f.evaluate(store, p),
-            PointFormula::EndPoint(f) => f.evaluate(store, p),
-            PointFormula::OnCurve(f) => f.evaluate(store, p),
+        match *self {
+            PointFormula::StartPoint { geometry } => {
+                start(segment_block(store, geometry).start, p)
+            }
+            PointFormula::EndPoint { geometry } => end(segment_block(store, geometry).start, p),
+            PointFormula::OnCurve { geometry, param } => {
+                position_at(segment_block(store, geometry).start, param.chart_t(), p)
+            }
         }
     }
 
     pub(crate) fn param_indices(&self, store: &impl GeometryStore) -> Vec<usize> {
-        match self {
-            PointFormula::StartPoint(f) => f.param_indices(store),
-            PointFormula::EndPoint(f) => f.param_indices(store),
-            PointFormula::OnCurve(f) => f.param_indices(store),
+        match *self {
+            PointFormula::StartPoint { geometry } => {
+                let o = segment_block(store, geometry).start;
+                vec![o, o + 1]
+            }
+            PointFormula::EndPoint { geometry } => {
+                let o = segment_block(store, geometry).start + 2;
+                vec![o, o + 1]
+            }
+            PointFormula::OnCurve { geometry, .. } => {
+                store.expect_geometry(geometry).connectivity().global_indices
+            }
         }
     }
 
     pub(crate) fn eval_point_jacobian(
         &self,
         store: &impl GeometryStore,
-        p: &State,
+        _p: &State,
     ) -> PointJacobian {
-        match self {
-            PointFormula::StartPoint(f) => f.eval_point_jacobian(store, p),
-            PointFormula::EndPoint(f) => f.eval_point_jacobian(store, p),
-            PointFormula::OnCurve(f) => f.eval_point_jacobian(store, p),
+        match *self {
+            PointFormula::StartPoint { .. } | PointFormula::EndPoint { .. } => {
+                PointJacobian::endpoint_identity()
+            }
+            PointFormula::OnCurve { geometry, param } => {
+                let g = store.expect_geometry(geometry);
+                debug_assert!(matches!(g.body, GeometryBody::Segment));
+                let n = g.connectivity().len();
+                debug_assert_eq!(n, Segment::PARAMETER_COUNT);
+                let mut j = PointJacobian::zeros(n);
+                let t = param.chart_t();
+                j.set_dx_dy(0, 1.0 - t, 0.0);
+                j.set_dx_dy(1, 0.0, 1.0 - t);
+                j.set_dx_dy(2, t, 0.0);
+                j.set_dx_dy(3, 0.0, t);
+                j
+            }
         }
     }
 
     pub(crate) fn referenced_geometry(&self) -> GeometryId {
-        match self {
-            PointFormula::StartPoint(f) => f.geometry,
-            PointFormula::EndPoint(f) => f.geometry,
-            PointFormula::OnCurve(f) => f.geometry,
+        match *self {
+            PointFormula::StartPoint { geometry }
+            | PointFormula::EndPoint { geometry }
+            | PointFormula::OnCurve { geometry, .. } => geometry,
         }
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) struct StartPoint {
-    geometry: GeometryId,
-}
-
-impl StartPoint {
-    fn evaluate(&self, store: &impl GeometryStore, p: &State) -> Point2 {
-        start(segment_block(store, self.geometry).start, p)
-    }
-
-    fn param_indices(&self, store: &impl GeometryStore) -> Vec<usize> {
-        let o = segment_block(store, self.geometry).start;
-        vec![o, o + 1]
-    }
-
-    fn eval_point_jacobian(
-        &self,
-        _store: &impl GeometryStore,
-        _p: &State,
-    ) -> PointJacobian {
-        PointJacobian::endpoint_identity()
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) struct EndPoint {
-    geometry: GeometryId,
-}
-
-impl EndPoint {
-    fn evaluate(&self, store: &impl GeometryStore, p: &State) -> Point2 {
-        end(segment_block(store, self.geometry).start, p)
-    }
-
-    fn param_indices(&self, store: &impl GeometryStore) -> Vec<usize> {
-        let o = segment_block(store, self.geometry).start + 2;
-        vec![o, o + 1]
-    }
-
-    fn eval_point_jacobian(
-        &self,
-        _store: &impl GeometryStore,
-        _p: &State,
-    ) -> PointJacobian {
-        PointJacobian::endpoint_identity()
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) struct OnCurve {
-    geometry: GeometryId,
-    param: CurveParam,
-}
-
-impl OnCurve {
-    fn evaluate(&self, store: &impl GeometryStore, p: &State) -> Point2 {
-        position_at(segment_block(store, self.geometry).start, self.param.chart_t(), p)
-    }
-
-    fn param_indices(&self, store: &impl GeometryStore) -> Vec<usize> {
-        store
-            .expect_geometry(self.geometry)
-            .connectivity()
-            .global_indices
-    }
-
-    fn eval_point_jacobian(
-        &self,
-        store: &impl GeometryStore,
-        _p: &State,
-    ) -> PointJacobian {
-        let g = store.expect_geometry(self.geometry);
-        debug_assert!(matches!(g.body, GeometryBody::Segment));
-        let n = g.connectivity().len();
-        debug_assert_eq!(n, Segment::PARAMETER_COUNT);
-        let mut j = PointJacobian::zeros(n);
-        let t = self.param.chart_t();
-        j.set_dx_dy(0, 1.0 - t, 0.0);
-        j.set_dx_dy(1, 0.0, 1.0 - t);
-        j.set_dx_dy(2, t, 0.0);
-        j.set_dx_dy(3, 0.0, t);
-        j
     }
 }
 
 /// Segment-owned free-vector formulas (private to the crate; wrapped by [`VecExpr`]).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum VecFormula {
-    Direction(Direction),
-    TangentAt(TangentAt),
-    NormalAt(NormalAt),
+    Direction { geometry: GeometryId },
+    TangentAt {
+        geometry: GeometryId,
+        /// Chart parameter; unused on a segment (γ' is constant).
+        #[allow(dead_code)]
+        param: CurveParam,
+    },
+    NormalAt {
+        geometry: GeometryId,
+        /// Chart parameter; unused on a segment (normal from constant tangent).
+        #[allow(dead_code)]
+        param: CurveParam,
+    },
 }
 
 impl VecFormula {
     pub(crate) fn evaluate(&self, store: &impl GeometryStore, p: &State) -> Vec2 {
-        match self {
-            VecFormula::Direction(f) => f.evaluate(store, p),
-            VecFormula::TangentAt(f) => f.evaluate(store, p),
-            VecFormula::NormalAt(f) => f.evaluate(store, p),
+        match *self {
+            VecFormula::Direction { geometry } | VecFormula::TangentAt { geometry, .. } => {
+                // γ'(t) = B - A (constant on a segment); length = segment length
+                direction(segment_block(store, geometry).start, p)
+            }
+            VecFormula::NormalAt { geometry, .. } => {
+                direction(segment_block(store, geometry).start, p).left_normal()
+            }
+        }
+    }
+
+    pub(crate) fn param_indices(&self, store: &impl GeometryStore) -> Vec<usize> {
+        let geometry = self.referenced_geometry();
+        store.expect_geometry(geometry).connectivity().global_indices
+    }
+
+    pub(crate) fn eval_vec_jacobian(
+        &self,
+        _store: &impl GeometryStore,
+        _p: &State,
+    ) -> VecJacobian {
+        match *self {
+            VecFormula::Direction { .. } | VecFormula::TangentAt { .. } => {
+                // v = end - start on params [x1,y1,x2,y2]
+                let mut j = VecJacobian::zeros(Segment::PARAMETER_COUNT);
+                j.set_dx_dy(0, -1.0, 0.0);
+                j.set_dx_dy(1, 0.0, -1.0);
+                j.set_dx_dy(2, 1.0, 0.0);
+                j.set_dx_dy(3, 0.0, 1.0);
+                j
+            }
+            VecFormula::NormalAt { .. } => {
+                // n = (-vy, vx) of direction ⇒ rotate each column of J_dir leftward
+                let mut j = VecJacobian::zeros(Segment::PARAMETER_COUNT);
+                j.set_dx_dy(0, 0.0, -1.0);
+                j.set_dx_dy(1, 1.0, 0.0);
+                j.set_dx_dy(2, 0.0, 1.0);
+                j.set_dx_dy(3, -1.0, 0.0);
+                j
+            }
         }
     }
 
     pub(crate) fn referenced_geometry(&self) -> GeometryId {
-        match self {
-            VecFormula::Direction(f) => f.geometry,
-            VecFormula::TangentAt(f) => f.geometry,
-            VecFormula::NormalAt(f) => f.geometry,
+        match *self {
+            VecFormula::Direction { geometry }
+            | VecFormula::TangentAt { geometry, .. }
+            | VecFormula::NormalAt { geometry, .. } => geometry,
         }
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) struct Direction {
-    geometry: GeometryId,
-}
-
-impl Direction {
-    fn evaluate(&self, store: &impl GeometryStore, p: &State) -> Vec2 {
-        direction(segment_block(store, self.geometry).start, p)
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) struct TangentAt {
-    geometry: GeometryId,
-    /// Chart parameter; unused on a segment (γ' is constant).
-    #[allow(dead_code)]
-    param: CurveParam,
-}
-
-impl TangentAt {
-    fn evaluate(&self, store: &impl GeometryStore, p: &State) -> Vec2 {
-        // γ'(t) = B - A (constant on a segment); length = segment length
-        direction(segment_block(store, self.geometry).start, p)
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) struct NormalAt {
-    geometry: GeometryId,
-    /// Chart parameter; unused on a segment (normal from constant tangent).
-    #[allow(dead_code)]
-    param: CurveParam,
-}
-
-impl NormalAt {
-    fn evaluate(&self, store: &impl GeometryStore, p: &State) -> Vec2 {
-        direction(segment_block(store, self.geometry).start, p).left_normal()
     }
 }
 

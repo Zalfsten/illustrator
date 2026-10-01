@@ -111,6 +111,10 @@ impl PointExpr {
     }
 }
 
+/// Analytical Jacobian of a free-vector expression: same \(2 \times n\) layout as
+/// [`PointJacobian`] (rows \(\partial v_x\), \(\partial v_y\)).
+pub type VecJacobian = PointJacobian;
+
 /// Opaque free-vector expression: map from State parameters to a [`Vec2`].
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct VecExpr(VecFormula);
@@ -130,6 +134,18 @@ impl VecExpr {
     pub fn evaluate(&self, store: &impl GeometryStore, p: &State) -> Vec2 {
         match &self.0 {
             VecFormula::Segment(f) => f.evaluate(store, p),
+        }
+    }
+
+    pub fn param_indices(&self, store: &impl GeometryStore) -> Vec<usize> {
+        match &self.0 {
+            VecFormula::Segment(f) => f.param_indices(store),
+        }
+    }
+
+    pub fn eval_vec_jacobian(&self, store: &impl GeometryStore, p: &State) -> VecJacobian {
+        match &self.0 {
+            VecFormula::Segment(f) => f.eval_vec_jacobian(store, p),
         }
     }
 

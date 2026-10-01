@@ -13,12 +13,12 @@ fn residual_arity_stacks() {
         b: Segment::start_expr(s1),
     });
     doc.add_constraint(Constraint::Parallel {
-        a: GeometryId(0),
-        b: GeometryId(1),
+        a: Segment::direction_expr(s0),
+        b: Segment::direction_expr(s1),
     });
     doc.add_constraint(Constraint::Orthogonal {
-        a: GeometryId(0),
-        b: GeometryId(1),
+        a: Segment::direction_expr(s0),
+        b: Segment::direction_expr(s1),
     });
     doc.add_constraint(Constraint::FixPoint {
         point: Segment::start_expr(s0),

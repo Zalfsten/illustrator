@@ -69,7 +69,10 @@ impl App {
             a: Segment::end_expr(s0),
             b: Segment::start_expr(s1),
         });
-        doc.add_constraint(Constraint::Orthogonal { a: s0, b: s1 });
+        doc.add_constraint(Constraint::Orthogonal {
+            a: Segment::direction_expr(s0),
+            b: Segment::direction_expr(s1),
+        });
         doc.add_constraint(Constraint::FixPoint {
             point: Segment::start_expr(s0),
             target: Point2::new(0.0, 0.0),
@@ -203,9 +206,15 @@ impl App {
                         let a = self.pick_geoms[0];
                         let b = self.pick_geoms[1];
                         let c = if self.tool == Tool::Parallel {
-                            Constraint::Parallel { a, b }
+                            Constraint::Parallel {
+                                a: Segment::direction_expr(a),
+                                b: Segment::direction_expr(b),
+                            }
                         } else {
-                            Constraint::Orthogonal { a, b }
+                            Constraint::Orthogonal {
+                                a: Segment::direction_expr(a),
+                                b: Segment::direction_expr(b),
+                            }
                         };
                         self.doc.add_constraint(c);
                         self.pick_geoms.clear();
