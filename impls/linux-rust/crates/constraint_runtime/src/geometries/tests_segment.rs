@@ -23,9 +23,14 @@ fn segment_geom(id: usize, param_offset: usize) -> Geometry {
 fn segment_layout_and_connectivity() {
     let offset = 0;
     assert_eq!(Segment::PARAMETER_COUNT, 4);
+    let init = (Point2::new(0.0, 0.0), Point2::new(1.0, 0.0));
     assert_eq!(
-        <Segment as Chart>::pack((Point2::new(0.0, 0.0), Point2::new(1.0, 0.0))).as_ref(),
+        <Segment as Chart>::pack(init).as_ref(),
         &[0.0, 0.0, 1.0, 0.0]
+    );
+    assert_eq!(
+        Segment::unpack(&[0.0, 0.0, 1.0, 0.0]),
+        init
     );
     assert_eq!(
         segment_geom(0, offset).connectivity().global_indices,

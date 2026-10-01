@@ -21,6 +21,14 @@ impl Chart for Segment {
     fn pack((a, b): Self::Init) -> impl AsRef<[f64]> {
         [a.x, a.y, b.x, b.y]
     }
+
+    fn unpack(params: &[f64]) -> Self::Init {
+        debug_assert_eq!(params.len(), Self::PARAMETER_COUNT);
+        (
+            Point2::new(params[0], params[1]),
+            Point2::new(params[2], params[3]),
+        )
+    }
 }
 
 impl Segment {
@@ -82,11 +90,17 @@ impl PointFormula {
     pub(crate) fn evaluate(&self, store: &impl GeometryStore, p: &State) -> Point2 {
         match *self {
             PointFormula::StartPoint { geometry } => {
-                start(segment_block(store, geometry).start, p)
+                let (a, _) = endpoints(store, geometry, p);
+                a
             }
-            PointFormula::EndPoint { geometry } => end(segment_block(store, geometry).start, p),
+            PointFormula::EndPoint { geometry } => {
+                let (_, b) = endpoints(store, geometry, p);
+                b
+            }
             PointFormula::OnCurve { geometry, param } => {
-                position_at(segment_block(store, geometry).start, param.chart_t(), p)
+                let (a, b) = endpoints(store, geometry, p);
+                let t = param.chart_t();
+                Point2::new((1.0 - t) * a.x + t * b.x, (1.0 - t) * a.y + t * b.y)
             }
         }
     }
@@ -166,10 +180,12 @@ impl VecFormula {
         match *self {
             VecFormula::Direction { geometry } | VecFormula::TangentAt { geometry, .. } => {
                 // γ'(t) = B - A (constant on a segment); length = segment length
-                direction(segment_block(store, geometry).start, p)
+                let (a, b) = endpoints(store, geometry, p);
+                b - a
             }
             VecFormula::NormalAt { geometry, .. } => {
-                direction(segment_block(store, geometry).start, p).left_normal()
+                let (a, b) = endpoints(store, geometry, p);
+                (b - a).left_normal()
             }
         }
     }
@@ -221,22 +237,8 @@ fn segment_block(store: &impl GeometryStore, id: GeometryId) -> std::ops::Range<
     store.expect_chart::<Segment>(id).param_block()
 }
 
-fn start(offset: usize, p: &State) -> Point2 {
-    Point2::new(p[offset], p[offset + 1])
-}
-
-fn end(offset: usize, p: &State) -> Point2 {
-    Point2::new(p[offset + 2], p[offset + 3])
-}
-
-fn direction(offset: usize, p: &State) -> Vec2 {
-    end(offset, p) - start(offset, p)
-}
-
-fn position_at(offset: usize, t: f64, p: &State) -> Point2 {
-    let a = start(offset, p);
-    let b = end(offset, p);
-    Point2::new((1.0 - t) * a.x + t * b.x, (1.0 - t) * a.y + t * b.y)
+fn endpoints(store: &impl GeometryStore, id: GeometryId, p: &State) -> (Point2, Point2) {
+    Segment::unpack(&p.as_slice()[segment_block(store, id)])
 }
 
 #[cfg(test)]
