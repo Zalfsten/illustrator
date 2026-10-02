@@ -79,7 +79,7 @@ context: |
   - geom: shared affine types (Point2/Vec2, CurveParam) and stack
     PointJacobian/VecJacobian (runtime width, fixed MAX cap)
   - geometry/: GeometryShell + IdGenerator + ids/roles; object-safe Geometry
-    (object.rs); Chart + geometry_shell_instance! → GeometryKind marker
+    (geometry.rs); Chart + geometry_shell_instance! → GeometryKind marker
     (blanket Geometry); opaque PointExpr/VecExpr/ScalarExpr (expr.rs);
     capability traits + formula catalogs (capabilities.rs).
   - geometry_kinds/: one file per concrete kind (charts); kinds only.

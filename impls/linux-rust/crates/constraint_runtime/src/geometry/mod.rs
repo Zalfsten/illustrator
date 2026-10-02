@@ -5,11 +5,11 @@
 pub mod capabilities;
 pub mod chart;
 pub mod expr;
-pub mod object;
+pub mod geometry;
 pub mod shell;
 
 pub use capabilities::{CurveExprs, EndpointExprs};
 pub use chart::Chart;
 pub use expr::{PointExpr, ScalarExpr, VecExpr};
-pub use object::{Geometry, GeometryKind};
+pub use geometry::{Geometry, GeometryKind};
 pub use shell::{AsShell, GeometryId, GeometryRole, GeometryShell, IdGenerator};
