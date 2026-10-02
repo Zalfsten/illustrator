@@ -117,3 +117,31 @@ fn remove_geometry_compacts_state_and_drops_orphans() {
             if point.referenced_geometry() == s2
     ));
 }
+
+#[test]
+fn id_generator_allocate_and_observe() {
+    use crate::geometries::{GeometryId, IdGenerator};
+
+    let mut ids = IdGenerator::new();
+    assert_eq!(ids.allocate(), GeometryId(0));
+    assert_eq!(ids.allocate(), GeometryId(1));
+    ids.observe(GeometryId(10));
+    assert_eq!(ids.allocate(), GeometryId(11));
+}
+
+#[test]
+fn add_geometry_assigns_sequential_ids_without_chart_id() {
+    let mut doc = Document::new();
+    let s0 = doc.add_geometry::<Segment>(
+        GeometryRole::Result,
+        (Point2::new(0.0, 0.0), Point2::new(1.0, 0.0)),
+    );
+    let s1 = doc.add_geometry::<Segment>(
+        GeometryRole::Result,
+        (Point2::new(1.0, 0.0), Point2::new(1.0, 1.0)),
+    );
+    assert_eq!(s0, crate::geometries::GeometryId(0));
+    assert_eq!(s1, crate::geometries::GeometryId(1));
+    assert_eq!(doc.geometry(s0).unwrap().id(), s0);
+    assert_eq!(doc.geometry(s1).unwrap().id(), s1);
+}

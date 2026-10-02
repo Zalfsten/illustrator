@@ -3,6 +3,34 @@
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct GeometryId(pub usize);
 
+/// Allocates non-colliding [`GeometryId`] values for Document registration.
+///
+/// Owned by DocumentStructure — kinds never call this during chart construction.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct IdGenerator {
+    next: usize,
+}
+
+impl IdGenerator {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Next fresh id; advances the counter.
+    pub fn allocate(&mut self) -> GeometryId {
+        let id = GeometryId(self.next);
+        self.next += 1;
+        id
+    }
+
+    /// Record an explicit id (import/restore) so later [`Self::allocate`] values do not collide.
+    pub fn observe(&mut self, id: GeometryId) {
+        if id.0 >= self.next {
+            self.next = id.0 + 1;
+        }
+    }
+}
+
 /// Presentation role: result figure vs construction helper.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub enum GeometryRole {

@@ -37,31 +37,17 @@ IdGenerator { next: usize }
 
 **Alternatives:** UUID (rejected — size/debug noise); geometry asks generator (rejected — ambient coupling).
 
-### 2. Mapper view (linux-rust)
+### 2. Chart unpack via GeometryStore (no Mapper type yet)
 
 ```text
-Mapper<'a> { store: &'a dyn GeometryStore, state: &'a State }
-  // or simply free helpers / GeometryStore methods without holding store if redundant
-
-fn param_block(g: &dyn Geometry) -> Range<usize>  // already on Geometry
-fn unpack_chart<C: Chart>(g: &dyn Geometry, p: &State) -> C::Init
+g = store.expect_geometry(id)
+store.unpack_chart::<C>(g, p)
+store.chart_param_block(g)
 ```
 
-Preferred shape for minimal syntax: keep helpers on `GeometryStore` as **associated functions or default methods that take `&dyn Geometry`**, plus an optional thin `Mapper<'a>` that bundles `&impl GeometryStore` + `&State` for call sites that always have both:
+A dedicated long-lived `Mapper` on Document (layout authority; State passed per call) is deferred until scattered parameter windows need a clearer seam. Ephemeral `(store, state)` views were tried and dropped as misleading.
 
-```text
-mapper.map::<Segment>(g) -> Segment::Init
-```
-
-Expressions:
-
-```text
-evaluate:
-  g = store.expect_geometry(self.geometry)  // one lookup
-  init = store.unpack_chart::<Segment>(g, p)
-```
-
-**Alternatives:** Mapper owns State (rejected — evaluate must pass working copies); unpack keeps id (rejected — duplicate lookup).
+**Alternatives:** Ephemeral Mapper view (rejected — looks like sugar, not layout ownership); unpack keeps id (rejected — duplicate lookup).
 
 ### 3. Retain GeometryShell
 

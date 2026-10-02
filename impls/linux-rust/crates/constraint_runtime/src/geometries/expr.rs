@@ -2,8 +2,8 @@
 //!
 //! Per-kind formula catalogs live in the kind modules (e.g. [`super::segment`]).
 //! This file wraps those catalogs and owns the geometry identity so constraints
-//! and Interact never match on formula kinds. Store→chart resolution happens
-//! here; kind formulas stay pure in unpacked chart data.
+//! and Interact never match on formula kinds. Evaluate resolves the id once,
+//! then unpacks via [`GeometryStore`] helpers on the resolved geometry.
 //!
 //! Stack Jacobian carriers live in [`crate::geom`] ([`PointJacobian`] /
 //! [`VecJacobian`]); this module only returns them from evaluate helpers.
@@ -40,20 +40,16 @@ impl From<(GeometryId, segment::PointFormula)> for PointExpr {
 
 impl PointExpr {
     pub fn evaluate(&self, store: &impl GeometryStore, p: &State) -> Point2 {
+        let g = store.expect_geometry(self.geometry);
         match &self.formula {
-            PointFormula::Segment(f) => {
-                let init = store.unpack_chart::<Segment>(self.geometry, p);
-                f.evaluate(init)
-            }
+            PointFormula::Segment(f) => f.evaluate(store.unpack_chart::<Segment>(g, p)),
         }
     }
 
     pub fn param_indices(&self, store: &impl GeometryStore) -> Vec<usize> {
+        let g = store.expect_geometry(self.geometry);
         match &self.formula {
-            PointFormula::Segment(f) => {
-                let block = store.chart_param_block(self.geometry);
-                f.param_indices(block)
-            }
+            PointFormula::Segment(f) => f.param_indices(store.chart_param_block(g)),
         }
     }
 
@@ -91,20 +87,16 @@ impl From<(GeometryId, segment::VecFormula)> for VecExpr {
 
 impl VecExpr {
     pub fn evaluate(&self, store: &impl GeometryStore, p: &State) -> Vec2 {
+        let g = store.expect_geometry(self.geometry);
         match &self.formula {
-            VecFormula::Segment(f) => {
-                let init = store.unpack_chart::<Segment>(self.geometry, p);
-                f.evaluate(init)
-            }
+            VecFormula::Segment(f) => f.evaluate(store.unpack_chart::<Segment>(g, p)),
         }
     }
 
     pub fn param_indices(&self, store: &impl GeometryStore) -> Vec<usize> {
+        let g = store.expect_geometry(self.geometry);
         match &self.formula {
-            VecFormula::Segment(f) => {
-                let block = store.chart_param_block(self.geometry);
-                f.param_indices(block)
-            }
+            VecFormula::Segment(f) => f.param_indices(store.chart_param_block(g)),
         }
     }
 

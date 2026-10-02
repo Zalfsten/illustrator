@@ -15,4 +15,4 @@ pub use chart::Chart;
 pub use expr::{PointExpr, VecExpr};
 pub use geometry::{Geometry, GeometryKind};
 pub use segment::Segment;
-pub use shell::{AsShell, GeometryId, GeometryRole, GeometryShell};
+pub use shell::{AsShell, GeometryId, GeometryRole, GeometryShell, IdGenerator};

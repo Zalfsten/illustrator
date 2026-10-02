@@ -57,9 +57,11 @@ context: |
   (Design decision: opaque expressions).
 
   Geometry identity and resolution:
-  One stable GeometryId for all kinds (no segment-only id type). Expression
-  evaluation resolves ids through a read-only geometry port (linux-rust:
-  GeometryStore in store.rs, implemented by DocumentStructure / Document).
+  One stable GeometryId for all kinds (no segment-only id type). DocumentStructure
+  owns an IdGenerator (allocate on add_geometry; observe on register/import).
+  Expression evaluation resolves ids through a read-only geometry port
+  (linux-rust: GeometryStore), then unpacks charts from the resolved
+  &dyn Geometry (no second id lookup inside unpack).
 
   State layout (contiguous blocks):
   Each geometry owns a contiguous parameter block in the global State vector
@@ -76,13 +78,14 @@ context: |
   constraint_runtime splits geometry concerns as follows:
   - geom: shared affine types (Point2/Vec2, CurveParam) and stack
     PointJacobian/VecJacobian (runtime width, fixed MAX cap)
-  - geometries/: GeometryShell + ids/roles; object-safe Geometry trait;
+  - geometries/: GeometryShell + IdGenerator + ids/roles; object-safe Geometry;
     Chart + geometry_shell_instance! → GeometryKind marker (blanket Geometry);
     opaque PointExpr/VecExpr (geometries/expr.rs); one file per kind.
     Document stores Vec<Box<dyn Geometry>>; add_geometry bound is GeometryKind.
   - state: owned global parameter vector State (committed + working copies)
-  - store: GeometryStore port (expect_geometry / unpack helpers)
-  - document: DocumentStructure + committed State + id→slot index; add_geometry
+  - store: GeometryStore port (expect_geometry; unpack_chart(&dyn Geometry, …))
+  - document: DocumentStructure + committed State + id→slot index + IdGenerator;
+    add_geometry
   Prefer sibling files once a module has unit tests: src/<module>.rs for
   production code and src/tests_<module>.rs for that module's unit tests,
   declared with `#[cfg(test)] #[path = "tests_<module>.rs"] mod tests_<module>;`

@@ -1,4 +1,8 @@
 //! Read-only lookup of document geometries by stable id.
+//!
+//! Chart unpack uses a **resolved** [`Geometry`] reference (no second id lookup).
+//! Call sites resolve via [`Self::expect_geometry`], then
+//! [`Self::unpack_chart`] / [`Self::chart_param_block`].
 
 use std::ops::Range;
 
@@ -17,18 +21,19 @@ pub trait GeometryStore {
             .unwrap_or_else(|| panic!("geometry id {id:?} not in document"))
     }
 
-    /// State index window for the geometry identified by `id`.
-    fn chart_param_block(&self, id: GeometryId) -> Range<usize> {
-        self.expect_geometry(id).param_block()
+    /// State index window from a resolved geometry record.
+    fn chart_param_block(&self, g: &dyn Geometry) -> Range<usize> {
+        g.param_block()
     }
 
-    /// Unpack [`Chart::Init`] from the State window of geometry `id`.
-    fn unpack_chart<C: Chart>(&self, id: GeometryId, p: &State) -> C::Init {
-        let block = self.chart_param_block(id);
+    /// Unpack [`Chart::Init`] from State using a resolved geometry's parameter window.
+    fn unpack_chart<C: Chart>(&self, g: &dyn Geometry, p: &State) -> C::Init {
+        let block = self.chart_param_block(g);
         debug_assert_eq!(
             block.len(),
             C::PARAMETER_COUNT,
-            "geometry {id:?} block width does not match chart"
+            "geometry {:?} block width does not match chart",
+            g.id()
         );
         C::unpack(&p.as_slice()[block])
     }

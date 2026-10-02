@@ -3,7 +3,9 @@
 use std::collections::HashMap;
 
 use crate::constraint::Constraint;
-use crate::geometries::{Geometry, GeometryId, GeometryKind, GeometryRole, GeometryShell};
+use crate::geometries::{
+    Geometry, GeometryId, GeometryKind, GeometryRole, GeometryShell, IdGenerator,
+};
 use crate::state::State;
 use crate::store::GeometryStore;
 
@@ -14,7 +16,7 @@ pub struct DocumentStructure {
     /// `GeometryId` → index into `geometries` (O(1) lookup during evaluate/solve).
     geometry_index: HashMap<GeometryId, usize>,
     constraints: Vec<Constraint>,
-    next_id: usize,
+    ids: IdGenerator,
 }
 
 impl Clone for DocumentStructure {
@@ -23,7 +25,7 @@ impl Clone for DocumentStructure {
             geometries: self.geometries.iter().map(|g| g.clone_box()).collect(),
             geometry_index: self.geometry_index.clone(),
             constraints: self.constraints.clone(),
-            next_id: self.next_id,
+            ids: self.ids,
         }
     }
 }
@@ -58,9 +60,7 @@ impl DocumentStructure {
             "duplicate geometry id {id:?}"
         );
         self.geometry_index.insert(id, self.geometries.len());
-        if id.0 >= self.next_id {
-            self.next_id = id.0 + 1;
-        }
+        self.ids.observe(id);
         self.geometries.push(Box::new(g));
     }
 
@@ -129,11 +129,13 @@ impl Document {
     }
 
     /// Pack chart init → extend State → register a geometry instance.
+    ///
+    /// Chart pack receives only kind init (no identity). Id and State offset are
+    /// assigned here via [`IdGenerator`] and the current State length.
     pub fn add_geometry<C: GeometryKind>(&mut self, role: GeometryRole, init: C::Init) -> GeometryId {
         let packed = C::pack(init);
         debug_assert_eq!(packed.as_ref().len(), C::PARAMETER_COUNT);
-        let id = GeometryId(self.structure.next_id);
-        self.structure.next_id += 1;
+        let id = self.structure.ids.allocate();
         let param_offset = self.state.len();
         self.state.extend_from_slice(packed.as_ref());
         self.structure
