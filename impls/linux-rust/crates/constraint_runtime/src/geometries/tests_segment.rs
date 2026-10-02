@@ -1,7 +1,9 @@
 use super::*;
 use crate::document::DocumentStructure;
 use crate::geom::{CurveParam, Point2, Vec2};
-use crate::geometries::{Geometry, GeometryId, GeometryRole, GeometryShell};
+use crate::geometries::{
+    CurveExprs, EndpointExprs, Geometry, GeometryId, GeometryRole, GeometryShell,
+};
 use crate::state::State;
 
 fn store_with(g: Segment) -> DocumentStructure {

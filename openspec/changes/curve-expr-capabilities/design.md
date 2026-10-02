@@ -36,9 +36,12 @@ Call sites import the traits and use `Segment::…` via the trait methods (no in
 
 `Segment::tangent_expr(id, CurveParam::Normalized(0.0))` (any `t` — constant γ'). Call sites updated accordingly.
 
-### 3. No mega-macro for all factories
+### 3. Shared formula catalogs + factory macros
 
-Optional thin wrap helpers only if a second kind appears; traits carry the structure.
+Catalogs split with the traits: `CurvePointFormula` / `VecFormula` vs `EndpointPointFormula`.
+Closed kinds never mention endpoint tags (no `circle_endpoint` constructor).
+`impl_curve_exprs!($ty, $curve_wrap, $vec_wrap)` / `impl_endpoint_exprs!($ty, $endpoint_wrap)`
+build exprs via kind-keyed constructors. Kinds own evaluate / param_indices / Jacobians.
 
 ## Risks / Trade-offs
 

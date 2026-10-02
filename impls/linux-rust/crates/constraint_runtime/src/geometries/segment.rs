@@ -1,16 +1,20 @@
-//! Line segment: State layout, chart sampling, and point/vector formulas.
+//! Line segment: State layout, chart sampling, and formula evaluation.
 
 use std::ops::Range;
 
-use super::{Chart, CurveExprs, EndpointExprs, PointExpr, VecExpr};
-use super::shell::{geometry_shell_instance, GeometryId, GeometryShell};
-use crate::geom::{CurveParam, Point2, PointJacobian, Vec2, VecJacobian};
+use super::capabilities::{
+    impl_curve_exprs, impl_endpoint_exprs, CurvePointFormula, EndpointPointFormula, VecFormula,
+};
+use super::shell::{geometry_shell_instance, GeometryShell};
+use super::Chart;
+use crate::geom::{Point2, PointJacobian, Vec2, VecJacobian};
 
 /// Line-segment instance: document shell plus segment chart formulas.
 ///
 /// Parameters live at `p[shell.param_offset..shell.param_offset+PARAMETER_COUNT]`.
 /// Shell fields via [`super::AsShell`] (from [`geometry_shell_instance!`]); together
 /// with [`Chart`] that yields [`super::GeometryKind`] / [`super::Geometry`].
+/// Expression factories via [`impl_curve_exprs!`] / [`impl_endpoint_exprs!`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct Segment {
     pub shell: GeometryShell,
@@ -37,72 +41,29 @@ impl Chart for Segment {
     }
 }
 
-impl CurveExprs for Segment {
-    fn on_curve_expr(id: GeometryId, param: CurveParam) -> PointExpr {
-        (id, PointFormula::OnCurve { param }).into()
-    }
-
-    fn tangent_expr(id: GeometryId, param: CurveParam) -> VecExpr {
-        (id, VecFormula::TangentAt { param }).into()
-    }
-
-    fn normal_expr(id: GeometryId, param: CurveParam) -> VecExpr {
-        (id, VecFormula::NormalAt { param }).into()
-    }
-}
-
-impl EndpointExprs for Segment {
-    fn start_expr(id: GeometryId) -> PointExpr {
-        (id, PointFormula::StartPoint).into()
-    }
-
-    fn end_expr(id: GeometryId) -> PointExpr {
-        (id, PointFormula::EndPoint).into()
-    }
-}
-
-/// Segment-owned point formulas (private to the crate; wrapped by [`PointExpr`]).
-/// Geometry identity lives on the outer expr; formulas are pure chart ops.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) enum PointFormula {
-    StartPoint,
-    EndPoint,
-    OnCurve { param: CurveParam },
-}
-
-impl PointFormula {
-    /// Evaluate against already-unpacked chart endpoints `(start, end)`.
-    pub(crate) fn evaluate(&self, (a, b): (Point2, Point2)) -> Point2 {
-        match *self {
-            PointFormula::StartPoint => a,
-            PointFormula::EndPoint => b,
-            PointFormula::OnCurve { param } => {
+impl Segment {
+    pub(crate) fn eval_curve_point(f: CurvePointFormula, (a, b): (Point2, Point2)) -> Point2 {
+        match f {
+            CurvePointFormula::OnCurve { param } => {
                 let t = param.chart_t();
                 Point2::new((1.0 - t) * a.x + t * b.x, (1.0 - t) * a.y + t * b.y)
             }
         }
     }
 
-    /// Local→global indices given the segment's State parameter window.
-    pub(crate) fn param_indices(&self, block: Range<usize>) -> Vec<usize> {
-        match *self {
-            PointFormula::StartPoint => {
-                let o = block.start;
-                vec![o, o + 1]
-            }
-            PointFormula::EndPoint => {
-                let o = block.start + 2;
-                vec![o, o + 1]
-            }
-            PointFormula::OnCurve { .. } => block.collect(),
+    pub(crate) fn curve_point_param_indices(
+        f: CurvePointFormula,
+        block: Range<usize>,
+    ) -> Vec<usize> {
+        match f {
+            CurvePointFormula::OnCurve { .. } => block.collect(),
         }
     }
 
-    pub(crate) fn eval_point_jacobian(&self) -> PointJacobian {
-        match *self {
-            PointFormula::StartPoint | PointFormula::EndPoint => PointJacobian::endpoint_identity(),
-            PointFormula::OnCurve { param } => {
-                let mut j = PointJacobian::zeros(Segment::PARAMETER_COUNT);
+    pub(crate) fn eval_curve_point_jacobian(f: CurvePointFormula) -> PointJacobian {
+        match f {
+            CurvePointFormula::OnCurve { param } => {
+                let mut j = PointJacobian::zeros(Self::PARAMETER_COUNT);
                 let t = param.chart_t();
                 j.set_dx_dy(0, 1.0 - t, 0.0);
                 j.set_dx_dy(1, 0.0, 1.0 - t);
@@ -112,42 +73,59 @@ impl PointFormula {
             }
         }
     }
-}
 
-/// Segment-owned free-vector formulas (private to the crate; wrapped by [`VecExpr`]).
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) enum VecFormula {
-    TangentAt {
-        /// Chart parameter; unused on a segment (γ' is constant).
-        #[allow(dead_code)]
-        param: CurveParam,
-    },
-    NormalAt {
-        /// Chart parameter; unused on a segment (normal from constant tangent).
-        #[allow(dead_code)]
-        param: CurveParam,
-    },
-}
+    pub(crate) fn eval_endpoint_point(
+        f: EndpointPointFormula,
+        (a, b): (Point2, Point2),
+    ) -> Point2 {
+        match f {
+            EndpointPointFormula::StartPoint => a,
+            EndpointPointFormula::EndPoint => b,
+        }
+    }
 
-impl VecFormula {
-    /// Evaluate against already-unpacked chart endpoints `(start, end)`.
-    pub(crate) fn evaluate(&self, (a, b): (Point2, Point2)) -> Vec2 {
-        match *self {
+    pub(crate) fn endpoint_point_param_indices(
+        f: EndpointPointFormula,
+        block: Range<usize>,
+    ) -> Vec<usize> {
+        match f {
+            EndpointPointFormula::StartPoint => {
+                let o = block.start;
+                vec![o, o + 1]
+            }
+            EndpointPointFormula::EndPoint => {
+                let o = block.start + 2;
+                vec![o, o + 1]
+            }
+        }
+    }
+
+    pub(crate) fn eval_endpoint_point_jacobian(f: EndpointPointFormula) -> PointJacobian {
+        match f {
+            EndpointPointFormula::StartPoint | EndpointPointFormula::EndPoint => {
+                PointJacobian::endpoint_identity()
+            }
+        }
+    }
+
+    /// Evaluate a shared free-vector formula against unpacked segment endpoints.
+    pub(crate) fn eval_vec(f: VecFormula, (a, b): (Point2, Point2)) -> Vec2 {
+        match f {
             // γ'(t) = B - A (constant on a segment); length = segment length
             VecFormula::TangentAt { .. } => b - a,
             VecFormula::NormalAt { .. } => (b - a).left_normal(),
         }
     }
 
-    pub(crate) fn param_indices(&self, block: Range<usize>) -> Vec<usize> {
+    pub(crate) fn vec_param_indices(_f: VecFormula, block: Range<usize>) -> Vec<usize> {
         block.collect()
     }
 
-    pub(crate) fn eval_vec_jacobian(&self) -> VecJacobian {
-        match *self {
+    pub(crate) fn eval_vec_jacobian(f: VecFormula) -> VecJacobian {
+        match f {
             VecFormula::TangentAt { .. } => {
                 // v = end - start on params [x1,y1,x2,y2]
-                let mut j = VecJacobian::zeros(Segment::PARAMETER_COUNT);
+                let mut j = VecJacobian::zeros(Self::PARAMETER_COUNT);
                 j.set_dx_dy(0, -1.0, 0.0);
                 j.set_dx_dy(1, 0.0, -1.0);
                 j.set_dx_dy(2, 1.0, 0.0);
@@ -156,7 +134,7 @@ impl VecFormula {
             }
             VecFormula::NormalAt { .. } => {
                 // n = (-vy, vx) of tangent ⇒ rotate each column of J_tan leftward
-                let mut j = VecJacobian::zeros(Segment::PARAMETER_COUNT);
+                let mut j = VecJacobian::zeros(Self::PARAMETER_COUNT);
                 j.set_dx_dy(0, 0.0, -1.0);
                 j.set_dx_dy(1, 1.0, 0.0);
                 j.set_dx_dy(2, 0.0, 1.0);
@@ -166,6 +144,9 @@ impl VecFormula {
         }
     }
 }
+
+impl_curve_exprs!(Segment, segment_curve, segment);
+impl_endpoint_exprs!(Segment, segment_endpoint);
 
 #[cfg(test)]
 #[path = "tests_segment.rs"]

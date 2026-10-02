@@ -1,19 +1,21 @@
 //! Opaque point/vector expressions (Model B).
 //!
-//! Per-kind formula catalogs live in the kind modules (e.g. [`super::segment`]).
-//! This file wraps those catalogs and owns the geometry identity so constraints
-//! and Interact never match on formula kinds. Evaluate resolves the id once,
-//! then unpacks via [`GeometryStore`] helpers on the resolved geometry.
+//! Shared formula *tags* live in [`super::capabilities`] (curve vs endpoint catalogs).
+//! This module keys them by geometry kind for evaluate dispatch and owns the
+//! geometry identity so constraints and Interact never match on formula kinds.
+//! Evaluate resolves the id once, then unpacks via [`GeometryStore`] helpers.
 //!
 //! Stack Jacobian carriers live in [`crate::geom`] ([`PointJacobian`] /
 //! [`VecJacobian`]); this module only returns them from evaluate helpers.
 
+use super::capabilities::{
+    CurvePointFormula, EndpointPointFormula, VecFormula as CapVecFormula,
+};
+use super::segment::Segment;
 use super::shell::GeometryId;
 use crate::geom::{Point2, PointJacobian, Vec2, VecJacobian};
 use crate::state::State;
 use crate::store::GeometryStore;
-
-use super::segment::{self, Segment};
 
 /// Opaque point expression: map from State parameters to a [`Point2`].
 ///
@@ -21,41 +23,57 @@ use super::segment::{self, Segment};
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct PointExpr {
     geometry: GeometryId,
-    formula: PointFormula,
+    formula: PointFormulaKeyed,
 }
 
+/// Kind-keyed wrapper around curve / endpoint formula catalogs.
 #[derive(Clone, Copy, Debug, PartialEq)]
-enum PointFormula {
-    Segment(segment::PointFormula),
-}
-
-impl From<(GeometryId, segment::PointFormula)> for PointExpr {
-    fn from((geometry, formula): (GeometryId, segment::PointFormula)) -> Self {
-        Self {
-            geometry,
-            formula: PointFormula::Segment(formula),
-        }
-    }
+enum PointFormulaKeyed {
+    SegmentCurve(CurvePointFormula),
+    SegmentEndpoint(EndpointPointFormula),
 }
 
 impl PointExpr {
+    /// Curve point formula evaluated with the segment chart.
+    pub(crate) fn segment_curve(geometry: GeometryId, formula: CurvePointFormula) -> Self {
+        Self {
+            geometry,
+            formula: PointFormulaKeyed::SegmentCurve(formula),
+        }
+    }
+
+    /// Endpoint formula evaluated with the segment chart.
+    pub(crate) fn segment_endpoint(geometry: GeometryId, formula: EndpointPointFormula) -> Self {
+        Self {
+            geometry,
+            formula: PointFormulaKeyed::SegmentEndpoint(formula),
+        }
+    }
+
     pub fn evaluate(&self, store: &impl GeometryStore, p: &State) -> Point2 {
         let g = store.expect_geometry(self.geometry);
+        let chart = store.unpack_chart::<Segment>(g, p);
         match &self.formula {
-            PointFormula::Segment(f) => f.evaluate(store.unpack_chart::<Segment>(g, p)),
+            PointFormulaKeyed::SegmentCurve(f) => Segment::eval_curve_point(*f, chart),
+            PointFormulaKeyed::SegmentEndpoint(f) => Segment::eval_endpoint_point(*f, chart),
         }
     }
 
     pub fn param_indices(&self, store: &impl GeometryStore) -> Vec<usize> {
         let g = store.expect_geometry(self.geometry);
+        let block = store.chart_param_block(g);
         match &self.formula {
-            PointFormula::Segment(f) => f.param_indices(store.chart_param_block(g)),
+            PointFormulaKeyed::SegmentCurve(f) => Segment::curve_point_param_indices(*f, block),
+            PointFormulaKeyed::SegmentEndpoint(f) => {
+                Segment::endpoint_point_param_indices(*f, block)
+            }
         }
     }
 
     pub fn eval_point_jacobian(&self, _store: &impl GeometryStore, _p: &State) -> PointJacobian {
         match &self.formula {
-            PointFormula::Segment(f) => f.eval_point_jacobian(),
+            PointFormulaKeyed::SegmentCurve(f) => Segment::eval_curve_point_jacobian(*f),
+            PointFormulaKeyed::SegmentEndpoint(f) => Segment::eval_endpoint_point_jacobian(*f),
         }
     }
 
@@ -68,41 +86,45 @@ impl PointExpr {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct VecExpr {
     geometry: GeometryId,
-    formula: VecFormula,
+    formula: VecFormulaKeyed,
 }
 
+/// Kind-keyed wrapper around the shared curve [`CapVecFormula`] catalog.
 #[derive(Clone, Copy, Debug, PartialEq)]
-enum VecFormula {
-    Segment(segment::VecFormula),
-}
-
-impl From<(GeometryId, segment::VecFormula)> for VecExpr {
-    fn from((geometry, formula): (GeometryId, segment::VecFormula)) -> Self {
-        Self {
-            geometry,
-            formula: VecFormula::Segment(formula),
-        }
-    }
+enum VecFormulaKeyed {
+    Segment(CapVecFormula),
 }
 
 impl VecExpr {
+    /// Free-vector formula evaluated with the segment chart.
+    pub(crate) fn segment(geometry: GeometryId, formula: CapVecFormula) -> Self {
+        Self {
+            geometry,
+            formula: VecFormulaKeyed::Segment(formula),
+        }
+    }
+
     pub fn evaluate(&self, store: &impl GeometryStore, p: &State) -> Vec2 {
         let g = store.expect_geometry(self.geometry);
         match &self.formula {
-            VecFormula::Segment(f) => f.evaluate(store.unpack_chart::<Segment>(g, p)),
+            VecFormulaKeyed::Segment(f) => {
+                Segment::eval_vec(*f, store.unpack_chart::<Segment>(g, p))
+            }
         }
     }
 
     pub fn param_indices(&self, store: &impl GeometryStore) -> Vec<usize> {
         let g = store.expect_geometry(self.geometry);
         match &self.formula {
-            VecFormula::Segment(f) => f.param_indices(store.chart_param_block(g)),
+            VecFormulaKeyed::Segment(f) => {
+                Segment::vec_param_indices(*f, store.chart_param_block(g))
+            }
         }
     }
 
     pub fn eval_vec_jacobian(&self, _store: &impl GeometryStore, _p: &State) -> VecJacobian {
         match &self.formula {
-            VecFormula::Segment(f) => f.eval_vec_jacobian(),
+            VecFormulaKeyed::Segment(f) => Segment::eval_vec_jacobian(*f),
         }
     }
 

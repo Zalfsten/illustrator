@@ -3,8 +3,8 @@
 //! Extend when adding a geometry:
 //! - new `mod` + file under this directory
 //! - [`Chart`] + [`geometry_shell_instance!`] → [`GeometryKind`] / [`Geometry`]
-//! - [`CurveExprs`] (and [`EndpointExprs`] if join endpoints apply)
-//! - [`expr::PointExpr`] / [`expr::VecExpr`] outer formula catalogs
+//! - [`CurveExprs`] via `impl_curve_exprs!` (and [`EndpointExprs`] / `impl_endpoint_exprs!` if join endpoints apply)
+//! - [`expr::PointExpr`] / [`expr::VecExpr`] (kind-keyed wrappers over shared formula tags)
 
 pub mod capabilities;
 pub mod chart;
