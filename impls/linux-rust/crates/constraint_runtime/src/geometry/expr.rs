@@ -4,6 +4,8 @@
 //! This module keys them by geometry kind for evaluate dispatch and owns the
 //! geometry identity so constraints and Interact never match on formula kinds.
 //! Evaluate resolves the id once, then unpacks via [`GeometryStore`] helpers.
+//! `param_indices` lifts kind-local indices through
+//! [`super::GeometryShell::param_offset`] — kinds never see global State indices.
 //!
 //! Stack Jacobian carriers live in [`crate::geom`] ([`PointJacobian`] /
 //! [`VecJacobian`] / [`ScalarJacobian`]); this module only returns them from
@@ -17,6 +19,11 @@ use crate::geom::{Point2, PointJacobian, ScalarJacobian, Vec2, VecJacobian};
 use crate::geometry_kinds::Segment;
 use crate::state::State;
 use crate::store::GeometryStore;
+
+fn globalize_indices(store: &impl GeometryStore, id: GeometryId, local: Vec<usize>) -> Vec<usize> {
+    let offset = store.expect_geometry(id).shell().param_offset;
+    local.into_iter().map(|i| offset + i).collect()
+}
 
 /// Opaque point expression: map from State parameters to a [`Point2`].
 ///
@@ -49,14 +56,11 @@ impl PointExpr {
     }
 
     pub fn param_indices(&self, store: &impl GeometryStore) -> Vec<usize> {
-        let g = store.expect_geometry(self.geometry);
-        let block = store.chart_param_block(g);
-        match &self.formula {
-            PointFormulaKeyed::SegmentCurve(f) => Segment::curve_point_param_indices(*f, block),
-            PointFormulaKeyed::SegmentEndpoint(f) => {
-                Segment::endpoint_point_param_indices(*f, block)
-            }
-        }
+        let local = match &self.formula {
+            PointFormulaKeyed::SegmentCurve(f) => Segment::curve_point_param_indices(*f),
+            PointFormulaKeyed::SegmentEndpoint(f) => Segment::endpoint_point_param_indices(*f),
+        };
+        globalize_indices(store, self.geometry, local)
     }
 
     pub fn eval_point_jacobian(&self, _store: &impl GeometryStore, _p: &State) -> PointJacobian {
@@ -99,12 +103,10 @@ impl VecExpr {
     }
 
     pub fn param_indices(&self, store: &impl GeometryStore) -> Vec<usize> {
-        let g = store.expect_geometry(self.geometry);
-        match &self.formula {
-            VecFormulaKeyed::Segment(f) => {
-                Segment::vec_param_indices(*f, store.chart_param_block(g))
-            }
-        }
+        let local = match &self.formula {
+            VecFormulaKeyed::Segment(f) => Segment::vec_param_indices(*f),
+        };
+        globalize_indices(store, self.geometry, local)
     }
 
     pub fn eval_vec_jacobian(&self, _store: &impl GeometryStore, _p: &State) -> VecJacobian {
@@ -146,12 +148,10 @@ impl ScalarExpr {
     }
 
     pub fn param_indices(&self, store: &impl GeometryStore) -> Vec<usize> {
-        let g = store.expect_geometry(self.geometry);
-        match &self.formula {
-            ScalarFormulaKeyed::Segment(f) => {
-                Segment::scalar_param_indices(*f, store.chart_param_block(g))
-            }
-        }
+        let local = match &self.formula {
+            ScalarFormulaKeyed::Segment(f) => Segment::scalar_param_indices(*f),
+        };
+        globalize_indices(store, self.geometry, local)
     }
 
     pub fn eval_scalar_jacobian(&self, store: &impl GeometryStore, p: &State) -> ScalarJacobian {

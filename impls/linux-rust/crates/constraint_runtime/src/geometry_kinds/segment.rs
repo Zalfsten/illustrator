@@ -1,7 +1,5 @@
 //! Line segment: State layout, chart sampling, and formula evaluation.
 
-use std::ops::Range;
-
 use crate::geom::{Point2, PointJacobian, ScalarJacobian, Vec2, VecJacobian};
 use crate::geometry::capabilities::{
     impl_curve_exprs, impl_endpoint_exprs, CurvePointFormula, CurveScalarFormula,
@@ -54,12 +52,10 @@ impl Segment {
         }
     }
 
-    pub(crate) fn curve_point_param_indices(
-        f: CurvePointFormula,
-        block: Range<usize>,
-    ) -> Vec<usize> {
+    /// Formula-local parameter indices (into the chart block, not global State).
+    pub(crate) fn curve_point_param_indices(f: CurvePointFormula) -> Vec<usize> {
         match f {
-            CurvePointFormula::OnCurve { .. } => block.collect(),
+            CurvePointFormula::OnCurve { .. } => (0..Self::PARAMETER_COUNT).collect(),
         }
     }
 
@@ -84,19 +80,11 @@ impl Segment {
         }
     }
 
-    pub(crate) fn endpoint_point_param_indices(
-        f: EndpointPointFormula,
-        block: Range<usize>,
-    ) -> Vec<usize> {
+    /// Formula-local parameter indices (into the chart block, not global State).
+    pub(crate) fn endpoint_point_param_indices(f: EndpointPointFormula) -> Vec<usize> {
         match f {
-            EndpointPointFormula::StartPoint => {
-                let o = block.start;
-                vec![o, o + 1]
-            }
-            EndpointPointFormula::EndPoint => {
-                let o = block.start + 2;
-                vec![o, o + 1]
-            }
+            EndpointPointFormula::StartPoint => vec![0, 1],
+            EndpointPointFormula::EndPoint => vec![2, 3],
         }
     }
 
@@ -117,8 +105,9 @@ impl Segment {
         }
     }
 
-    pub(crate) fn vec_param_indices(_f: VecFormula, block: Range<usize>) -> Vec<usize> {
-        block.collect()
+    /// Formula-local parameter indices (into the chart block, not global State).
+    pub(crate) fn vec_param_indices(_f: VecFormula) -> Vec<usize> {
+        (0..Self::PARAMETER_COUNT).collect()
     }
 
     pub(crate) fn eval_vec_jacobian(f: VecFormula) -> VecJacobian {
@@ -150,9 +139,10 @@ impl Segment {
         }
     }
 
-    pub(crate) fn scalar_param_indices(f: CurveScalarFormula, block: Range<usize>) -> Vec<usize> {
+    /// Formula-local parameter indices (into the chart block, not global State).
+    pub(crate) fn scalar_param_indices(f: CurveScalarFormula) -> Vec<usize> {
         match f {
-            CurveScalarFormula::Length => block.collect(),
+            CurveScalarFormula::Length => (0..Self::PARAMETER_COUNT).collect(),
         }
     }
 
