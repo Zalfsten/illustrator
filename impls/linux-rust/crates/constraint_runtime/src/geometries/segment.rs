@@ -9,8 +9,8 @@ use crate::geom::{CurveParam, Point2, PointJacobian, Vec2, VecJacobian};
 /// Line-segment instance: document shell plus segment chart formulas.
 ///
 /// Parameters live at `p[shell.param_offset..shell.param_offset+PARAMETER_COUNT]`.
-/// Shell fields via [`super::AsShell`] (from [`geometry_shell_instance!`]); Document
-/// ops via the blanket [`super::Geometry`].
+/// Shell fields via [`super::AsShell`] (from [`geometry_shell_instance!`]); together
+/// with [`Chart`] that yields [`super::GeometryKind`] / [`super::Geometry`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct Segment {
     pub shell: GeometryShell,

@@ -5,9 +5,8 @@ use std::ops::Range;
 /// Geometry kind as a chart: packs init into State.
 ///
 /// Document identity and shared shell ops live on [`super::Geometry`] (object-safe).
-/// Concrete kinds also call [`crate::geometries::shell::geometry_shell_instance`]
-/// (expands [`super::AsShell`] + [`From<GeometryShell>`](From)) so the blanket
-/// `Geometry` impl applies without hand-written shell boilerplate.
+/// Concrete kinds call [`crate::geometries::shell::geometry_shell_instance`] so they
+/// satisfy [`super::GeometryKind`] (and thus the [`super::Geometry`] blanket).
 pub trait Chart {
     /// Kind-specific construction inputs (e.g. segment endpoints).
     type Init;

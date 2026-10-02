@@ -6,11 +6,19 @@ use std::ops::Range;
 use super::chart::Chart;
 use super::shell::{AsShell, GeometryId, GeometryRole, GeometryShell};
 
+/// Concrete geometry kind ready for Document storage and structural add.
+///
+/// Not object-safe ([`Chart`] has associated types; [`From`] constructs instances).
+/// Implement [`Chart`] and invoke [`geometry_shell_instance!`] — this marker and
+/// [`Geometry`] follow via blankets.
+pub trait GeometryKind: Chart + AsShell + From<GeometryShell> + Clone + Debug + 'static {}
+
+impl<T> GeometryKind for T where T: Chart + AsShell + From<GeometryShell> + Clone + Debug + 'static {}
+
 /// Document-held geometry instance (object-safe).
 ///
-/// Concrete kinds implement [`Chart`] and invoke [`geometry_shell_instance!`]
-/// ([`AsShell`] + [`From<GeometryShell>`]); the blanket impl below supplies this
-/// trait so Document can store `Box<dyn Geometry>` without a kind enum.
+/// Supplied automatically for every [`GeometryKind`] so Document can store
+/// `Box<dyn Geometry>` without a kind enum.
 pub trait Geometry: Debug {
     fn shell(&self) -> &GeometryShell;
     fn shell_mut(&mut self) -> &mut GeometryShell;
@@ -43,10 +51,7 @@ pub trait Geometry: Debug {
     }
 }
 
-impl<T> Geometry for T
-where
-    T: Chart + AsShell + Clone + Debug + 'static,
-{
+impl<T: GeometryKind> Geometry for T {
     fn shell(&self) -> &GeometryShell {
         AsShell::shell(self)
     }

@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 
 use crate::constraint::Constraint;
-use crate::geometries::{Chart, Geometry, GeometryId, GeometryRole, GeometryShell};
+use crate::geometries::{Geometry, GeometryId, GeometryKind, GeometryRole, GeometryShell};
 use crate::state::State;
 use crate::store::GeometryStore;
 
@@ -129,10 +129,7 @@ impl Document {
     }
 
     /// Pack chart init → extend State → register a geometry instance.
-    pub fn add_geometry<C>(&mut self, role: GeometryRole, init: C::Init) -> GeometryId
-    where
-        C: Chart + From<GeometryShell> + Geometry + 'static,
-    {
+    pub fn add_geometry<C: GeometryKind>(&mut self, role: GeometryRole, init: C::Init) -> GeometryId {
         let packed = C::pack(init);
         debug_assert_eq!(packed.as_ref().len(), C::PARAMETER_COUNT);
         let id = GeometryId(self.structure.next_id);
