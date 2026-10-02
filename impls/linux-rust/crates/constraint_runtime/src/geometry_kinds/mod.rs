@@ -7,9 +7,8 @@
 //! - [`crate::geometry::CurveExprs`] via `impl_curve_exprs!` (and
 //!   [`crate::geometry::EndpointExprs`] / `impl_endpoint_exprs!` if join
 //!   endpoints apply)
-//! - kind keys on the shared formula catalogs in [`crate::geometry::expr`]
-//!   (evaluate dispatch); construct via `PointExpr::new` / `VecExpr::new` /
-//!   `ScalarExpr::new` from the capability macros
+//! - one entry in [`register_expr_kinds!`](crate::geometry::expr) (same variant
+//!   names as the capability macros)
 
 pub mod segment;
 
