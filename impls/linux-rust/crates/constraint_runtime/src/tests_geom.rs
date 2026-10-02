@@ -10,3 +10,19 @@ fn point_minus_point_is_vec() {
     assert_eq!(v.cross(Vec2::new(0.0, 1.0)), 3.0);
     assert_eq!(v.dot(Vec2::new(0.0, 1.0)), 4.0);
 }
+
+#[test]
+fn point_jacobian_endpoint_identity_is_i2() {
+    let j = PointJacobian::endpoint_identity();
+    assert_eq!(j.n(), 2);
+    assert_eq!(j.dx(), &[1.0, 0.0]);
+    assert_eq!(j.dy(), &[0.0, 1.0]);
+}
+
+#[test]
+fn point_jacobian_zeros_respects_runtime_width() {
+    let j = PointJacobian::zeros(4);
+    assert_eq!(j.n(), 4);
+    assert_eq!(j.dx(), &[0.0; 4]);
+    assert_eq!(j.dy(), &[0.0; 4]);
+}

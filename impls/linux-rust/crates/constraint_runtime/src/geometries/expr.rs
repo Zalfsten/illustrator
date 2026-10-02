@@ -4,71 +4,16 @@
 //! This file wraps those catalogs and owns the geometry identity so constraints
 //! and Interact never match on formula kinds. Store→chart resolution happens
 //! here; kind formulas stay pure in unpacked chart data.
+//!
+//! Stack Jacobian carriers live in [`crate::geom`] ([`PointJacobian`] /
+//! [`VecJacobian`]); this module only returns them from evaluate helpers.
 
 use super::shell::GeometryId;
-use crate::geom::{Point2, Vec2};
+use crate::geom::{Point2, PointJacobian, Vec2, VecJacobian};
 use crate::state::State;
 use crate::store::GeometryStore;
 
 use super::segment::{self, Segment};
-
-/// Max width (local parameters) of a single point-formula Jacobian.
-/// Chart formulas stay small (segment endpoint: 2, on-curve: 4); raise when a
-/// kind needs more formula-local DOFs.
-pub const MAX_POINT_JACOBIAN_PARAMS: usize = 8;
-
-/// Analytical Jacobian of a point expression: \(2 \times n\) stacked as two
-/// rows `dx`, `dy` with \(\texttt{dx}[i]=\partial x/\partial p_i\),
-/// \(\texttt{dy}[i]=\partial y/\partial p_i\). Stored on the stack; `n` is the
-/// formula-local parameter count (same order as [`PointExpr::param_indices`]).
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct PointJacobian {
-    dx: [f64; MAX_POINT_JACOBIAN_PARAMS],
-    dy: [f64; MAX_POINT_JACOBIAN_PARAMS],
-    n: usize,
-}
-
-impl PointJacobian {
-    /// Zero \(2 \times n\) Jacobian (`n` must be ≤ [`MAX_POINT_JACOBIAN_PARAMS`]).
-    pub fn zeros(n: usize) -> Self {
-        assert!(
-            n <= MAX_POINT_JACOBIAN_PARAMS,
-            "point Jacobian width {n} exceeds MAX_POINT_JACOBIAN_PARAMS ({MAX_POINT_JACOBIAN_PARAMS})"
-        );
-        Self {
-            dx: [0.0; MAX_POINT_JACOBIAN_PARAMS],
-            dy: [0.0; MAX_POINT_JACOBIAN_PARAMS],
-            n,
-        }
-    }
-
-    /// Identity map \((p_0,p_1)\mapsto(x,y)\): \(J = I_2\).
-    pub fn endpoint_identity() -> Self {
-        let mut j = Self::zeros(2);
-        j.dx[0] = 1.0;
-        j.dy[1] = 1.0;
-        j
-    }
-
-    pub fn n(&self) -> usize {
-        self.n
-    }
-
-    pub fn dx(&self) -> &[f64] {
-        &self.dx[..self.n]
-    }
-
-    pub fn dy(&self) -> &[f64] {
-        &self.dy[..self.n]
-    }
-
-    /// Set column `i`: \(\partial(x,y)/\partial p_i = (\partial x, \partial y)\).
-    pub(crate) fn set_dx_dy(&mut self, i: usize, dx_i: f64, dy_i: f64) {
-        assert!(i < self.n);
-        self.dx[i] = dx_i;
-        self.dy[i] = dy_i;
-    }
-}
 
 /// Opaque point expression: map from State parameters to a [`Point2`].
 ///
@@ -122,10 +67,6 @@ impl PointExpr {
         self.geometry
     }
 }
-
-/// Analytical Jacobian of a free-vector expression: same \(2 \times n\) layout as
-/// [`PointJacobian`] (rows \(\partial v_x\), \(\partial v_y\)).
-pub type VecJacobian = PointJacobian;
 
 /// Opaque free-vector expression: map from State parameters to a [`Vec2`].
 #[derive(Clone, Copy, Debug, PartialEq)]

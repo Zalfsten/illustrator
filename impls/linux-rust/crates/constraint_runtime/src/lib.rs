@@ -19,9 +19,11 @@ pub use ceres_solver::CeresSolver;
 pub use connectivity::Connectivity;
 pub use constraint::Constraint;
 pub use document::{Document, DocumentStructure};
-pub use geom::{CurveParam, Point2, Vec2};
+pub use geom::{
+    CurveParam, Point2, PointJacobian, Vec2, VecJacobian, MAX_POINT_JACOBIAN_PARAMS,
+};
 pub use geometries::{
-    Chart, Geometry, GeometryId, GeometryRole, GeometryShell, PointExpr, PointJacobian, Segment,
+    AsShell, Chart, Geometry, GeometryId, GeometryRole, GeometryShell, PointExpr, Segment,
     VecExpr,
 };
 pub use interact::{DragSession, InteractiveSolve, SoftTerms, SolveError};

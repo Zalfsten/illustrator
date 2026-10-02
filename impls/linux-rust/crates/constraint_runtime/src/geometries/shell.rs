@@ -29,3 +29,41 @@ impl GeometryShell {
         }
     }
 }
+
+/// Local shell access for chart instances (not object-safe).
+///
+/// Prefer [`geometry_shell_instance!`] on kinds with a `shell: GeometryShell`
+/// field — orphan rules block a blanket `Deref`/`From` over all such types, so
+/// the macro expands the only coherent per-kind impls.
+pub trait AsShell {
+    fn shell(&self) -> &GeometryShell;
+    fn shell_mut(&mut self) -> &mut GeometryShell;
+}
+
+/// Expand [`AsShell`] + [`From<GeometryShell>`] for a kind whose shell field is
+/// named `shell`.
+///
+/// ```ignore
+/// pub struct Segment { pub shell: GeometryShell }
+/// geometry_shell_instance!(Segment);
+/// ```
+macro_rules! geometry_shell_instance {
+    ($ty:ty) => {
+        impl $crate::geometries::AsShell for $ty {
+            fn shell(&self) -> &$crate::geometries::GeometryShell {
+                &self.shell
+            }
+
+            fn shell_mut(&mut self) -> &mut $crate::geometries::GeometryShell {
+                &mut self.shell
+            }
+        }
+
+        impl From<$crate::geometries::GeometryShell> for $ty {
+            fn from(shell: $crate::geometries::GeometryShell) -> Self {
+                Self { shell }
+            }
+        }
+    };
+}
+pub(crate) use geometry_shell_instance;

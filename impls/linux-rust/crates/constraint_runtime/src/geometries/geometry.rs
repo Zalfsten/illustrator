@@ -1,16 +1,16 @@
 //! Object-safe document geometry: shared shell ops without a kind sum.
 
 use std::fmt::Debug;
-use std::ops::{Deref, DerefMut, Range};
+use std::ops::Range;
 
 use super::chart::Chart;
-use super::shell::{GeometryId, GeometryRole, GeometryShell};
+use super::shell::{AsShell, GeometryId, GeometryRole, GeometryShell};
 
 /// Document-held geometry instance (object-safe).
 ///
-/// Concrete kinds implement [`Chart`] + [`Deref`] to [`GeometryShell`]; the
-/// blanket impl below supplies this trait so Document can store
-/// `Box<dyn Geometry>` without a kind enum.
+/// Concrete kinds implement [`Chart`] and invoke [`geometry_shell_instance!`]
+/// ([`AsShell`] + [`From<GeometryShell>`]); the blanket impl below supplies this
+/// trait so Document can store `Box<dyn Geometry>` without a kind enum.
 pub trait Geometry: Debug {
     fn shell(&self) -> &GeometryShell;
     fn shell_mut(&mut self) -> &mut GeometryShell;
@@ -45,19 +45,14 @@ pub trait Geometry: Debug {
 
 impl<T> Geometry for T
 where
-    T: Chart
-        + Deref<Target = GeometryShell>
-        + DerefMut<Target = GeometryShell>
-        + Clone
-        + Debug
-        + 'static,
+    T: Chart + AsShell + Clone + Debug + 'static,
 {
     fn shell(&self) -> &GeometryShell {
-        self
+        AsShell::shell(self)
     }
 
     fn shell_mut(&mut self) -> &mut GeometryShell {
-        self
+        AsShell::shell_mut(self)
     }
 
     fn parameter_count(&self) -> usize {

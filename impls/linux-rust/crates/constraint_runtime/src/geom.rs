@@ -1,4 +1,4 @@
-//! Parameterized geometries: local params are references into the global state vector.
+//! Shared planar types: affine points/vectors, curve parameters, formula Jacobians.
 //!
 //! Affine distinction: [`Vec2`] is a free vector (displacement / direction);
 //! [`Point2`] is a location. Prefer `b - a` over constructing components by hand.
@@ -7,7 +7,10 @@
 //! (native formula domain affinely mapped). [`CurveParam::Uniform`] is constant-speed
 //! / arc-length fraction on \([0,1]\). For line segments the two coincide.
 //!
-//! Concrete kinds (layout + formulas) live under [`crate::geometries`].
+//! [`PointJacobian`] / [`VecJacobian`] are stack \(2 \times n\) carriers for analytical
+//! derivatives of point/vector formulas (runtime width \(n\), fixed stack cap).
+//! Concrete kinds and opaque expressions fill/return them; Document/kind IR lives
+//! under [`crate::geometries`].
 
 use std::ops::{Add, Mul, Neg, Sub};
 
@@ -162,6 +165,68 @@ impl CurveParam {
         }
     }
 }
+
+/// Max width (local parameters) of a single point/vector-formula Jacobian.
+/// Chart formulas stay small (segment endpoint: 2, on-curve: 4); raise when a
+/// kind needs more formula-local DOFs. Erased form: runtime \(n\) ≤ this cap.
+pub const MAX_POINT_JACOBIAN_PARAMS: usize = 8;
+
+/// Analytical Jacobian of a point map: \(2 \times n\) stacked as two rows `dx`,
+/// `dy` with \(\texttt{dx}[i]=\partial x/\partial p_i\),
+/// \(\texttt{dy}[i]=\partial y/\partial p_i\). Stored on the stack; `n` is the
+/// formula-local parameter count (same order as the expression's param indices).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct PointJacobian {
+    dx: [f64; MAX_POINT_JACOBIAN_PARAMS],
+    dy: [f64; MAX_POINT_JACOBIAN_PARAMS],
+    n: usize,
+}
+
+impl PointJacobian {
+    /// Zero \(2 \times n\) Jacobian (`n` must be ≤ [`MAX_POINT_JACOBIAN_PARAMS`]).
+    pub fn zeros(n: usize) -> Self {
+        assert!(
+            n <= MAX_POINT_JACOBIAN_PARAMS,
+            "point Jacobian width {n} exceeds MAX_POINT_JACOBIAN_PARAMS ({MAX_POINT_JACOBIAN_PARAMS})"
+        );
+        Self {
+            dx: [0.0; MAX_POINT_JACOBIAN_PARAMS],
+            dy: [0.0; MAX_POINT_JACOBIAN_PARAMS],
+            n,
+        }
+    }
+
+    /// Identity map \((p_0,p_1)\mapsto(x,y)\): \(J = I_2\).
+    pub fn endpoint_identity() -> Self {
+        let mut j = Self::zeros(2);
+        j.dx[0] = 1.0;
+        j.dy[1] = 1.0;
+        j
+    }
+
+    pub fn n(&self) -> usize {
+        self.n
+    }
+
+    pub fn dx(&self) -> &[f64] {
+        &self.dx[..self.n]
+    }
+
+    pub fn dy(&self) -> &[f64] {
+        &self.dy[..self.n]
+    }
+
+    /// Set column `i`: \(\partial(x,y)/\partial p_i = (\partial x, \partial y)\).
+    pub(crate) fn set_dx_dy(&mut self, i: usize, dx_i: f64, dy_i: f64) {
+        assert!(i < self.n);
+        self.dx[i] = dx_i;
+        self.dy[i] = dy_i;
+    }
+}
+
+/// Analytical Jacobian of a free-vector map: same \(2 \times n\) layout as
+/// [`PointJacobian`] (rows \(\partial v_x\), \(\partial v_y\)).
+pub type VecJacobian = PointJacobian;
 
 #[cfg(test)]
 #[path = "tests_geom.rs"]
