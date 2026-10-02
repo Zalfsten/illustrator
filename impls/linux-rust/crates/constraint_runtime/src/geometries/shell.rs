@@ -30,11 +30,12 @@ impl GeometryShell {
     }
 }
 
-/// Local shell access for chart instances (not object-safe).
+/// Local shell access for chart instances.
 ///
-/// Prefer [`geometry_shell_instance!`] on kinds with a `shell: GeometryShell`
-/// field — orphan rules block a blanket `Deref`/`From` over all such types, so
-/// the macro expands the only coherent per-kind impls.
+/// Supertrait of object-safe [`super::Geometry`]. Prefer [`geometry_shell_instance!`]
+/// on kinds with a `shell: GeometryShell` field — orphan rules block a blanket
+/// `Deref`/`From` over all such types, so the macro expands the only coherent
+/// per-kind impls.
 pub trait AsShell {
     fn shell(&self) -> &GeometryShell;
     fn shell_mut(&mut self) -> &mut GeometryShell;

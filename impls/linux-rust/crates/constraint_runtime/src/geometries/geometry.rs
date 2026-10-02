@@ -17,11 +17,10 @@ impl<T> GeometryKind for T where T: Chart + AsShell + From<GeometryShell> + Clon
 
 /// Document-held geometry instance (object-safe).
 ///
-/// Supplied automatically for every [`GeometryKind`] so Document can store
-/// `Box<dyn Geometry>` without a kind enum.
-pub trait Geometry: Debug {
-    fn shell(&self) -> &GeometryShell;
-    fn shell_mut(&mut self) -> &mut GeometryShell;
+/// Extends [`AsShell`] for identity / State-block fields. Supplied automatically
+/// for every [`GeometryKind`] so Document can store `Box<dyn Geometry>` without
+/// a kind enum.
+pub trait Geometry: AsShell + Debug {
     fn parameter_count(&self) -> usize;
     fn clone_box(&self) -> Box<dyn Geometry>;
 
@@ -52,14 +51,6 @@ pub trait Geometry: Debug {
 }
 
 impl<T: GeometryKind> Geometry for T {
-    fn shell(&self) -> &GeometryShell {
-        AsShell::shell(self)
-    }
-
-    fn shell_mut(&mut self) -> &mut GeometryShell {
-        AsShell::shell_mut(self)
-    }
-
     fn parameter_count(&self) -> usize {
         T::PARAMETER_COUNT
     }
