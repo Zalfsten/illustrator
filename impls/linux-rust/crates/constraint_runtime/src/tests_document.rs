@@ -1,6 +1,6 @@
 use super::*;
-use crate::geom::Point2;
-use crate::geometries::{Chart, GeometryRole, Segment};
+use crate::geom::{CurveParam, Point2};
+use crate::geometries::{Chart, GeometryRole, Segment, CurveExprs, EndpointExprs};
 
 #[test]
 fn two_segment_join_connectivity_indices() {
@@ -87,8 +87,8 @@ fn remove_geometry_compacts_state_and_drops_orphans() {
         b: Segment::start_expr(s1),
     });
     doc.add_constraint(Constraint::Orthogonal {
-        a: Segment::direction_expr(s0),
-        b: Segment::direction_expr(s1),
+        a: Segment::tangent_expr(s0, CurveParam::Normalized(0.0)),
+        b: Segment::tangent_expr(s1, CurveParam::Normalized(0.0)),
     });
     doc.add_constraint(Constraint::FixPoint {
         point: Segment::start_expr(s2),

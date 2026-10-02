@@ -2,7 +2,7 @@ use super::*;
 use crate::document::Document;
 use crate::geom::Point2;
 use crate::geometries::GeometryRole;
-use crate::geometries::Segment;
+use crate::geometries::{EndpointExprs, Segment};
 
 #[test]
 fn one_segment_becomes_one_edge() {

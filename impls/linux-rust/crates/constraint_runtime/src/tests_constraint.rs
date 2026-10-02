@@ -1,6 +1,7 @@
 use super::*;
 use crate::document::DocumentStructure;
-use crate::geometries::{Chart, GeometryId, GeometryRole, GeometryShell, Segment};
+use crate::geom::CurveParam;
+use crate::geometries::{Chart, GeometryId, GeometryRole, GeometryShell, Segment, CurveExprs, EndpointExprs};
 use crate::state::State;
 
 fn two_segs() -> (DocumentStructure, State) {
@@ -29,12 +30,12 @@ fn jacobian_matches_fd_for_catalog() {
             b: Segment::start_expr(GeometryId(1)),
         },
         Constraint::Parallel {
-            a: Segment::direction_expr(GeometryId(0)),
-            b: Segment::direction_expr(GeometryId(1)),
+            a: Segment::tangent_expr(GeometryId(0), CurveParam::Normalized(0.0)),
+            b: Segment::tangent_expr(GeometryId(1), CurveParam::Normalized(0.0)),
         },
         Constraint::Orthogonal {
-            a: Segment::direction_expr(GeometryId(0)),
-            b: Segment::direction_expr(GeometryId(1)),
+            a: Segment::tangent_expr(GeometryId(0), CurveParam::Normalized(0.0)),
+            b: Segment::tangent_expr(GeometryId(1), CurveParam::Normalized(0.0)),
         },
         Constraint::FixPoint {
             point: Segment::start_expr(GeometryId(0)),

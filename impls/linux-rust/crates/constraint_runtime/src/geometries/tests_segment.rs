@@ -56,10 +56,10 @@ fn editing_state_vector_changes_endpoints() {
 }
 
 #[test]
-fn direction_expr_is_end_minus_start() {
+fn tangent_expr_is_end_minus_start() {
     let store = store_with(segment_geom(0, 0));
     let p = State::from(vec![0.0, 0.0, 1.0, 0.0]);
-    let d = Segment::direction_expr(GeometryId(0)).evaluate(&store, &p);
+    let d = Segment::tangent_expr(GeometryId(0), CurveParam::Normalized(0.0)).evaluate(&store, &p);
     assert_eq!(d, Vec2::new(1.0, 0.0));
     assert_eq!(d.cross(Vec2::new(0.0, 1.0)), 1.0);
     assert_eq!(d.dot(Vec2::new(0.0, 1.0)), 0.0);

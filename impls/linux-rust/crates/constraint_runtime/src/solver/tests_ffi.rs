@@ -4,7 +4,7 @@ use crate::constraint::Constraint;
 use crate::document::Document;
 use crate::geom::Point2;
 use crate::geometries::GeometryRole;
-use crate::geometries::Segment;
+use crate::geometries::{EndpointExprs, Segment};
 use crate::state::State;
 use std::os::raw::c_void;
 

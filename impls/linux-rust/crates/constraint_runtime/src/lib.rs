@@ -23,8 +23,8 @@ pub use geom::{
     CurveParam, Point2, PointJacobian, Vec2, VecJacobian, MAX_POINT_JACOBIAN_PARAMS,
 };
 pub use geometries::{
-    AsShell, Chart, Geometry, GeometryId, GeometryKind, GeometryRole, GeometryShell, IdGenerator,
-    PointExpr, Segment, VecExpr,
+    AsShell, Chart, CurveExprs, EndpointExprs, Geometry, GeometryId, GeometryKind, GeometryRole,
+    GeometryShell, IdGenerator, PointExpr, Segment, VecExpr,
 };
 pub use interact::{DragSession, InteractiveSolve, SoftTerms, SolveError};
 pub use mesh::{Mesh, MeshEdge, MeshFilter};

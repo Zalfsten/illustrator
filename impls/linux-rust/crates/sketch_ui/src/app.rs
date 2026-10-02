@@ -1,8 +1,8 @@
 //! Application shell: Document, Interact, tools, and Canvas painting.
 
 use constraint_runtime::{
-    Constraint, Document, DragSession, GeometryId, GeometryRole, InteractiveSolve,
-    Mesh, MeshFilter, Point2, PointExpr, SolveError, Segment,
+    Constraint, CurveExprs, CurveParam, Document, DragSession, EndpointExprs, GeometryId,
+    GeometryRole, InteractiveSolve, Mesh, MeshFilter, Point2, PointExpr, SolveError, Segment,
 };
 use eframe::egui::{self, Color32, Pos2, Rect, Sense, Stroke};
 
@@ -70,8 +70,8 @@ impl App {
             b: Segment::start_expr(s1),
         });
         doc.add_constraint(Constraint::Orthogonal {
-            a: Segment::direction_expr(s0),
-            b: Segment::direction_expr(s1),
+            a: Segment::tangent_expr(s0, CurveParam::Normalized(0.0)),
+            b: Segment::tangent_expr(s1, CurveParam::Normalized(0.0)),
         });
         doc.add_constraint(Constraint::FixPoint {
             point: Segment::start_expr(s0),
@@ -207,13 +207,13 @@ impl App {
                         let b = self.pick_geoms[1];
                         let c = if self.tool == Tool::Parallel {
                             Constraint::Parallel {
-                                a: Segment::direction_expr(a),
-                                b: Segment::direction_expr(b),
+                                a: Segment::tangent_expr(a, CurveParam::Normalized(0.0)),
+                                b: Segment::tangent_expr(b, CurveParam::Normalized(0.0)),
                             }
                         } else {
                             Constraint::Orthogonal {
-                                a: Segment::direction_expr(a),
-                                b: Segment::direction_expr(b),
+                                a: Segment::tangent_expr(a, CurveParam::Normalized(0.0)),
+                                b: Segment::tangent_expr(b, CurveParam::Normalized(0.0)),
                             }
                         };
                         self.doc.add_constraint(c);

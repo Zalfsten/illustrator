@@ -3,7 +3,7 @@ use crate::assemble::AssembledSystem;
 use crate::constraint::Constraint;
 use crate::document::Document;
 use crate::geom::Point2;
-use crate::geometries::{GeometryId, GeometryRole};
+use crate::geometries::{EndpointExprs, GeometryId, GeometryRole};
 use crate::geometries::Segment;
 
 #[test]

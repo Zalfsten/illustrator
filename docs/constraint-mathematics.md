@@ -44,7 +44,7 @@ Behavioral contracts live in OpenSpec capabilities (`geometry-ir`, `state-vector
 
 ## Design decision: opaque expressions (Model B)
 
-**Choice:** `PointExpr` and `VecExpr` are opaque newtypes over a **private** closed formula catalog (outer sum by geometry kind; inner enums per kind). Constraints and Interact never match on formula kinds; they only call `evaluate` / connectivity / Jacobian helpers. Geometry kinds construct expressions via factories (`start_expr`, `on_curve_expr`, `direction_expr`, …).
+**Choice:** `PointExpr` and `VecExpr` are opaque newtypes over a **private** closed formula catalog (outer sum by geometry kind; inner enums per kind). Constraints and Interact never match on formula kinds; they only call `evaluate` / connectivity / Jacobian helpers. Geometry kinds construct expressions via capability traits (`CurveExprs`, `EndpointExprs`) and kind factories (`start_expr`, `on_curve_expr`, `tangent_expr`, …).
 
 **Why:** Call sites should see “a point/vector map”, not `Endpoint | OnCurve | …`. A small fixed catalog stays data-driven (`PartialEq`, `Copy`, easy Debug/serde) without exposing variants. True openness (trait objects / closures) was tried and rejected for this codebase in favor of this facade — see approaches below.
 

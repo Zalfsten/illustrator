@@ -1,8 +1,8 @@
 //! Headless acceptance scenarios.
 
 use constraint_runtime::{
-    AssembledSystem, Constraint, Document, DragSession, GeometryRole,
-    InteractiveSolve, Point2, SoftContribution, SystemEval, SOLVE_TOL, Segment,
+    AssembledSystem, Constraint, CurveExprs, CurveParam, Document, DragSession, EndpointExprs,
+    GeometryRole, InteractiveSolve, Point2, SoftContribution, SystemEval, SOLVE_TOL, Segment,
 };
 
 fn residual_ok(doc: &Document) -> bool {
@@ -23,8 +23,8 @@ fn right_angle_soft_drag_keeps_orthogonal_and_congruence() {
         b: Segment::start_expr(s1),
     });
     doc.add_constraint(Constraint::Orthogonal {
-        a: Segment::direction_expr(s0),
-        b: Segment::direction_expr(s1),
+        a: Segment::tangent_expr(s0, CurveParam::Normalized(0.0)),
+        b: Segment::tangent_expr(s1, CurveParam::Normalized(0.0)),
     });
     doc.add_constraint(Constraint::FixPoint {
         point: Segment::start_expr(s0),
@@ -75,16 +75,16 @@ fn rectangle_drag_keeps_structure_and_stays_near() {
     });
 
     doc.add_constraint(Constraint::Parallel {
-        a: Segment::direction_expr(ab),
-        b: Segment::direction_expr(cd),
+        a: Segment::tangent_expr(ab, CurveParam::Normalized(0.0)),
+        b: Segment::tangent_expr(cd, CurveParam::Normalized(0.0)),
     });
     doc.add_constraint(Constraint::Parallel {
-        a: Segment::direction_expr(da),
-        b: Segment::direction_expr(bc),
+        a: Segment::tangent_expr(da, CurveParam::Normalized(0.0)),
+        b: Segment::tangent_expr(bc, CurveParam::Normalized(0.0)),
     });
     doc.add_constraint(Constraint::Orthogonal {
-        a: Segment::direction_expr(ab),
-        b: Segment::direction_expr(da),
+        a: Segment::tangent_expr(ab, CurveParam::Normalized(0.0)),
+        b: Segment::tangent_expr(da, CurveParam::Normalized(0.0)),
     });
     doc.add_constraint(Constraint::FixPoint {
         point: Segment::start_expr(ab),
@@ -130,8 +130,8 @@ fn right_angle_horizontal_drag_moves_x() {
         b: Segment::start_expr(s1),
     });
     doc.add_constraint(Constraint::Orthogonal {
-        a: Segment::direction_expr(s0),
-        b: Segment::direction_expr(s1),
+        a: Segment::tangent_expr(s0, CurveParam::Normalized(0.0)),
+        b: Segment::tangent_expr(s1, CurveParam::Normalized(0.0)),
     });
     doc.add_constraint(Constraint::FixPoint {
         point: Segment::start_expr(s0),

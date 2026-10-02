@@ -17,7 +17,7 @@ use super::segment::{self, Segment};
 
 /// Opaque point expression: map from State parameters to a [`Point2`].
 ///
-/// Construct via geometry factories (e.g. [`super::Segment::start_expr`]).
+/// Construct via capability factories (e.g. [`super::EndpointExprs::start_expr`] on a kind).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct PointExpr {
     geometry: GeometryId,
