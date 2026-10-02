@@ -10,6 +10,7 @@ pub mod geom;
 pub mod geometry;
 pub mod geometry_kinds;
 pub mod interact;
+pub mod mapper;
 pub mod mesh;
 pub mod solver;
 pub mod state;
@@ -30,6 +31,7 @@ pub use geometry::{
 };
 pub use geometry_kinds::Segment;
 pub use interact::{DragSession, InteractiveSolve, SoftTerms, SolveError};
+pub use mapper::Mapper;
 pub use mesh::{Mesh, MeshEdge, MeshFilter};
 pub use solver::{ffi, LmSolver, SolveOutcome, SolverOptions, SolverPort, StubSolver, SystemEval};
 pub use state::State;

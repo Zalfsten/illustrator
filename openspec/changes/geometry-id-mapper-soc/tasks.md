@@ -8,7 +8,7 @@
 ## 2. Resolve-then-unpack API
 
 - [x] 2.1 Change `GeometryStore::chart_param_block` / `unpack_chart` to take `&dyn Geometry` (drop id lookup inside unpack); update `expr.rs` to `expect_geometry` then unpack; verify `cargo test -p constraint_runtime` passes
-- [x] 2.2 Optionally add a thin `Mapper<'a>` view bundling store+State if it clarifies call sites without extra nesting; otherwise document that store methods suffice and skip the type
+- [x] 2.2 Add zero-sized `Mapper` (param block, unpack_chart, globalize_indices); `GeometryStore` stays id→geometry only; `expr` uses Mapper for layout lifts
 
 ## 3. Docs and validation
 

@@ -2,7 +2,10 @@
 
 ## Context
 
-See proposal.md — Why. linux-rust already has object-safe `Geometry`, `GeometryShell`, `GeometryStore::unpack_chart(id, p)`, and `DocumentStructure.next_id`. This change separates identity allocation and chart mapping without ECS side-maps or splitting the shell.
+See proposal.md — Why. linux-rust has object-safe `Geometry`, `GeometryShell`,
+`GeometryStore` (id resolution), `Mapper` (chart layout), and `IdGenerator`.
+This change separates identity allocation and chart mapping without ECS
+side-maps or splitting the shell.
 
 Related in-flight change: `geometry-object-safe-shell` (spec language for shell storage). Prefer not conflicting edits to the same requirement text; this change's geometry-ir delta focuses on id allocation and resolve-then-unpack.
 
@@ -37,21 +40,30 @@ IdGenerator { next: usize }
 
 **Alternatives:** UUID (rejected — size/debug noise); geometry asks generator (rejected — ambient coupling).
 
-### 2. Chart unpack via GeometryStore (no Mapper type yet)
+### 2. Chart layout via `Mapper` (stateless); store resolves only
 
 ```text
-g = store.expect_geometry(id)
-store.unpack_chart::<C>(g, p)
-store.chart_param_block(g)
+g = store.expect_geometry(id)          // identity
+Mapper::unpack_chart::<C>(g, p)       // layout + State window
+Mapper::chart_param_block(g)
+Mapper::globalize_indices(g, local)   // shell.param_offset + local
 ```
 
-A dedicated long-lived `Mapper` on Document (layout authority; State passed per call) is deferred until scattered parameter windows need a clearer seam. Ephemeral `(store, state)` views were tried and dropped as misleading.
+`GeometryStore` is id→geometry only. `Mapper` is a stateless namespace that reads
+`GeometryShell` layout (contiguous block today). State is passed per unpack call.
+Kinds expose formula-local indices; expressions lift via `globalize_indices`.
 
-**Alternatives:** Ephemeral Mapper view (rejected — looks like sugar, not layout ownership); unpack keeps id (rejected — duplicate lookup).
+Ephemeral `(store, state)` views remain rejected (misleading ownership). A
+long-lived Mapper holding Document is unnecessary while blocks stay contiguous
+on the shell — the type still names the layout seam.
+
+**Alternatives:** Methods only on GeometryStore (rejected — mixes resolution with
+layout; `globalize_indices` belonged nowhere); unpack keeps id (rejected —
+duplicate lookup).
 
 ### 3. Retain GeometryShell
 
-Single companion bag remains. Document writes id+offset(+role) on register; Mapper/Store reads offset via `g.param_block()`. Reindex-on-remove stays on shell fields via `Geometry::reindex_after_removal`.
+Single companion bag remains. Document writes id+offset(+role) on register; Mapper reads offset via `g.param_block()` / `shell().param_offset`. Reindex-on-remove stays on shell fields via `Geometry::reindex_after_removal`.
 
 ### 4. Stability note (documentation only)
 
@@ -60,16 +72,16 @@ Single companion bag remains. Document writes id+offset(+role) on register; Mapp
 ## Risks / Trade-offs
 
 - **[Risk] Conflict with `geometry-object-safe-shell` deltas on geometry-ir** → Mitigation: different requirements; sync/archive carefully.
-- **[Trade-off] Mapper as type vs methods only** → Prefer methods + optional view struct; avoid forcing Mapper through every call if a one-liner method suffices.
+- **[Trade-off] Mapper as type vs methods only** → Chose a zero-sized `Mapper` namespace so layout lives beside store resolution without an ephemeral view.
 - **[Risk] Over-abstracting IdGenerator** → Keep it a tiny struct in `shell.rs` or `document.rs`; no trait unless a second allocator appears.
 
 ## Migration Plan
 
 1. Add `IdGenerator`; wire DocumentStructure.
 2. Change `unpack_chart` / `chart_param_block` signatures to `&dyn Geometry`; fix `expr.rs`.
-3. Optionally add `Mapper` view if it clarifies call sites; otherwise stop at store methods.
+3. Introduce `Mapper` with unpack / param-block / `globalize_indices`; slim `GeometryStore` to resolution.
 4. Update docs/config; run `cargo test -p constraint_runtime`.
 
 ## Open Questions
 
-None blocking — Mapper-as-struct vs methods-only can be chosen at apply time favoring fewer types.
+None.

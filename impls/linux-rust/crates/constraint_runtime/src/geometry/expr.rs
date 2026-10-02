@@ -3,9 +3,8 @@
 //! Shared formula *tags* live in [`super::capabilities`] (curve vs endpoint catalogs).
 //! This module keys them by geometry kind for evaluate dispatch and owns the
 //! geometry identity so constraints and Interact never match on formula kinds.
-//! Evaluate resolves the id once, then unpacks via [`GeometryStore`] helpers.
-//! `param_indices` lifts kind-local indices through
-//! [`super::GeometryShell::param_offset`] — kinds never see global State indices.
+//! Evaluate resolves the id, then uses [`crate::mapper::Mapper`] for chart unpack
+//! and local→global index lifts — kinds never see global State indices.
 //!
 //! Stack Jacobian carriers live in [`crate::geom`] ([`PointJacobian`] /
 //! [`VecJacobian`] / [`ScalarJacobian`]); this module only returns them from
@@ -17,13 +16,9 @@ use super::capabilities::{
 use super::shell::GeometryId;
 use crate::geom::{Point2, PointJacobian, ScalarJacobian, Vec2, VecJacobian};
 use crate::geometry_kinds::Segment;
+use crate::mapper::Mapper;
 use crate::state::State;
 use crate::store::GeometryStore;
-
-fn globalize_indices(store: &impl GeometryStore, id: GeometryId, local: Vec<usize>) -> Vec<usize> {
-    let offset = store.expect_geometry(id).shell().param_offset;
-    local.into_iter().map(|i| offset + i).collect()
-}
 
 /// Opaque point expression: map from State parameters to a [`Point2`].
 ///
@@ -48,7 +43,7 @@ impl PointExpr {
 
     pub fn evaluate(&self, store: &impl GeometryStore, p: &State) -> Point2 {
         let g = store.expect_geometry(self.geometry);
-        let chart = store.unpack_chart::<Segment>(g, p);
+        let chart = Mapper::unpack_chart::<Segment>(g, p);
         match &self.formula {
             PointFormulaKeyed::SegmentCurve(f) => Segment::eval_curve_point(*f, chart),
             PointFormulaKeyed::SegmentEndpoint(f) => Segment::eval_endpoint_point(*f, chart),
@@ -60,7 +55,7 @@ impl PointExpr {
             PointFormulaKeyed::SegmentCurve(f) => Segment::curve_point_param_indices(*f),
             PointFormulaKeyed::SegmentEndpoint(f) => Segment::endpoint_point_param_indices(*f),
         };
-        globalize_indices(store, self.geometry, local)
+        Mapper::globalize_indices(store.expect_geometry(self.geometry), local)
     }
 
     pub fn eval_point_jacobian(&self, _store: &impl GeometryStore, _p: &State) -> PointJacobian {
@@ -97,7 +92,7 @@ impl VecExpr {
         let g = store.expect_geometry(self.geometry);
         match &self.formula {
             VecFormulaKeyed::Segment(f) => {
-                Segment::eval_vec(*f, store.unpack_chart::<Segment>(g, p))
+                Segment::eval_vec(*f, Mapper::unpack_chart::<Segment>(g, p))
             }
         }
     }
@@ -106,7 +101,7 @@ impl VecExpr {
         let local = match &self.formula {
             VecFormulaKeyed::Segment(f) => Segment::vec_param_indices(*f),
         };
-        globalize_indices(store, self.geometry, local)
+        Mapper::globalize_indices(store.expect_geometry(self.geometry), local)
     }
 
     pub fn eval_vec_jacobian(&self, _store: &impl GeometryStore, _p: &State) -> VecJacobian {
@@ -142,7 +137,7 @@ impl ScalarExpr {
         let g = store.expect_geometry(self.geometry);
         match &self.formula {
             ScalarFormulaKeyed::Segment(f) => {
-                Segment::eval_scalar(*f, store.unpack_chart::<Segment>(g, p))
+                Segment::eval_scalar(*f, Mapper::unpack_chart::<Segment>(g, p))
             }
         }
     }
@@ -151,14 +146,14 @@ impl ScalarExpr {
         let local = match &self.formula {
             ScalarFormulaKeyed::Segment(f) => Segment::scalar_param_indices(*f),
         };
-        globalize_indices(store, self.geometry, local)
+        Mapper::globalize_indices(store.expect_geometry(self.geometry), local)
     }
 
     pub fn eval_scalar_jacobian(&self, store: &impl GeometryStore, p: &State) -> ScalarJacobian {
         let g = store.expect_geometry(self.geometry);
         match &self.formula {
             ScalarFormulaKeyed::Segment(f) => {
-                Segment::eval_scalar_jacobian(*f, store.unpack_chart::<Segment>(g, p))
+                Segment::eval_scalar_jacobian(*f, Mapper::unpack_chart::<Segment>(g, p))
             }
         }
     }

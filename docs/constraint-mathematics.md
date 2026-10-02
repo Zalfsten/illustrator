@@ -25,7 +25,8 @@ Behavioral contracts live in OpenSpec capabilities (`geometry-ir`, `state-vector
 | **IdGenerator** | Document-owned allocator for non-colliding `GeometryId` (`allocate` / `observe`). Chart pack does not assign ids; `Document::add_geometry` allocates, import paths observe. |
 | **Geometry (trait)** | Object-safe document instance API (`parameter_count`, `clone_box`, role/block helpers). Supertrait: `AsShell`. Document stores `Vec<Box<dyn Geometry>>`; concrete kinds get it via blanket from `GeometryKind`. |
 | **GeometryKind** | Marker for a concrete kind: `Chart` + `AsShell` + `From<GeometryShell>` (+ Clone/Debug). Not object-safe; `Document::add_geometry` is bounded on it. |
-| **GeometryStore** | Read-only port: resolve `GeometryId` → `&dyn Geometry`. Chart unpack / param-block helpers take a **resolved** geometry reference (linux-rust: `store.rs`); expressions look up once, then unpack. |
+| **GeometryStore** | Read-only port: resolve `GeometryId` → `&dyn Geometry` (linux-rust: `store.rs`). |
+| **Mapper** | Chart layout: param block, unpack from State, local→global index lift via `GeometryShell.param_offset` (linux-rust: `mapper.rs`). Expressions resolve via GeometryStore, then map/unpack via Mapper; kinds stay in local indices. |
 | **Vector expression** | Opaque handle to a map from geometry parameters to a free **vector** (e.g. segment direction, curve tangent or normal). Same opacity principle as point expressions; kind-owned formulas behind an outer kind sum. |
 | **Scalar expression** | Opaque handle to a map from geometry parameters to a real number (e.g. curve length). Same opacity principle; kind-owned formulas; analytical \(1\times n\) Jacobian. linux-rust: `ScalarExpr` / `ScalarJacobian`. |
 | **Curve length** | Total arc length of a curve as a scalar expression (`length_expr` on the curve capability). Segment: Euclidean distance between endpoints. |

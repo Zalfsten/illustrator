@@ -85,7 +85,9 @@ context: |
   - geometry_kinds/: one file per concrete kind (charts); kinds only.
     Document stores Vec<Box<dyn Geometry>>; add_geometry bound is GeometryKind.
   - state: owned global parameter vector State (committed + working copies)
-  - store: GeometryStore port (expect_geometry; unpack_chart(&dyn Geometry, …))
+  - store: GeometryStore port (id → &dyn Geometry resolution only)
+  - mapper: chart layout (param block, unpack_chart, local→global indices
+    via GeometryShell.param_offset); kinds stay in local indices
   - document: DocumentStructure + committed State + id→slot index + IdGenerator;
     add_geometry
   Prefer sibling files once a module has unit tests: src/<module>.rs for
