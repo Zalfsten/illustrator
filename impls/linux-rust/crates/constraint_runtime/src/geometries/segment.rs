@@ -14,7 +14,8 @@ use crate::geom::{Point2, PointJacobian, Vec2, VecJacobian};
 /// Parameters live at `p[shell.param_offset..shell.param_offset+PARAMETER_COUNT]`.
 /// Shell fields via [`super::AsShell`] (from [`geometry_shell_instance!`]); together
 /// with [`Chart`] that yields [`super::GeometryKind`] / [`super::Geometry`].
-/// Expression factories via [`impl_curve_exprs!`] / [`impl_endpoint_exprs!`].
+/// Expression factories via [`impl_curve_exprs!`] / [`impl_endpoint_exprs!`]
+/// (endpoint override: sparse start/end formulas, not default on-curve \(t = 0/1\)).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct Segment {
     pub shell: GeometryShell,

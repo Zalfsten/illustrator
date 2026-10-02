@@ -3,9 +3,11 @@
 //! - [`CurveExprs`] + [`CurvePointFormula`] / [`VecFormula`]: on-curve / tangent / normal.
 //! - [`EndpointExprs`] + [`EndpointPointFormula`]: start / end (open/join curves only).
 //!
-//! Closed curves implement [`CurveExprs`] only — they never see endpoint formula tags.
-//! Factories are kind-associated (not object-safe on [`super::Geometry`]). Prefer
-//! [`impl_curve_exprs!`] / [`impl_endpoint_exprs!`]; evaluation stays on the kind.
+//! [`EndpointExprs`] defaults start/end to on-curve at normalized \(t = 0\) / \(t = 1\);
+//! kinds MAY override (e.g. segment sparse endpoint formulas). Closed curves implement
+//! [`CurveExprs`] only. Factories are kind-associated (not object-safe on
+//! [`super::Geometry`]). Prefer [`impl_curve_exprs!`] / [`impl_endpoint_exprs!`];
+//! evaluation stays on the kind.
 
 use super::shell::GeometryId;
 use super::{PointExpr, VecExpr};
@@ -19,9 +21,17 @@ pub trait CurveExprs {
 }
 
 /// Geometric join endpoints (not required for intrinsically periodic closed curves).
-pub trait EndpointExprs {
-    fn start_expr(id: GeometryId) -> PointExpr;
-    fn end_expr(id: GeometryId) -> PointExpr;
+///
+/// Defaults use [`CurveExprs::on_curve_expr`] at normalized endpoints. Override when
+/// the kind has a cheaper formula (connectivity / Jacobian), as [`super::Segment`] does.
+pub trait EndpointExprs: CurveExprs {
+    fn start_expr(id: GeometryId) -> PointExpr {
+        Self::on_curve_expr(id, CurveParam::Normalized(0.0))
+    }
+
+    fn end_expr(id: GeometryId) -> PointExpr {
+        Self::on_curve_expr(id, CurveParam::Normalized(1.0))
+    }
 }
 
 /// Shared point-formula tags for [`CurveExprs`] (kind-agnostic; eval on the kind).
@@ -30,7 +40,7 @@ pub(crate) enum CurvePointFormula {
     OnCurve { param: CurveParam },
 }
 
-/// Shared point-formula tags for [`EndpointExprs`].
+/// Shared point-formula tags for [`EndpointExprs`] overrides (kind-efficient endpoints).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum EndpointPointFormula {
     StartPoint,
@@ -87,8 +97,13 @@ pub(crate) use impl_curve_exprs;
 
 /// Implement [`EndpointExprs`] for `$ty`.
 ///
-/// `$endpoint_wrap` is a kind constructor on [`PointExpr`] (e.g. `segment_endpoint`).
+/// - `impl_endpoint_exprs!(Type)` — default start/end via on-curve \(t = 0/1\).
+/// - `impl_endpoint_exprs!(Type, endpoint_wrap)` — override with kind endpoint formulas
+///   (e.g. `segment_endpoint` + [`EndpointPointFormula`]).
 macro_rules! impl_endpoint_exprs {
+    ($ty:ty) => {
+        impl $crate::geometries::EndpointExprs for $ty {}
+    };
     ($ty:ty, $endpoint_wrap:ident) => {
         impl $crate::geometries::EndpointExprs for $ty {
             fn start_expr(id: $crate::geometries::GeometryId) -> $crate::geometries::PointExpr {

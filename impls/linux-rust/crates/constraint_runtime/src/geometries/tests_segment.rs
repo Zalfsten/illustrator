@@ -58,6 +58,24 @@ fn editing_state_vector_changes_endpoints() {
 }
 
 #[test]
+fn segment_endpoint_override_matches_on_curve_but_sparser_connectivity() {
+    let store = store_with(segment_geom(0, 0));
+    let p = State::from(vec![1.0, 2.0, 5.0, 6.0]);
+    let id = GeometryId(0);
+    let start = Segment::start_expr(id);
+    let at0 = Segment::on_curve_expr(id, CurveParam::Normalized(0.0));
+    assert_eq!(start.evaluate(&store, &p), at0.evaluate(&store, &p));
+    assert_eq!(start.param_indices(&store), vec![0, 1]);
+    assert_eq!(at0.param_indices(&store), vec![0, 1, 2, 3]);
+
+    let end = Segment::end_expr(id);
+    let at1 = Segment::on_curve_expr(id, CurveParam::Normalized(1.0));
+    assert_eq!(end.evaluate(&store, &p), at1.evaluate(&store, &p));
+    assert_eq!(end.param_indices(&store), vec![2, 3]);
+    assert_eq!(at1.param_indices(&store), vec![0, 1, 2, 3]);
+}
+
+#[test]
 fn tangent_expr_is_end_minus_start() {
     let store = store_with(segment_geom(0, 0));
     let p = State::from(vec![0.0, 0.0, 1.0, 0.0]);
