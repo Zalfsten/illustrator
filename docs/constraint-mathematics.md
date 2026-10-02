@@ -27,6 +27,8 @@ Behavioral contracts live in OpenSpec capabilities (`geometry-ir`, `state-vector
 | **GeometryKind** | Marker for a concrete kind: `Chart` + `AsShell` + `From<GeometryShell>` (+ Clone/Debug). Not object-safe; `Document::add_geometry` is bounded on it. |
 | **GeometryStore** | Read-only port: resolve `GeometryId` → `&dyn Geometry`. Chart unpack / param-block helpers take a **resolved** geometry reference (linux-rust: `store.rs`); expressions look up once, then unpack. |
 | **Vector expression** | Opaque handle to a map from geometry parameters to a free **vector** (e.g. segment direction, curve tangent or normal). Same opacity principle as point expressions; kind-owned formulas behind an outer kind sum. |
+| **Scalar expression** | Opaque handle to a map from geometry parameters to a real number (e.g. curve length). Same opacity principle; kind-owned formulas; analytical \(1\times n\) Jacobian. linux-rust: `ScalarExpr` / `ScalarJacobian`. |
+| **Curve length** | Total arc length of a curve as a scalar expression (`length_expr` on the curve capability). Segment: Euclidean distance between endpoints. |
 | **Normalized curve parameter** | Chart coordinate \(t \in [0,1]\): the curve's native formula domain affinely mapped to the unit interval. Equal \(\Delta t\) need not mean equal arc length. |
 | **Uniform curve parameter** | Arc-length fraction \(u \in [0,1]\): equal \(\Delta u\) means equal arc length along the curve. For a line segment, Normalized and Uniform coincide. |
 | **Curve tangent** | Chart derivative \(\gamma'(t)\) as a free vector; length is parametric speed (segment: segment length). Not required to be unit length. |
@@ -44,7 +46,7 @@ Behavioral contracts live in OpenSpec capabilities (`geometry-ir`, `state-vector
 
 ## Design decision: opaque expressions (Model B)
 
-**Choice:** `PointExpr` and `VecExpr` are opaque newtypes over a **private** closed formula catalog (outer sum by geometry kind; inner enums per kind). Constraints and Interact never match on formula kinds; they only call `evaluate` / connectivity / Jacobian helpers. Geometry kinds construct expressions via capability traits (`CurveExprs`, `EndpointExprs`) and kind factories (`start_expr`, `on_curve_expr`, `tangent_expr`, …).
+**Choice:** `PointExpr`, `VecExpr`, and `ScalarExpr` are opaque newtypes over a **private** closed formula catalog (outer sum by geometry kind; shared capability tags). Constraints and Interact never match on formula kinds; they only call `evaluate` / connectivity / Jacobian helpers. Geometry kinds construct expressions via capability traits (`CurveExprs`, `EndpointExprs`) and kind factories (`start_expr`, `on_curve_expr`, `tangent_expr`, `length_expr`, …).
 
 **Why:** Call sites should see “a point/vector map”, not `Endpoint | OnCurve | …`. A small fixed catalog stays data-driven (`PartialEq`, `Copy`, easy Debug/serde) without exposing variants. True openness (trait objects / closures) was tried and rejected for this codebase in favor of this facade — see approaches below.
 
@@ -205,6 +207,8 @@ Examples from the v1 catalog:
 - **Orthogonal**: one scalar $u \cdot v$ (dot of free vectors).
 - **FixPoint** of expression $A(p)$ to target $t$:  
   $r = A(p) - t \in \mathbb{R}^2$.
+- **EqualLength** of two scalar expressions $s_a(p), s_b(p)$:  
+  $r = s_a(p) - s_b(p) \in \mathbb{R}$ (typically curve `length_expr`s).
 
 Each contribution also exposes a local Jacobian $J_N = \partial r_N / \partial p_{\mathrm{loc}}$.
 

@@ -1,7 +1,7 @@
 //! Structural constraints: local residuals and analytical local Jacobians.
 
 use crate::connectivity::Connectivity;
-use crate::geometries::{PointExpr, VecExpr};
+use crate::geometries::{PointExpr, ScalarExpr, VecExpr};
 use crate::geom::Point2;
 use crate::state::State;
 use crate::store::GeometryStore;
@@ -12,13 +12,16 @@ pub enum Constraint {
     Parallel { a: VecExpr, b: VecExpr },
     Orthogonal { a: VecExpr, b: VecExpr },
     FixPoint { point: PointExpr, target: Point2 },
+    EqualLength { a: ScalarExpr, b: ScalarExpr },
 }
 
 impl Constraint {
     pub fn residual_arity(&self) -> usize {
         match self {
             Constraint::Congruence { .. } | Constraint::FixPoint { .. } => 2,
-            Constraint::Parallel { .. } | Constraint::Orthogonal { .. } => 1,
+            Constraint::Parallel { .. }
+            | Constraint::Orthogonal { .. }
+            | Constraint::EqualLength { .. } => 1,
         }
     }
 
@@ -36,6 +39,11 @@ impl Constraint {
                 Connectivity::new(idx)
             }
             Constraint::FixPoint { point, .. } => Connectivity::new(point.param_indices(store)),
+            Constraint::EqualLength { a, b } => {
+                let mut idx = a.param_indices(store);
+                idx.extend(b.param_indices(store));
+                Connectivity::new(idx)
+            }
         }
     }
 
@@ -62,6 +70,9 @@ impl Constraint {
                 let q = point.evaluate(store, p);
                 out[0] = q.x - target.x;
                 out[1] = q.y - target.y;
+            }
+            Constraint::EqualLength { a, b } => {
+                out[0] = a.evaluate(store, p) - b.evaluate(store, p);
             }
         }
     }
@@ -130,6 +141,20 @@ impl Constraint {
                 for i in 0..j.n() {
                     out[0 * n_local + i] = j.dx()[i];
                     out[1 * n_local + i] = j.dy()[i];
+                }
+            }
+            Constraint::EqualLength { a, b } => {
+                let ja = a.eval_scalar_jacobian(store, p);
+                let jb = b.eval_scalar_jacobian(store, p);
+                let na = ja.n();
+                let nb = jb.n();
+                debug_assert_eq!(na, a.param_indices(store).len());
+                debug_assert_eq!(nb, b.param_indices(store).len());
+                for i in 0..na {
+                    out[i] = ja.ds()[i];
+                }
+                for j in 0..nb {
+                    out[na + j] = -jb.ds()[j];
                 }
             }
         }

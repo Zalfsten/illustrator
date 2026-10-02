@@ -1,4 +1,4 @@
-//! Opaque point/vector expressions (Model B).
+//! Opaque point/vector/scalar expressions (Model B).
 //!
 //! Shared formula *tags* live in [`super::capabilities`] (curve vs endpoint catalogs).
 //! This module keys them by geometry kind for evaluate dispatch and owns the
@@ -6,14 +6,15 @@
 //! Evaluate resolves the id once, then unpacks via [`GeometryStore`] helpers.
 //!
 //! Stack Jacobian carriers live in [`crate::geom`] ([`PointJacobian`] /
-//! [`VecJacobian`]); this module only returns them from evaluate helpers.
+//! [`VecJacobian`] / [`ScalarJacobian`]); this module only returns them from
+//! evaluate helpers.
 
 use super::capabilities::{
-    CurvePointFormula, EndpointPointFormula, VecFormula as CapVecFormula,
+    CurvePointFormula, CurveScalarFormula, EndpointPointFormula, VecFormula as CapVecFormula,
 };
 use super::segment::Segment;
 use super::shell::GeometryId;
-use crate::geom::{Point2, PointJacobian, Vec2, VecJacobian};
+use crate::geom::{Point2, PointJacobian, ScalarJacobian, Vec2, VecJacobian};
 use crate::state::State;
 use crate::store::GeometryStore;
 
@@ -125,6 +126,58 @@ impl VecExpr {
     pub fn eval_vec_jacobian(&self, _store: &impl GeometryStore, _p: &State) -> VecJacobian {
         match &self.formula {
             VecFormulaKeyed::Segment(f) => Segment::eval_vec_jacobian(*f),
+        }
+    }
+
+    pub fn referenced_geometry(&self) -> GeometryId {
+        self.geometry
+    }
+}
+
+/// Opaque scalar expression: map from State parameters to an `f64`.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ScalarExpr {
+    geometry: GeometryId,
+    formula: ScalarFormulaKeyed,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum ScalarFormulaKeyed {
+    Segment(CurveScalarFormula),
+}
+
+impl ScalarExpr {
+    pub(crate) fn segment_scalar(geometry: GeometryId, formula: CurveScalarFormula) -> Self {
+        Self {
+            geometry,
+            formula: ScalarFormulaKeyed::Segment(formula),
+        }
+    }
+
+    pub fn evaluate(&self, store: &impl GeometryStore, p: &State) -> f64 {
+        let g = store.expect_geometry(self.geometry);
+        match &self.formula {
+            ScalarFormulaKeyed::Segment(f) => {
+                Segment::eval_scalar(*f, store.unpack_chart::<Segment>(g, p))
+            }
+        }
+    }
+
+    pub fn param_indices(&self, store: &impl GeometryStore) -> Vec<usize> {
+        let g = store.expect_geometry(self.geometry);
+        match &self.formula {
+            ScalarFormulaKeyed::Segment(f) => {
+                Segment::scalar_param_indices(*f, store.chart_param_block(g))
+            }
+        }
+    }
+
+    pub fn eval_scalar_jacobian(&self, store: &impl GeometryStore, p: &State) -> ScalarJacobian {
+        let g = store.expect_geometry(self.geometry);
+        match &self.formula {
+            ScalarFormulaKeyed::Segment(f) => {
+                Segment::eval_scalar_jacobian(*f, store.unpack_chart::<Segment>(g, p))
+            }
         }
     }
 

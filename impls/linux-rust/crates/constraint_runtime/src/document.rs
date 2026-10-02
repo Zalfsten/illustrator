@@ -73,6 +73,9 @@ impl DocumentStructure {
                 a.referenced_geometry() == id || b.referenced_geometry() == id
             }
             Constraint::FixPoint { point, .. } => point.referenced_geometry() == id,
+            Constraint::EqualLength { a, b } => {
+                a.referenced_geometry() == id || b.referenced_geometry() == id
+            }
         }
     }
 }

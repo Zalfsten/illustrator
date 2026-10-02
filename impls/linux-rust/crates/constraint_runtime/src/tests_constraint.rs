@@ -45,6 +45,10 @@ fn jacobian_matches_fd_for_catalog() {
             a: Segment::on_curve_expr(GeometryId(0), crate::geom::CurveParam::Uniform(0.5)),
             b: Segment::start_expr(GeometryId(1)),
         },
+        Constraint::EqualLength {
+            a: Segment::length_expr(GeometryId(0)),
+            b: Segment::length_expr(GeometryId(1)),
+        },
     ];
 
     let eps = 1e-7;

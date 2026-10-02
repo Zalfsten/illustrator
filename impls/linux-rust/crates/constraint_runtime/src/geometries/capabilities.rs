@@ -1,7 +1,7 @@
 //! Capability-scoped expression factories and shared formula catalogs.
 //!
-//! - [`CurveExprs`] + [`CurvePointFormula`] / [`VecFormula`]: on-curve / tangent / normal.
-//! - [`EndpointExprs`] + [`EndpointPointFormula`]: start / end (open/join curves only).
+//! - [`CurveExprs`]: on-curve / tangent / normal / length.
+//! - [`EndpointExprs`]: start / end (open/join curves only).
 //!
 //! [`EndpointExprs`] defaults start/end to on-curve at normalized \(t = 0\) / \(t = 1\);
 //! kinds MAY override (e.g. segment sparse endpoint formulas). Closed curves implement
@@ -10,14 +10,15 @@
 //! evaluation stays on the kind.
 
 use super::shell::GeometryId;
-use super::{PointExpr, VecExpr};
+use super::{PointExpr, ScalarExpr, VecExpr};
 use crate::geom::CurveParam;
 
-/// Curve chart expression factories (position / frame along the chart).
+/// Curve chart expression factories (position / frame / length along the chart).
 pub trait CurveExprs {
     fn on_curve_expr(id: GeometryId, param: CurveParam) -> PointExpr;
     fn tangent_expr(id: GeometryId, param: CurveParam) -> VecExpr;
     fn normal_expr(id: GeometryId, param: CurveParam) -> VecExpr;
+    fn length_expr(id: GeometryId) -> ScalarExpr;
 }
 
 /// Geometric join endpoints (not required for intrinsically periodic closed curves).
@@ -54,12 +55,19 @@ pub(crate) enum VecFormula {
     NormalAt { param: CurveParam },
 }
 
+/// Shared scalar-formula tags for curve length (and future curve scalars).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) enum CurveScalarFormula {
+    Length,
+}
+
 /// Implement [`CurveExprs`] for `$ty`.
 ///
-/// `$curve_wrap` / `$vec_wrap` are kind constructors on [`PointExpr`] / [`VecExpr`]
-/// (e.g. `segment_curve`, `segment`).
+/// `$curve_wrap` / `$vec_wrap` / `$scalar_wrap` are kind constructors on
+/// [`PointExpr`] / [`VecExpr`] / [`ScalarExpr`] (e.g. `segment_curve`, `segment`,
+/// `segment_scalar`).
 macro_rules! impl_curve_exprs {
-    ($ty:ty, $curve_wrap:ident, $vec_wrap:ident) => {
+    ($ty:ty, $curve_wrap:ident, $vec_wrap:ident, $scalar_wrap:ident) => {
         impl $crate::geometries::CurveExprs for $ty {
             fn on_curve_expr(
                 id: $crate::geometries::GeometryId,
@@ -88,6 +96,13 @@ macro_rules! impl_curve_exprs {
                 $crate::geometries::VecExpr::$vec_wrap(
                     id,
                     $crate::geometries::capabilities::VecFormula::NormalAt { param },
+                )
+            }
+
+            fn length_expr(id: $crate::geometries::GeometryId) -> $crate::geometries::ScalarExpr {
+                $crate::geometries::ScalarExpr::$scalar_wrap(
+                    id,
+                    $crate::geometries::capabilities::CurveScalarFormula::Length,
                 )
             }
         }

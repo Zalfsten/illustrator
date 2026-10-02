@@ -194,3 +194,40 @@ fn congruence_to_uniform_midpoint_pins_segment() {
     .evaluate(&doc.structure, doc.state());
     assert!((mid_pt.x - 1.0).abs() < 1e-4 && (mid_pt.y - 2.0).abs() < 1e-4);
 }
+
+#[test]
+fn equal_length_keeps_two_segments_same_length() {
+    let mut doc = Document::new();
+    let s0 = doc.add_geometry::<Segment>(
+        GeometryRole::Result,
+        (Point2::new(0.0, 0.0), Point2::new(2.0, 0.0)),
+    );
+    let s1 = doc.add_geometry::<Segment>(
+        GeometryRole::Result,
+        (Point2::new(0.0, 1.0), Point2::new(1.0, 1.0)),
+    );
+    doc.add_constraint(Constraint::FixPoint {
+        point: Segment::start_expr(s0),
+        target: Point2::new(0.0, 0.0),
+    });
+    doc.add_constraint(Constraint::FixPoint {
+        point: Segment::start_expr(s1),
+        target: Point2::new(0.0, 1.0),
+    });
+    doc.add_constraint(Constraint::EqualLength {
+        a: Segment::length_expr(s0),
+        b: Segment::length_expr(s1),
+    });
+    doc.add_constraint(Constraint::FixPoint {
+        point: Segment::end_expr(s0),
+        target: Point2::new(3.0, 0.0),
+    });
+
+    let mut interact = InteractiveSolve::new();
+    interact.structural_only(&mut doc).expect("equal length solve");
+    assert!(residual_ok(&doc));
+    let l0 = Segment::length_expr(s0).evaluate(&doc.structure, doc.state());
+    let l1 = Segment::length_expr(s1).evaluate(&doc.structure, doc.state());
+    assert!((l0 - l1).abs() < 1e-4, "l0={l0} l1={l1}");
+    assert!((l0 - 3.0).abs() < 1e-4, "expected length 3, got {l0}");
+}

@@ -228,6 +228,43 @@ impl PointJacobian {
 /// [`PointJacobian`] (rows \(\partial v_x\), \(\partial v_y\)).
 pub type VecJacobian = PointJacobian;
 
+/// Max width of a scalar-formula Jacobian (same cap as point/vector formulas).
+pub const MAX_SCALAR_JACOBIAN_PARAMS: usize = MAX_POINT_JACOBIAN_PARAMS;
+
+/// Analytical Jacobian of a scalar map: \(1 \times n\) row `ds` with
+/// \(\texttt{ds}[i]=\partial s/\partial p_i\).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ScalarJacobian {
+    ds: [f64; MAX_SCALAR_JACOBIAN_PARAMS],
+    n: usize,
+}
+
+impl ScalarJacobian {
+    pub fn zeros(n: usize) -> Self {
+        assert!(
+            n <= MAX_SCALAR_JACOBIAN_PARAMS,
+            "scalar Jacobian width {n} exceeds MAX_SCALAR_JACOBIAN_PARAMS ({MAX_SCALAR_JACOBIAN_PARAMS})"
+        );
+        Self {
+            ds: [0.0; MAX_SCALAR_JACOBIAN_PARAMS],
+            n,
+        }
+    }
+
+    pub fn n(&self) -> usize {
+        self.n
+    }
+
+    pub fn ds(&self) -> &[f64] {
+        &self.ds[..self.n]
+    }
+
+    pub(crate) fn set_ds(&mut self, i: usize, ds_i: f64) {
+        assert!(i < self.n);
+        self.ds[i] = ds_i;
+    }
+}
+
 #[cfg(test)]
 #[path = "tests_geom.rs"]
 mod tests_geom;

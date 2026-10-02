@@ -3,11 +3,12 @@
 use std::ops::Range;
 
 use super::capabilities::{
-    impl_curve_exprs, impl_endpoint_exprs, CurvePointFormula, EndpointPointFormula, VecFormula,
+    impl_curve_exprs, impl_endpoint_exprs, CurvePointFormula, CurveScalarFormula,
+    EndpointPointFormula, VecFormula,
 };
 use super::shell::{geometry_shell_instance, GeometryShell};
 use super::Chart;
-use crate::geom::{Point2, PointJacobian, Vec2, VecJacobian};
+use crate::geom::{Point2, PointJacobian, ScalarJacobian, Vec2, VecJacobian};
 
 /// Line-segment instance: document shell plus segment chart formulas.
 ///
@@ -144,9 +145,46 @@ impl Segment {
             }
         }
     }
+
+    pub(crate) fn eval_scalar(f: CurveScalarFormula, (a, b): (Point2, Point2)) -> f64 {
+        match f {
+            CurveScalarFormula::Length => (b - a).length(),
+        }
+    }
+
+    pub(crate) fn scalar_param_indices(
+        f: CurveScalarFormula,
+        block: Range<usize>,
+    ) -> Vec<usize> {
+        match f {
+            CurveScalarFormula::Length => block.collect(),
+        }
+    }
+
+    pub(crate) fn eval_scalar_jacobian(
+        f: CurveScalarFormula,
+        (a, b): (Point2, Point2),
+    ) -> ScalarJacobian {
+        match f {
+            CurveScalarFormula::Length => {
+                let mut j = ScalarJacobian::zeros(Self::PARAMETER_COUNT);
+                let d = b - a;
+                let len = d.length();
+                if len > 0.0 {
+                    let ux = d.x / len;
+                    let uy = d.y / len;
+                    j.set_ds(0, -ux);
+                    j.set_ds(1, -uy);
+                    j.set_ds(2, ux);
+                    j.set_ds(3, uy);
+                }
+                j
+            }
+        }
+    }
 }
 
-impl_curve_exprs!(Segment, segment_curve, segment);
+impl_curve_exprs!(Segment, segment_curve, segment, segment_scalar);
 impl_endpoint_exprs!(Segment, segment_endpoint);
 
 #[cfg(test)]

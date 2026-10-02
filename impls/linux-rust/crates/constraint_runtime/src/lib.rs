@@ -20,11 +20,12 @@ pub use connectivity::Connectivity;
 pub use constraint::Constraint;
 pub use document::{Document, DocumentStructure};
 pub use geom::{
-    CurveParam, Point2, PointJacobian, Vec2, VecJacobian, MAX_POINT_JACOBIAN_PARAMS,
+    CurveParam, Point2, PointJacobian, ScalarJacobian, Vec2, VecJacobian,
+    MAX_POINT_JACOBIAN_PARAMS, MAX_SCALAR_JACOBIAN_PARAMS,
 };
 pub use geometries::{
     AsShell, Chart, CurveExprs, EndpointExprs, Geometry, GeometryId, GeometryKind, GeometryRole,
-    GeometryShell, IdGenerator, PointExpr, Segment, VecExpr,
+    GeometryShell, IdGenerator, PointExpr, ScalarExpr, Segment, VecExpr,
 };
 pub use interact::{DragSession, InteractiveSolve, SoftTerms, SolveError};
 pub use mesh::{Mesh, MeshEdge, MeshFilter};

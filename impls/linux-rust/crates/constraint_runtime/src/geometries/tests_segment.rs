@@ -58,6 +58,14 @@ fn editing_state_vector_changes_endpoints() {
 }
 
 #[test]
+fn length_expr_is_endpoint_euclidean_distance() {
+    let store = store_with(segment_geom(0, 0));
+    let p = State::from(vec![0.0, 0.0, 3.0, 4.0]);
+    let len = Segment::length_expr(GeometryId(0)).evaluate(&store, &p);
+    assert!((len - 5.0).abs() < 1e-12);
+}
+
+#[test]
 fn segment_endpoint_override_matches_on_curve_but_sparser_connectivity() {
     let store = store_with(segment_geom(0, 0));
     let p = State::from(vec![1.0, 2.0, 5.0, 6.0]);
