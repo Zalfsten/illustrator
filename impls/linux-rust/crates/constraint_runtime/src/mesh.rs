@@ -3,8 +3,8 @@
 //! Derived view only — not authoritative for parameters or constraints.
 
 use crate::document::DocumentStructure;
-use crate::geometries::{GeometryBody, PointExpr, Segment};
-use crate::geom::{GeometryId, GeometryRole, Point2};
+use crate::geom::Point2;
+use crate::geometries::{GeometryId, GeometryRole, PointExpr, Segment};
 use crate::state::State;
 
 /// Which geometries contribute edges to a Mesh.
@@ -57,17 +57,14 @@ impl Mesh {
             if !filter.include_construction && g.role() == GeometryRole::Construction {
                 continue;
             }
-            match g.body {
-                GeometryBody::Segment => {
-                    let id = g.id();
-                    edges.push(MeshEdge {
-                        geometry: id,
-                        role: g.role(),
-                        a: Segment::start_expr(id).evaluate(structure, p),
-                        b: Segment::end_expr(id).evaluate(structure, p),
-                    });
-                }
-            }
+            let id = g.id();
+            edges.push(MeshEdge {
+                geometry: id,
+                role: g.role(),
+                // Today every kind is a segment; widen when other charts exist.
+                a: Segment::start_expr(id).evaluate(structure, p),
+                b: Segment::end_expr(id).evaluate(structure, p),
+            });
         }
         Self { edges }
     }

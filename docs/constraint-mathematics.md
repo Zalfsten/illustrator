@@ -21,8 +21,9 @@ Behavioral contracts live in OpenSpec capabilities (`geometry-ir`, `state-vector
 | **Point expression** | Opaque handle to a (private catalog of) **point formula**(s): a map from geometry State parameters to a 2D **point**. Not a free-standing point entity and not a coordinate snapshot. Geometry kinds construct formulas (e.g. segment start/end / on-curve); constraints and Interact only evaluate them — they do not match on formula kinds. |
 | **Point formula** | Concrete eval / parameter indices / Jacobian for one point expression. Owned by a geometry kind; linux-rust uses per-formula structs (`StartPoint`, `EndPoint`, `OnCurve`, …) behind a private kind enum and opaque `PointExpr`. |
 | **Point Jacobian** | Analytical $2\times n$ derivative of a point formula ($n$ = formula-local parameter count, sparse vs full geometry block). Rows are $\partial x/\partial p$ and $\partial y/\partial p$. linux-rust: stack `PointJacobian` (fixed max width), then scatter into constraint/global Jacobians. |
-| **GeometryBody** | Kind discriminant / payload sum on a document geometry (linux-rust: lives with `geometries/`, not in shared `geom`). |
-| **GeometryStore** | Read-only port to resolve `GeometryId` → geometry metadata for expression evaluation (linux-rust: `store.rs`; `DocumentStructure` / `Document` implement it). |
+| **GeometryShell** | Shared document identity and State-block offset on each chart instance (linux-rust: `geometries/shell.rs`). Kind instances `Deref` to it; object-safe Geometry defaults use those fields. |
+| **Geometry (trait)** | Object-safe document instance API (`id` / `role` / `param_block` / …). Document stores `Vec<Box<dyn Geometry>>`; concrete kinds get it via blanket from `Chart` + `Deref` to `GeometryShell`. |
+| **GeometryStore** | Read-only port to resolve `GeometryId` → `&dyn Geometry` for expression evaluation (linux-rust: `store.rs`). |
 | **Vector expression** | Opaque handle to a map from geometry parameters to a free **vector** (e.g. segment direction, curve tangent or normal). Same opacity principle as point expressions; kind-owned formulas behind an outer kind sum. |
 | **Normalized curve parameter** | Chart coordinate \(t \in [0,1]\): the curve's native formula domain affinely mapped to the unit interval. Equal \(\Delta t\) need not mean equal arc length. |
 | **Uniform curve parameter** | Arc-length fraction \(u \in [0,1]\): equal \(\Delta u\) means equal arc length along the curve. For a line segment, Normalized and Uniform coincide. |
@@ -45,7 +46,7 @@ Behavioral contracts live in OpenSpec capabilities (`geometry-ir`, `state-vector
 
 **Why:** Call sites should see “a point/vector map”, not `Endpoint | OnCurve | …`. A small fixed catalog stays data-driven (`PartialEq`, `Copy`, easy Debug/serde) without exposing variants. True openness (trait objects / closures) was tried and rejected for this codebase in favor of this facade — see approaches below.
 
-**Consequences (linux-rust):** Per-kind private formula **structs** (e.g. `StartPoint` / `EndPoint` / `OnCurve`) under `geometries/<kind>.rs`, catalogued by a private enum; outer kind sum and opaque `PointExpr` / `VecExpr` / stack `PointJacobian` in `geometries/expr.rs`. `GeometryBody` in `geometries/`. Shared affine/shell types in `geom`; owned `State` in `state.rs`; identity resolution in `store`. Constraints never match on formula kinds.
+**Consequences (linux-rust):** Per-kind private formula **structs** (e.g. `StartPoint` / `EndPoint` / `OnCurve`) under `geometries/<kind>.rs`, catalogued by a private enum; outer kind sum and opaque `PointExpr` / `VecExpr` / stack `PointJacobian` in `geometries/expr.rs`. Kind instances implement `Chart` (`pack`/`unpack`) and `Deref` to `GeometryShell`; a blanket supplies object-safe `Geometry`. Document stores `Vec<Box<dyn Geometry>>`. Shared affine types in `geom`; owned `State` in `state.rs`; identity resolution in `store`. Constraints never match on formula kinds.
 
 ### Approaches considered
 

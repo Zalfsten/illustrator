@@ -1,20 +1,15 @@
-//! Kind-owned chart packing for structural Document adds.
+//! Kind-owned chart: State layout (`pack` / `unpack`).
 
 use std::ops::Range;
 
-use crate::geometries::GeometryBody;
-
-/// Geometry kind as a chart: packs initial State slots for Document registration.
+/// Geometry kind as a chart: packs init into State.
 ///
-/// Kinds own layout (`PARAMETER_COUNT`, `pack` / `unpack`); the Document
-/// composite owns mutation (extend State + register geometry). Evaluate reads
-/// the recorded parameter window from structure.
+/// Document identity and shared shell ops live on [`super::Geometry`] (object-safe).
+/// Concrete kinds also [`Deref`](std::ops::Deref) to [`super::GeometryShell`] so the
+/// blanket `Geometry` impl applies without per-kind boilerplate.
 pub trait Chart {
     /// Kind-specific construction inputs (e.g. segment endpoints).
     type Init;
-
-    /// Discriminant stored on the geometry shell.
-    const BODY: GeometryBody;
 
     /// Number of contiguous State scalars for one instance of this kind.
     const PARAMETER_COUNT: usize;
@@ -22,13 +17,11 @@ pub trait Chart {
     /// Contiguous initial parameters (length = [`Self::PARAMETER_COUNT`]).
     fn pack(init: Self::Init) -> impl AsRef<[f64]>;
 
-    /// Inverse of [`Self::pack`]: restore [`Self::Init`] from a parameter window
-    /// of length [`Self::PARAMETER_COUNT`].
+    /// Inverse of [`Self::pack`].
     fn unpack(params: &[f64]) -> Self::Init;
 
-    /// Global index window for one instance whose block starts at `offset`.
-    /// Prefer [`crate::geom::Geometry::param_block`] when a geometry record exists.
-    fn param_block(offset: usize) -> Range<usize> {
+    /// Global index window for a block that would start at `offset`.
+    fn param_block_at(offset: usize) -> Range<usize> {
         offset..offset + Self::PARAMETER_COUNT
     }
 }

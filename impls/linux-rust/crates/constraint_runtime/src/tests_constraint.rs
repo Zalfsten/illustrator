@@ -1,22 +1,19 @@
 use super::*;
 use crate::document::DocumentStructure;
-use crate::geom::{Geometry, GeometryId, GeometryRole};
-use crate::geometries::{Chart, GeometryBody, Segment};
+use crate::geometries::{Chart, GeometryId, GeometryRole, GeometryShell, Segment};
 use crate::state::State;
 
 fn two_segs() -> (DocumentStructure, State) {
     let mut structure = DocumentStructure::new();
-    structure.push_geometry(Geometry {
-        id: GeometryId(0),
-        role: GeometryRole::Result,
-        param_offset: 0,
-        body: GeometryBody::Segment,
+    structure.push_geometry(Segment {
+        shell: GeometryShell::new(GeometryId(0), GeometryRole::Result, 0),
     });
-    structure.push_geometry(Geometry {
-        id: GeometryId(1),
-        role: GeometryRole::Result,
-        param_offset: Segment::PARAMETER_COUNT,
-        body: GeometryBody::Segment,
+    structure.push_geometry(Segment {
+        shell: GeometryShell::new(
+            GeometryId(1),
+            GeometryRole::Result,
+            Segment::PARAMETER_COUNT,
+        ),
     });
     // s0: (0,0)-(1,0), s1: (0,0)-(0,1) perpendicular sharing origin conceptually
     let p = State::from(vec![0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0]);
@@ -44,8 +41,7 @@ fn jacobian_matches_fd_for_catalog() {
             target: Point2::new(0.0, 0.0),
         },
         Constraint::Congruence {
-            a: Segment::on_curve_expr(GeometryId(0), crate::geom::CurveParam::Uniform(0.5),
-            ),
+            a: Segment::on_curve_expr(GeometryId(0), crate::geom::CurveParam::Uniform(0.5)),
             b: Segment::start_expr(GeometryId(1)),
         },
     ];

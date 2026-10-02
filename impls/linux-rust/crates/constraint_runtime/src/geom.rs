@@ -9,8 +9,7 @@
 //!
 //! Concrete kinds (layout + formulas) live under [`crate::geometries`].
 
-use crate::geometries::GeometryBody;
-use std::ops::{Add, Mul, Neg, Range, Sub};
+use std::ops::{Add, Mul, Neg, Sub};
 
 /// Free vector in the plane (displacement, direction, difference of points).
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -160,59 +159,6 @@ impl CurveParam {
     pub fn chart_t(self) -> f64 {
         match self {
             CurveParam::Normalized(t) | CurveParam::Uniform(t) => t,
-        }
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct GeometryId(pub usize);
-
-/// Presentation role: result figure vs construction helper.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
-pub enum GeometryRole {
-    #[default]
-    Result,
-    Construction,
-}
-
-/// Document geometry: shared identity, role, State block offset, plus kind-specific body.
-#[derive(Clone, Debug, PartialEq)]
-pub struct Geometry {
-    pub id: GeometryId,
-    pub role: GeometryRole,
-    /// Start index of this geometry's contiguous parameter block in State.
-    pub param_offset: usize,
-    pub body: GeometryBody,
-}
-
-impl Geometry {
-    pub fn id(&self) -> GeometryId {
-        self.id
-    }
-
-    pub fn role(&self) -> GeometryRole {
-        self.role
-    }
-
-    pub fn set_role(&mut self, role: GeometryRole) {
-        self.role = role;
-    }
-
-    pub fn parameter_count(&self) -> usize {
-        self.body.parameter_count()
-    }
-
-    /// Contiguous State index window for this geometry's parameters.
-    pub fn param_block(&self) -> Range<usize> {
-        let o = self.param_offset;
-        o..o + self.parameter_count()
-    }
-
-    /// After a contiguous block was removed from State, shift this geometry's
-    /// local→global indices that lay after the hole.
-    pub fn reindex_after_removal(&mut self, removed_start: usize, removed_len: usize) {
-        if self.param_offset > removed_start {
-            self.param_offset -= removed_len;
         }
     }
 }

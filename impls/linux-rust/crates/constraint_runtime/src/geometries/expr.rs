@@ -5,7 +5,8 @@
 //! and Interact never match on formula kinds. Store→chart resolution happens
 //! here; kind formulas stay pure in unpacked chart data.
 
-use crate::geom::{GeometryId, Point2, Vec2};
+use super::shell::GeometryId;
+use crate::geom::{Point2, Vec2};
 use crate::state::State;
 use crate::store::GeometryStore;
 
@@ -105,7 +106,7 @@ impl PointExpr {
     pub fn param_indices(&self, store: &impl GeometryStore) -> Vec<usize> {
         match &self.formula {
             PointFormula::Segment(f) => {
-                let block = store.chart_param_block::<Segment>(self.geometry);
+                let block = store.chart_param_block(self.geometry);
                 f.param_indices(block)
             }
         }
@@ -160,7 +161,7 @@ impl VecExpr {
     pub fn param_indices(&self, store: &impl GeometryStore) -> Vec<usize> {
         match &self.formula {
             VecFormula::Segment(f) => {
-                let block = store.chart_param_block::<Segment>(self.geometry);
+                let block = store.chart_param_block(self.geometry);
                 f.param_indices(block)
             }
         }

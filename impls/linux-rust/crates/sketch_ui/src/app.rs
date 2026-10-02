@@ -60,10 +60,10 @@ impl App {
     pub fn with_sample() -> Self {
         let mut doc = Document::new();
         // World units, y-up: horizontal then vertical leg of a right angle.
-        let s0 = doc.add_segment(GeometryRole::Result, Point2::new(0.0, 0.0), Point2::new(2.0, 0.0));
-        let s1 = doc.add_segment(GeometryRole::Result, Point2::new(2.0, 0.0), Point2::new(2.0, 2.0));
+        let s0 = doc.add_geometry::<Segment>(GeometryRole::Result, (Point2::new(0.0, 0.0), Point2::new(2.0, 0.0)));
+        let s1 = doc.add_geometry::<Segment>(GeometryRole::Result, (Point2::new(2.0, 0.0), Point2::new(2.0, 2.0)));
         // Demo: helper diagonal marked construction (hidden in result-only).
-        let helper = doc.add_segment(GeometryRole::Result, Point2::new(0.0, 0.0), Point2::new(2.0, 2.0));
+        let helper = doc.add_geometry::<Segment>(GeometryRole::Result, (Point2::new(0.0, 0.0), Point2::new(2.0, 2.0)));
         assert!(doc.set_geometry_role(helper, GeometryRole::Construction));
         doc.add_constraint(Constraint::Congruence {
             a: Segment::end_expr(s0),
@@ -172,7 +172,7 @@ impl App {
                 if self.segment_clicks.len() >= 2 {
                     let a = self.segment_clicks[0];
                     let b = self.segment_clicks[1];
-                    self.doc.add_segment(GeometryRole::Result, a, b);
+                    self.doc.add_geometry::<Segment>(GeometryRole::Result, (a, b));
                     self.segment_clicks.clear();
                     self.rebuild_logical_points();
                     self.status = format!(

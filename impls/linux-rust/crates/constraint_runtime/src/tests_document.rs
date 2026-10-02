@@ -1,12 +1,12 @@
 use super::*;
-use crate::geom::{GeometryRole, Point2};
-use crate::geometries::{Chart, Segment};
+use crate::geom::Point2;
+use crate::geometries::{Chart, GeometryRole, Segment};
 
 #[test]
 fn two_segment_join_connectivity_indices() {
     let mut doc = Document::new();
-    let s0 = doc.add_segment(GeometryRole::Result, Point2::new(0.0, 0.0), Point2::new(1.0, 0.0));
-    let s1 = doc.add_segment(GeometryRole::Result, Point2::new(2.0, 0.0), Point2::new(3.0, 1.0));
+    let s0 = doc.add_geometry::<Segment>(GeometryRole::Result, (Point2::new(0.0, 0.0), Point2::new(1.0, 0.0)));
+    let s1 = doc.add_geometry::<Segment>(GeometryRole::Result, (Point2::new(2.0, 0.0), Point2::new(3.0, 1.0)));
     doc.add_constraint(Constraint::Congruence {
         a: Segment::end_expr(s0),
         b: Segment::start_expr(s1),
@@ -19,8 +19,8 @@ fn two_segment_join_connectivity_indices() {
 #[test]
 fn congruence_between_endpoint_point_exprs() {
     let mut doc = Document::new();
-    let s0 = doc.add_segment(GeometryRole::Result, Point2::new(0.0, 0.0), Point2::new(1.0, 0.0));
-    let s1 = doc.add_segment(GeometryRole::Result, Point2::new(2.0, 0.0), Point2::new(3.0, 1.0));
+    let s0 = doc.add_geometry::<Segment>(GeometryRole::Result, (Point2::new(0.0, 0.0), Point2::new(1.0, 0.0)));
+    let s1 = doc.add_geometry::<Segment>(GeometryRole::Result, (Point2::new(2.0, 0.0), Point2::new(3.0, 1.0)));
     doc.add_constraint(Constraint::Congruence {
         a: Segment::end_expr(s0),
         b: Segment::start_expr(s1),
@@ -38,7 +38,7 @@ fn congruence_between_endpoint_point_exprs() {
 fn add_geometry_grows_state_and_param_block() {
     let mut doc = Document::new();
     assert_eq!(doc.state().len(), 0);
-    let s0 = doc.add_segment(GeometryRole::Result, Point2::new(0.0, 0.0), Point2::new(1.0, 0.0));
+    let s0 = doc.add_geometry::<Segment>(GeometryRole::Result, (Point2::new(0.0, 0.0), Point2::new(1.0, 0.0)));
     assert_eq!(doc.state().len(), Segment::PARAMETER_COUNT);
     assert_eq!(doc.structure.parameter_count(), Segment::PARAMETER_COUNT);
     let s = doc.geometry(s0).unwrap();
@@ -47,7 +47,7 @@ fn add_geometry_grows_state_and_param_block() {
         doc.structure.geometry(s0).unwrap().role(),
         GeometryRole::Result
     );
-    let s1 = doc.add_segment(GeometryRole::Result, Point2::new(2.0, 0.0), Point2::new(3.0, 1.0));
+    let s1 = doc.add_geometry::<Segment>(GeometryRole::Result, (Point2::new(2.0, 0.0), Point2::new(3.0, 1.0)));
     assert_eq!(doc.state().len(), 2 * Segment::PARAMETER_COUNT);
     assert_eq!(doc.geometry(s1).unwrap().param_block(), 4..8);
 }
@@ -55,7 +55,7 @@ fn add_geometry_grows_state_and_param_block() {
 #[test]
 fn set_geometry_role_round_trips() {
     let mut doc = Document::new();
-    let id = doc.add_segment(GeometryRole::Result, Point2::new(0.0, 0.0), Point2::new(1.0, 0.0));
+    let id = doc.add_geometry::<Segment>(GeometryRole::Result, (Point2::new(0.0, 0.0), Point2::new(1.0, 0.0)));
     assert_eq!(
         doc.structure.geometry(id).unwrap().role(),
         GeometryRole::Result
@@ -79,9 +79,9 @@ fn set_geometry_role_round_trips() {
 #[test]
 fn remove_geometry_compacts_state_and_drops_orphans() {
     let mut doc = Document::new();
-    let s0 = doc.add_segment(GeometryRole::Result, Point2::new(0.0, 0.0), Point2::new(1.0, 0.0));
-    let s1 = doc.add_segment(GeometryRole::Result, Point2::new(1.0, 0.0), Point2::new(1.0, 1.0));
-    let s2 = doc.add_segment(GeometryRole::Result, Point2::new(5.0, 5.0), Point2::new(6.0, 5.0));
+    let s0 = doc.add_geometry::<Segment>(GeometryRole::Result, (Point2::new(0.0, 0.0), Point2::new(1.0, 0.0)));
+    let s1 = doc.add_geometry::<Segment>(GeometryRole::Result, (Point2::new(1.0, 0.0), Point2::new(1.0, 1.0)));
+    let s2 = doc.add_geometry::<Segment>(GeometryRole::Result, (Point2::new(5.0, 5.0), Point2::new(6.0, 5.0)));
     doc.add_constraint(Constraint::Congruence {
         a: Segment::end_expr(s0),
         b: Segment::start_expr(s1),
@@ -103,8 +103,11 @@ fn remove_geometry_compacts_state_and_drops_orphans() {
     assert_eq!(doc.geometries().len(), 2);
     assert_eq!(doc.state().len(), 2 * Segment::PARAMETER_COUNT);
     // s0 still at 0..4; s2 remapped from 8..12 to 4..8
-    assert_eq!(doc.geometry(s0).unwrap().param_offset, 0);
-    assert_eq!(doc.geometry(s2).unwrap().param_offset, Segment::PARAMETER_COUNT);
+    assert_eq!(doc.geometry(s0).unwrap().param_block().start, 0);
+    assert_eq!(
+        doc.geometry(s2).unwrap().param_block().start,
+        Segment::PARAMETER_COUNT
+    );
     assert_eq!(doc.state()[4], 5.0);
     // congruence + orthogonal + OnCurve FixPoint referenced s1 → dropped; FixPoint on s2 kept
     assert_eq!(doc.constraints().len(), 1);

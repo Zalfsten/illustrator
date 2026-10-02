@@ -3,19 +3,29 @@
 use std::collections::HashMap;
 
 use crate::constraint::Constraint;
-use crate::geom::{Geometry, GeometryId, GeometryRole, Point2};
-use crate::geometries::{Chart, GeometryBody, Segment};
+use crate::geometries::{Chart, Geometry, GeometryId, GeometryRole, GeometryShell};
 use crate::state::State;
 use crate::store::GeometryStore;
 
 /// Discrete sketch: geometries, structural constraints, connectivity schema.
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Debug, Default)]
 pub struct DocumentStructure {
-    geometries: Vec<Geometry>,
+    geometries: Vec<Box<dyn Geometry>>,
     /// `GeometryId` → index into `geometries` (O(1) lookup during evaluate/solve).
     geometry_index: HashMap<GeometryId, usize>,
     constraints: Vec<Constraint>,
     next_id: usize,
+}
+
+impl Clone for DocumentStructure {
+    fn clone(&self) -> Self {
+        Self {
+            geometries: self.geometries.iter().map(|g| g.clone_box()).collect(),
+            geometry_index: self.geometry_index.clone(),
+            constraints: self.constraints.clone(),
+            next_id: self.next_id,
+        }
+    }
 }
 
 impl DocumentStructure {
@@ -23,7 +33,7 @@ impl DocumentStructure {
         Self::default()
     }
 
-    pub fn geometries(&self) -> &[Geometry] {
+    pub fn geometries(&self) -> &[Box<dyn Geometry>] {
         &self.geometries
     }
 
@@ -32,7 +42,7 @@ impl DocumentStructure {
     }
 
     pub fn parameter_count(&self) -> usize {
-        self.geometries.iter().map(Geometry::parameter_count).sum()
+        self.geometries.iter().map(|g| g.parameter_count()).sum()
     }
 
     pub fn add_constraint(&mut self, c: Constraint) {
@@ -40,8 +50,8 @@ impl DocumentStructure {
     }
 
     /// Register a geometry whose parameters already live in an external State.
-    /// Prefer [`Document::add_chart`] so Structure and State stay matched.
-    pub(crate) fn push_geometry(&mut self, g: Geometry) {
+    /// Prefer [`Document::add_geometry`] so Structure and State stay matched.
+    pub(crate) fn push_geometry(&mut self, g: impl Geometry + 'static) {
         let id = g.id();
         debug_assert!(
             !self.geometry_index.contains_key(&id),
@@ -51,7 +61,7 @@ impl DocumentStructure {
         if id.0 >= self.next_id {
             self.next_id = id.0 + 1;
         }
-        self.geometries.push(g);
+        self.geometries.push(Box::new(g));
     }
 
     fn constraint_references_geometry(c: &Constraint, id: GeometryId) -> bool {
@@ -68,14 +78,14 @@ impl DocumentStructure {
 }
 
 impl GeometryStore for DocumentStructure {
-    fn geometry(&self, id: GeometryId) -> Option<&Geometry> {
+    fn geometry(&self, id: GeometryId) -> Option<&dyn Geometry> {
         let &slot = self.geometry_index.get(&id)?;
-        self.geometries.get(slot)
+        self.geometries.get(slot).map(|g| g.as_ref())
     }
 }
 
 /// Document = DocumentStructure + committed State.
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default)]
 pub struct Document {
     pub structure: DocumentStructure,
     pub state: State,
@@ -106,11 +116,11 @@ impl Document {
         &self.state
     }
 
-    pub fn geometries(&self) -> &[Geometry] {
+    pub fn geometries(&self) -> &[Box<dyn Geometry>] {
         self.structure.geometries()
     }
 
-    pub fn geometry(&self, id: GeometryId) -> Option<&Geometry> {
+    pub fn geometry(&self, id: GeometryId) -> Option<&dyn Geometry> {
         self.structure.geometry(id)
     }
 
@@ -118,44 +128,19 @@ impl Document {
         self.structure.constraints()
     }
 
-    /// Append a chart geometry: pack init → extend State → register structure.
-    pub fn add_chart<C: Chart>(&mut self, role: GeometryRole, init: C::Init) -> GeometryId {
+    /// Pack chart init → extend State → register a geometry instance.
+    pub fn add_geometry<C>(&mut self, role: GeometryRole, init: C::Init) -> GeometryId
+    where
+        C: Chart + From<GeometryShell> + Geometry + 'static,
+    {
         let packed = C::pack(init);
-        debug_assert_eq!(
-            packed.as_ref().len(),
-            C::PARAMETER_COUNT,
-            "Chart::pack length must equal PARAMETER_COUNT"
-        );
-        self.append_geometry(role, C::BODY, packed.as_ref())
-    }
-
-    /// Convenience: add a line segment from endpoints `(a, b)`.
-    pub fn add_segment(&mut self, role: GeometryRole, a: Point2, b: Point2) -> GeometryId {
-        self.add_chart::<Segment>(role, (a, b))
-    }
-
-    /// Low-level append used by [`Self::add_chart`]. Prefer `add_chart` / `add_segment`.
-    pub(crate) fn append_geometry(
-        &mut self,
-        role: GeometryRole,
-        body: GeometryBody,
-        params: &[f64],
-    ) -> GeometryId {
-        assert_eq!(
-            params.len(),
-            body.parameter_count(),
-            "params length must match geometry parameter count"
-        );
+        debug_assert_eq!(packed.as_ref().len(), C::PARAMETER_COUNT);
         let id = GeometryId(self.structure.next_id);
         self.structure.next_id += 1;
         let param_offset = self.state.len();
-        self.state.extend_from_slice(params);
-        self.structure.push_geometry(Geometry {
-            id,
-            role,
-            param_offset,
-            body,
-        });
+        self.state.extend_from_slice(packed.as_ref());
+        self.structure
+            .push_geometry(C::from(GeometryShell::new(id, role, param_offset)));
         debug_assert_eq!(self.state.len(), self.structure.parameter_count());
         id
     }
@@ -218,7 +203,7 @@ impl Document {
 }
 
 impl GeometryStore for Document {
-    fn geometry(&self, id: GeometryId) -> Option<&Geometry> {
+    fn geometry(&self, id: GeometryId) -> Option<&dyn Geometry> {
         self.structure.geometry(id)
     }
 }

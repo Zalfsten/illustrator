@@ -1,19 +1,43 @@
 //! Line segment: State layout, chart sampling, and point/vector formulas.
 
-use std::ops::Range;
+use std::ops::{Deref, DerefMut, Range};
 
-use super::{Chart, GeometryBody, PointExpr, PointJacobian, VecExpr, VecJacobian};
-use crate::geom::{CurveParam, GeometryId, Point2, Vec2};
+use super::{Chart, PointExpr, PointJacobian, VecExpr, VecJacobian};
+use super::shell::{GeometryId, GeometryShell};
+use crate::geom::{CurveParam, Point2, Vec2};
 
-/// Line-segment chart. Parameters live at
-/// `p[offset..offset+PARAMETER_COUNT]` on the enclosing [`Geometry`].
+/// Line-segment instance: document shell plus segment chart formulas.
+///
+/// Parameters live at `p[shell.param_offset..shell.param_offset+PARAMETER_COUNT]`.
+/// Shell fields are reached via [`Deref`] to [`GeometryShell`]; Document ops via
+/// the blanket [`super::Geometry`] impl.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct Segment;
+pub struct Segment {
+    pub shell: GeometryShell,
+}
+
+impl Deref for Segment {
+    type Target = GeometryShell;
+
+    fn deref(&self) -> &GeometryShell {
+        &self.shell
+    }
+}
+
+impl DerefMut for Segment {
+    fn deref_mut(&mut self) -> &mut GeometryShell {
+        &mut self.shell
+    }
+}
+
+impl From<GeometryShell> for Segment {
+    fn from(shell: GeometryShell) -> Self {
+        Self { shell }
+    }
+}
 
 impl Chart for Segment {
     type Init = (Point2, Point2);
-
-    const BODY: GeometryBody = GeometryBody::Segment;
 
     /// Four endpoint scalars: `x1,y1,x2,y2`.
     const PARAMETER_COUNT: usize = 4;

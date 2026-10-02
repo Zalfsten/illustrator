@@ -1,5 +1,4 @@
 use super::*;
-use crate::geometries::GeometryBody;
 
 #[test]
 fn point_minus_point_is_vec() {
@@ -10,18 +9,4 @@ fn point_minus_point_is_vec() {
     assert_eq!(a + v, b);
     assert_eq!(v.cross(Vec2::new(0.0, 1.0)), 3.0);
     assert_eq!(v.dot(Vec2::new(0.0, 1.0)), 4.0);
-}
-
-#[test]
-fn reindex_after_removal_shifts_later_blocks() {
-    let mut g = Geometry {
-        id: GeometryId(1),
-        role: GeometryRole::Result,
-        param_offset: 4,
-        body: GeometryBody::Segment,
-    };
-    g.reindex_after_removal(0, 4);
-    assert_eq!(g.param_offset, 0);
-    g.reindex_after_removal(0, 4);
-    assert_eq!(g.param_offset, 0);
 }

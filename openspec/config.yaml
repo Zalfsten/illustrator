@@ -74,13 +74,14 @@ context: |
 
   Rust module and unit-test layout (impls/linux-rust):
   constraint_runtime splits geometry concerns as follows:
-  - geom: shared types (Point2/Vec2, Geometry shell + param_block, CurveParam, ids/roles)
-  - geometries/: kind catalog (GeometryBody), Chart trait (pack/unpack), opaque
-    PointExpr/VecExpr and stack Jacobians (geometries/expr.rs), one file per kind
-    (e.g. segment.rs: PARAMETER_COUNT, pack/unpack, per-formula structs, factories)
+  - geom: shared affine types (Point2/Vec2, CurveParam)
+  - geometries/: GeometryShell + ids/roles; object-safe Geometry trait;
+    Chart (pack/unpack) + Deref to GeometryShell (blanket Geometry);
+    opaque PointExpr/VecExpr (geometries/expr.rs); one file per kind.
+    Document stores Vec<Box<dyn Geometry>>.
   - state: owned global parameter vector State (committed + working copies)
-  - store: GeometryStore port (expect_chart / unpack helpers)
-  - document: DocumentStructure + committed State + id→slot index; add_chart/add_segment
+  - store: GeometryStore port (expect_geometry / unpack helpers)
+  - document: DocumentStructure + committed State + id→slot index; add_geometry
   Prefer sibling files once a module has unit tests: src/<module>.rs for
   production code and src/tests_<module>.rs for that module's unit tests,
   declared with `#[cfg(test)] #[path = "tests_<module>.rs"] mod tests_<module>;`

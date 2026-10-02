@@ -1,13 +1,14 @@
 use super::*;
 use crate::constraint::Constraint;
-use crate::geom::{GeometryId, GeometryRole, Point2};
+use crate::geom::Point2;
+use crate::geometries::{GeometryId, GeometryRole};
 use crate::geometries::Segment;
 
 #[test]
 fn residual_arity_stacks() {
     let mut doc = Document::new();
-    let s0 = doc.add_segment(GeometryRole::Result, Point2::new(0.0, 0.0), Point2::new(1.0, 0.0));
-    let s1 = doc.add_segment(GeometryRole::Result, Point2::new(1.0, 0.0), Point2::new(1.0, 1.0));
+    let s0 = doc.add_geometry::<Segment>(GeometryRole::Result, (Point2::new(0.0, 0.0), Point2::new(1.0, 0.0)));
+    let s1 = doc.add_geometry::<Segment>(GeometryRole::Result, (Point2::new(1.0, 0.0), Point2::new(1.0, 1.0)));
     doc.add_constraint(Constraint::Congruence {
         a: Segment::end_expr(s0),
         b: Segment::start_expr(s1),
@@ -32,8 +33,8 @@ fn residual_arity_stacks() {
 #[test]
 fn assembled_jacobian_matches_global_fd() {
     let mut doc = Document::new();
-    let s0 = doc.add_segment(GeometryRole::Result, Point2::new(0.0, 0.0), Point2::new(1.0, 0.0));
-    let _s1 = doc.add_segment(GeometryRole::Result, Point2::new(1.0, 0.5), Point2::new(2.0, 0.5));
+    let s0 = doc.add_geometry::<Segment>(GeometryRole::Result, (Point2::new(0.0, 0.0), Point2::new(1.0, 0.0)));
+    let _s1 = doc.add_geometry::<Segment>(GeometryRole::Result, (Point2::new(1.0, 0.5), Point2::new(2.0, 0.5)));
     doc.add_constraint(Constraint::Congruence {
         a: Segment::end_expr(s0),
         b: Segment::start_expr(GeometryId(1)),

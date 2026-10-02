@@ -2,14 +2,15 @@ use super::*;
 use crate::assemble::AssembledSystem;
 use crate::constraint::Constraint;
 use crate::document::Document;
-use crate::geom::{GeometryRole, Point2};
+use crate::geom::Point2;
+use crate::geometries::GeometryRole;
 use crate::geometries::Segment;
 use crate::SOLVE_TOL;
 
 #[test]
 fn ceres_solves_fixpoint() {
     let mut doc = Document::new();
-    let s0 = doc.add_segment(GeometryRole::Result, Point2::new(3.0, 4.0), Point2::new(5.0, 6.0));
+    let s0 = doc.add_geometry::<Segment>(GeometryRole::Result, (Point2::new(3.0, 4.0), Point2::new(5.0, 6.0)));
     doc.add_constraint(Constraint::FixPoint {
         point: Segment::start_expr(s0),
         target: Point2::new(0.0, 0.0),

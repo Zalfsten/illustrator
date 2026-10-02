@@ -2,8 +2,7 @@
 
 use std::ops::Range;
 
-use crate::geom::{Geometry, GeometryId};
-use crate::geometries::Chart;
+use crate::geometries::{Chart, Geometry, GeometryId};
 use crate::state::State;
 
 /// O(1) geometry resolution during evaluate/solve.
@@ -11,33 +10,26 @@ use crate::state::State;
 /// Implemented by [`crate::document::DocumentStructure`] (id→slot index) and
 /// [`crate::document::Document`] (delegates to structure).
 pub trait GeometryStore {
-    fn geometry(&self, id: GeometryId) -> Option<&Geometry>;
+    fn geometry(&self, id: GeometryId) -> Option<&dyn Geometry>;
 
-    fn expect_geometry(&self, id: GeometryId) -> &Geometry {
+    fn expect_geometry(&self, id: GeometryId) -> &dyn Geometry {
         self.geometry(id)
             .unwrap_or_else(|| panic!("geometry id {id:?} not in document"))
     }
 
-    /// Resolve `id` and assert the stored body matches [`Chart::BODY`].
-    fn expect_chart<C: Chart>(&self, id: GeometryId) -> &Geometry {
-        let g = self.expect_geometry(id);
-        assert_eq!(
-            g.body,
-            C::BODY,
-            "geometry {id:?} is {:?}, expected {:?}",
-            g.body,
-            C::BODY
-        );
-        g
+    /// State index window for the geometry identified by `id`.
+    fn chart_param_block(&self, id: GeometryId) -> Range<usize> {
+        self.expect_geometry(id).param_block()
     }
 
-    /// State index window for the chart instance identified by `id`.
-    fn chart_param_block<C: Chart>(&self, id: GeometryId) -> Range<usize> {
-        self.expect_chart::<C>(id).param_block()
-    }
-
-    /// Unpack [`Chart::Init`] from the State window of chart instance `id`.
+    /// Unpack [`Chart::Init`] from the State window of geometry `id`.
     fn unpack_chart<C: Chart>(&self, id: GeometryId, p: &State) -> C::Init {
-        C::unpack(&p.as_slice()[self.chart_param_block::<C>(id)])
+        let block = self.chart_param_block(id);
+        debug_assert_eq!(
+            block.len(),
+            C::PARAMETER_COUNT,
+            "geometry {id:?} block width does not match chart"
+        );
+        C::unpack(&p.as_slice()[block])
     }
 }
