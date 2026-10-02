@@ -3,15 +3,18 @@ use crate::assemble::AssembledSystem;
 use crate::constraint::Constraint;
 use crate::document::Document;
 use crate::geom::Point2;
-use crate::geometries::GeometryRole;
-use crate::geometries::{EndpointExprs, Segment};
+use crate::geometry::{EndpointExprs, GeometryRole};
+use crate::geometry_kinds::Segment;
 use crate::state::State;
 use std::os::raw::c_void;
 
 #[test]
 fn c_calling_pattern_fills_residual() {
     let mut doc = Document::new();
-    let s0 = doc.add_geometry::<Segment>(GeometryRole::Result, (Point2::new(0.0, 0.0), Point2::new(1.0, 0.0)));
+    let s0 = doc.add_geometry::<Segment>(
+        GeometryRole::Result,
+        (Point2::new(0.0, 0.0), Point2::new(1.0, 0.0)),
+    );
     doc.add_constraint(Constraint::FixPoint {
         point: Segment::start_expr(s0),
         target: Point2::new(0.0, 0.0),

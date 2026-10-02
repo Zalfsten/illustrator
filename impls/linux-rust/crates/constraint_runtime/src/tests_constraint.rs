@@ -1,7 +1,8 @@
 use super::*;
 use crate::document::DocumentStructure;
 use crate::geom::CurveParam;
-use crate::geometries::{Chart, GeometryId, GeometryRole, GeometryShell, Segment, CurveExprs, EndpointExprs};
+use crate::geometry_kinds::Segment;
+use crate::geometry::{Chart, CurveExprs, EndpointExprs, GeometryId, GeometryRole, GeometryShell};
 use crate::state::State;
 
 fn two_segs() -> (DocumentStructure, State) {

@@ -1,8 +1,8 @@
 use super::*;
 use crate::document::Document;
 use crate::geom::Point2;
-use crate::geometries::GeometryRole;
-use crate::geometries::{EndpointExprs, Segment};
+use crate::geometry_kinds::Segment;
+use crate::geometry::{EndpointExprs, GeometryRole};
 
 #[test]
 fn one_segment_becomes_one_edge() {

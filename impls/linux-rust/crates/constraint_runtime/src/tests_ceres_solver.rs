@@ -3,8 +3,8 @@ use crate::assemble::AssembledSystem;
 use crate::constraint::Constraint;
 use crate::document::Document;
 use crate::geom::Point2;
-use crate::geometries::GeometryRole;
-use crate::geometries::{EndpointExprs, Segment};
+use crate::geometry_kinds::Segment;
+use crate::geometry::{EndpointExprs, GeometryRole};
 use crate::SOLVE_TOL;
 
 #[test]

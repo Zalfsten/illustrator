@@ -78,18 +78,18 @@ pub trait AsShell {
 /// ```
 macro_rules! geometry_shell_instance {
     ($ty:ty) => {
-        impl $crate::geometries::AsShell for $ty {
-            fn shell(&self) -> &$crate::geometries::GeometryShell {
+        impl $crate::geometry::AsShell for $ty {
+            fn shell(&self) -> &$crate::geometry::GeometryShell {
                 &self.shell
             }
 
-            fn shell_mut(&mut self) -> &mut $crate::geometries::GeometryShell {
+            fn shell_mut(&mut self) -> &mut $crate::geometry::GeometryShell {
                 &mut self.shell
             }
         }
 
-        impl From<$crate::geometries::GeometryShell> for $ty {
-            fn from(shell: $crate::geometries::GeometryShell) -> Self {
+        impl From<$crate::geometry::GeometryShell> for $ty {
+            fn from(shell: $crate::geometry::GeometryShell) -> Self {
                 Self { shell }
             }
         }

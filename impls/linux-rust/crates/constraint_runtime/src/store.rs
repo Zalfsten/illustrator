@@ -6,7 +6,7 @@
 
 use std::ops::Range;
 
-use crate::geometries::{Chart, Geometry, GeometryId};
+use crate::geometry::{Chart, Geometry, GeometryId};
 use crate::state::State;
 
 /// O(1) geometry resolution during evaluate/solve.

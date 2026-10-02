@@ -24,7 +24,8 @@ pub trait CurveExprs {
 /// Geometric join endpoints (not required for intrinsically periodic closed curves).
 ///
 /// Defaults use [`CurveExprs::on_curve_expr`] at normalized endpoints. Override when
-/// the kind has a cheaper formula (connectivity / Jacobian), as [`super::Segment`] does.
+/// the kind has a cheaper formula (connectivity / Jacobian), as
+/// [`crate::geometry_kinds::Segment`] does.
 pub trait EndpointExprs: CurveExprs {
     fn start_expr(id: GeometryId) -> PointExpr {
         Self::on_curve_expr(id, CurveParam::Normalized(0.0))
@@ -63,46 +64,54 @@ pub(crate) enum CurveScalarFormula {
 
 /// Implement [`CurveExprs`] for `$ty`.
 ///
-/// `$curve_wrap` / `$vec_wrap` / `$scalar_wrap` are kind constructors on
-/// [`PointExpr`] / [`VecExpr`] / [`ScalarExpr`] (e.g. `segment_curve`, `segment`,
-/// `segment_scalar`).
+/// `$point_key` / `$vec_key` / `$scalar_key` are variants of
+/// [`super::expr::PointFormulaKeyed`] / [`super::expr::VecFormulaKeyed`] /
+/// [`super::expr::ScalarFormulaKeyed`] (e.g. `SegmentCurve`, `Segment`, `Segment`).
 macro_rules! impl_curve_exprs {
-    ($ty:ty, $curve_wrap:ident, $vec_wrap:ident, $scalar_wrap:ident) => {
-        impl $crate::geometries::CurveExprs for $ty {
+    ($ty:ty, $point_key:ident, $vec_key:ident, $scalar_key:ident) => {
+        impl $crate::geometry::CurveExprs for $ty {
             fn on_curve_expr(
-                id: $crate::geometries::GeometryId,
+                id: $crate::geometry::GeometryId,
                 param: $crate::geom::CurveParam,
-            ) -> $crate::geometries::PointExpr {
-                $crate::geometries::PointExpr::$curve_wrap(
+            ) -> $crate::geometry::PointExpr {
+                $crate::geometry::PointExpr::new(
                     id,
-                    $crate::geometries::capabilities::CurvePointFormula::OnCurve { param },
+                    $crate::geometry::expr::PointFormulaKeyed::$point_key(
+                        $crate::geometry::capabilities::CurvePointFormula::OnCurve { param },
+                    ),
                 )
             }
 
             fn tangent_expr(
-                id: $crate::geometries::GeometryId,
+                id: $crate::geometry::GeometryId,
                 param: $crate::geom::CurveParam,
-            ) -> $crate::geometries::VecExpr {
-                $crate::geometries::VecExpr::$vec_wrap(
+            ) -> $crate::geometry::VecExpr {
+                $crate::geometry::VecExpr::new(
                     id,
-                    $crate::geometries::capabilities::VecFormula::TangentAt { param },
+                    $crate::geometry::expr::VecFormulaKeyed::$vec_key(
+                        $crate::geometry::capabilities::VecFormula::TangentAt { param },
+                    ),
                 )
             }
 
             fn normal_expr(
-                id: $crate::geometries::GeometryId,
+                id: $crate::geometry::GeometryId,
                 param: $crate::geom::CurveParam,
-            ) -> $crate::geometries::VecExpr {
-                $crate::geometries::VecExpr::$vec_wrap(
+            ) -> $crate::geometry::VecExpr {
+                $crate::geometry::VecExpr::new(
                     id,
-                    $crate::geometries::capabilities::VecFormula::NormalAt { param },
+                    $crate::geometry::expr::VecFormulaKeyed::$vec_key(
+                        $crate::geometry::capabilities::VecFormula::NormalAt { param },
+                    ),
                 )
             }
 
-            fn length_expr(id: $crate::geometries::GeometryId) -> $crate::geometries::ScalarExpr {
-                $crate::geometries::ScalarExpr::$scalar_wrap(
+            fn length_expr(id: $crate::geometry::GeometryId) -> $crate::geometry::ScalarExpr {
+                $crate::geometry::ScalarExpr::new(
                     id,
-                    $crate::geometries::capabilities::CurveScalarFormula::Length,
+                    $crate::geometry::expr::ScalarFormulaKeyed::$scalar_key(
+                        $crate::geometry::capabilities::CurveScalarFormula::Length,
+                    ),
                 )
             }
         }
@@ -113,25 +122,29 @@ pub(crate) use impl_curve_exprs;
 /// Implement [`EndpointExprs`] for `$ty`.
 ///
 /// - `impl_endpoint_exprs!(Type)` — default start/end via on-curve \(t = 0/1\).
-/// - `impl_endpoint_exprs!(Type, endpoint_wrap)` — override with kind endpoint formulas
-///   (e.g. `segment_endpoint` + [`EndpointPointFormula`]).
+/// - `impl_endpoint_exprs!(Type, $point_key)` — override with kind endpoint formulas
+///   (`$point_key` is a [`super::expr::PointFormulaKeyed`] variant, e.g. `SegmentEndpoint`).
 macro_rules! impl_endpoint_exprs {
     ($ty:ty) => {
-        impl $crate::geometries::EndpointExprs for $ty {}
+        impl $crate::geometry::EndpointExprs for $ty {}
     };
-    ($ty:ty, $endpoint_wrap:ident) => {
-        impl $crate::geometries::EndpointExprs for $ty {
-            fn start_expr(id: $crate::geometries::GeometryId) -> $crate::geometries::PointExpr {
-                $crate::geometries::PointExpr::$endpoint_wrap(
+    ($ty:ty, $point_key:ident) => {
+        impl $crate::geometry::EndpointExprs for $ty {
+            fn start_expr(id: $crate::geometry::GeometryId) -> $crate::geometry::PointExpr {
+                $crate::geometry::PointExpr::new(
                     id,
-                    $crate::geometries::capabilities::EndpointPointFormula::StartPoint,
+                    $crate::geometry::expr::PointFormulaKeyed::$point_key(
+                        $crate::geometry::capabilities::EndpointPointFormula::StartPoint,
+                    ),
                 )
             }
 
-            fn end_expr(id: $crate::geometries::GeometryId) -> $crate::geometries::PointExpr {
-                $crate::geometries::PointExpr::$endpoint_wrap(
+            fn end_expr(id: $crate::geometry::GeometryId) -> $crate::geometry::PointExpr {
+                $crate::geometry::PointExpr::new(
                     id,
-                    $crate::geometries::capabilities::EndpointPointFormula::EndPoint,
+                    $crate::geometry::expr::PointFormulaKeyed::$point_key(
+                        $crate::geometry::capabilities::EndpointPointFormula::EndPoint,
+                    ),
                 )
             }
         }

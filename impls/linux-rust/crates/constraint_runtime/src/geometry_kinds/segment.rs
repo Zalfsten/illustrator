@@ -2,21 +2,22 @@
 
 use std::ops::Range;
 
-use super::capabilities::{
+use crate::geom::{Point2, PointJacobian, ScalarJacobian, Vec2, VecJacobian};
+use crate::geometry::capabilities::{
     impl_curve_exprs, impl_endpoint_exprs, CurvePointFormula, CurveScalarFormula,
     EndpointPointFormula, VecFormula,
 };
-use super::shell::{geometry_shell_instance, GeometryShell};
-use super::Chart;
-use crate::geom::{Point2, PointJacobian, ScalarJacobian, Vec2, VecJacobian};
+use crate::geometry::shell::{geometry_shell_instance, GeometryShell};
+use crate::geometry::Chart;
 
 /// Line-segment instance: document shell plus segment chart formulas.
 ///
 /// Parameters live at `p[shell.param_offset..shell.param_offset+PARAMETER_COUNT]`.
-/// Shell fields via [`super::AsShell`] (from [`geometry_shell_instance!`]); together
-/// with [`Chart`] that yields [`super::GeometryKind`] / [`super::Geometry`].
-/// Expression factories via [`impl_curve_exprs!`] / [`impl_endpoint_exprs!`]
-/// (endpoint override: sparse start/end formulas, not default on-curve \(t = 0/1\)).
+/// Shell fields via [`crate::geometry::AsShell`] (from [`geometry_shell_instance!`]);
+/// together with [`Chart`] that yields [`crate::geometry::GeometryKind`] /
+/// [`crate::geometry::Geometry`]. Expression factories via [`impl_curve_exprs!`] /
+/// [`impl_endpoint_exprs!`] (endpoint override: sparse start/end formulas, not
+/// default on-curve \(t = 0/1\)).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct Segment {
     pub shell: GeometryShell,
@@ -76,10 +77,7 @@ impl Segment {
         }
     }
 
-    pub(crate) fn eval_endpoint_point(
-        f: EndpointPointFormula,
-        (a, b): (Point2, Point2),
-    ) -> Point2 {
+    pub(crate) fn eval_endpoint_point(f: EndpointPointFormula, (a, b): (Point2, Point2)) -> Point2 {
         match f {
             EndpointPointFormula::StartPoint => a,
             EndpointPointFormula::EndPoint => b,
@@ -152,10 +150,7 @@ impl Segment {
         }
     }
 
-    pub(crate) fn scalar_param_indices(
-        f: CurveScalarFormula,
-        block: Range<usize>,
-    ) -> Vec<usize> {
+    pub(crate) fn scalar_param_indices(f: CurveScalarFormula, block: Range<usize>) -> Vec<usize> {
         match f {
             CurveScalarFormula::Length => block.collect(),
         }
@@ -184,8 +179,8 @@ impl Segment {
     }
 }
 
-impl_curve_exprs!(Segment, segment_curve, segment, segment_scalar);
-impl_endpoint_exprs!(Segment, segment_endpoint);
+impl_curve_exprs!(Segment, SegmentCurve, Segment, Segment);
+impl_endpoint_exprs!(Segment, SegmentEndpoint);
 
 #[cfg(test)]
 #[path = "tests_segment.rs"]

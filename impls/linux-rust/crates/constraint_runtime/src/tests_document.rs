@@ -1,6 +1,7 @@
 use super::*;
 use crate::geom::{CurveParam, Point2};
-use crate::geometries::{Chart, GeometryRole, Segment, CurveExprs, EndpointExprs};
+use crate::geometry_kinds::Segment;
+use crate::geometry::{Chart, CurveExprs, EndpointExprs, GeometryRole};
 
 #[test]
 fn two_segment_join_connectivity_indices() {
@@ -120,7 +121,7 @@ fn remove_geometry_compacts_state_and_drops_orphans() {
 
 #[test]
 fn id_generator_allocate_and_observe() {
-    use crate::geometries::{GeometryId, IdGenerator};
+    use crate::geometry::{GeometryId, IdGenerator};
 
     let mut ids = IdGenerator::new();
     assert_eq!(ids.allocate(), GeometryId(0));
@@ -140,8 +141,8 @@ fn add_geometry_assigns_sequential_ids_without_chart_id() {
         GeometryRole::Result,
         (Point2::new(1.0, 0.0), Point2::new(1.0, 1.0)),
     );
-    assert_eq!(s0, crate::geometries::GeometryId(0));
-    assert_eq!(s1, crate::geometries::GeometryId(1));
+    assert_eq!(s0, crate::geometry::GeometryId(0));
+    assert_eq!(s1, crate::geometry::GeometryId(1));
     assert_eq!(doc.geometry(s0).unwrap().id(), s0);
     assert_eq!(doc.geometry(s1).unwrap().id(), s1);
 }

@@ -1,7 +1,7 @@
 use super::*;
 use crate::document::DocumentStructure;
 use crate::geom::{CurveParam, Point2, Vec2};
-use crate::geometries::{
+use crate::geometry::{
     CurveExprs, EndpointExprs, Geometry, GeometryId, GeometryRole, GeometryShell,
 };
 use crate::state::State;

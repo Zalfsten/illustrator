@@ -10,11 +10,11 @@
 //! evaluate helpers.
 
 use super::capabilities::{
-    CurvePointFormula, CurveScalarFormula, EndpointPointFormula, VecFormula as CapVecFormula,
+    CurvePointFormula, CurveScalarFormula, EndpointPointFormula, VecFormula,
 };
-use super::segment::Segment;
 use super::shell::GeometryId;
 use crate::geom::{Point2, PointJacobian, ScalarJacobian, Vec2, VecJacobian};
+use crate::geometry_kinds::Segment;
 use crate::state::State;
 use crate::store::GeometryStore;
 
@@ -29,26 +29,14 @@ pub struct PointExpr {
 
 /// Kind-keyed wrapper around curve / endpoint formula catalogs.
 #[derive(Clone, Copy, Debug, PartialEq)]
-enum PointFormulaKeyed {
+pub(crate) enum PointFormulaKeyed {
     SegmentCurve(CurvePointFormula),
     SegmentEndpoint(EndpointPointFormula),
 }
 
 impl PointExpr {
-    /// Curve point formula evaluated with the segment chart.
-    pub(crate) fn segment_curve(geometry: GeometryId, formula: CurvePointFormula) -> Self {
-        Self {
-            geometry,
-            formula: PointFormulaKeyed::SegmentCurve(formula),
-        }
-    }
-
-    /// Endpoint formula evaluated with the segment chart.
-    pub(crate) fn segment_endpoint(geometry: GeometryId, formula: EndpointPointFormula) -> Self {
-        Self {
-            geometry,
-            formula: PointFormulaKeyed::SegmentEndpoint(formula),
-        }
+    pub(crate) fn new(geometry: GeometryId, formula: PointFormulaKeyed) -> Self {
+        Self { geometry, formula }
     }
 
     pub fn evaluate(&self, store: &impl GeometryStore, p: &State) -> Point2 {
@@ -90,19 +78,15 @@ pub struct VecExpr {
     formula: VecFormulaKeyed,
 }
 
-/// Kind-keyed wrapper around the shared curve [`CapVecFormula`] catalog.
+/// Kind-keyed wrapper around the shared curve [`VecFormula`] catalog.
 #[derive(Clone, Copy, Debug, PartialEq)]
-enum VecFormulaKeyed {
-    Segment(CapVecFormula),
+pub(crate) enum VecFormulaKeyed {
+    Segment(VecFormula),
 }
 
 impl VecExpr {
-    /// Free-vector formula evaluated with the segment chart.
-    pub(crate) fn segment(geometry: GeometryId, formula: CapVecFormula) -> Self {
-        Self {
-            geometry,
-            formula: VecFormulaKeyed::Segment(formula),
-        }
+    pub(crate) fn new(geometry: GeometryId, formula: VecFormulaKeyed) -> Self {
+        Self { geometry, formula }
     }
 
     pub fn evaluate(&self, store: &impl GeometryStore, p: &State) -> Vec2 {
@@ -141,17 +125,15 @@ pub struct ScalarExpr {
     formula: ScalarFormulaKeyed,
 }
 
+/// Kind-keyed wrapper around the shared curve [`CurveScalarFormula`] catalog.
 #[derive(Clone, Copy, Debug, PartialEq)]
-enum ScalarFormulaKeyed {
+pub(crate) enum ScalarFormulaKeyed {
     Segment(CurveScalarFormula),
 }
 
 impl ScalarExpr {
-    pub(crate) fn segment_scalar(geometry: GeometryId, formula: CurveScalarFormula) -> Self {
-        Self {
-            geometry,
-            formula: ScalarFormulaKeyed::Segment(formula),
-        }
+    pub(crate) fn new(geometry: GeometryId, formula: ScalarFormulaKeyed) -> Self {
+        Self { geometry, formula }
     }
 
     pub fn evaluate(&self, store: &impl GeometryStore, p: &State) -> f64 {

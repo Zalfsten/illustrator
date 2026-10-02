@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 
 use crate::constraint::Constraint;
-use crate::geometries::{
+use crate::geometry::{
     Geometry, GeometryId, GeometryKind, GeometryRole, GeometryShell, IdGenerator,
 };
 use crate::state::State;

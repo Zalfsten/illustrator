@@ -1,8 +1,8 @@
 use super::*;
 use crate::constraint::Constraint;
 use crate::geom::{CurveParam, Point2};
-use crate::geometries::GeometryRole;
-use crate::geometries::{CurveExprs, EndpointExprs, Segment};
+use crate::geometry_kinds::Segment;
+use crate::geometry::{CurveExprs, EndpointExprs, GeometryRole};
 use crate::solver::StubSolver;
 
 #[test]

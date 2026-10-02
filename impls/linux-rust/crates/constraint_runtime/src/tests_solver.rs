@@ -3,8 +3,8 @@ use crate::assemble::AssembledSystem;
 use crate::constraint::Constraint;
 use crate::document::Document;
 use crate::geom::Point2;
-use crate::geometries::{EndpointExprs, GeometryId, GeometryRole};
-use crate::geometries::Segment;
+use crate::geometry_kinds::Segment;
+use crate::geometry::{EndpointExprs, GeometryId, GeometryRole};
 
 #[test]
 fn stub_backend_swaps() {

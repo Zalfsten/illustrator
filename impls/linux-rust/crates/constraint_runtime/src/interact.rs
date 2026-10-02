@@ -3,7 +3,7 @@
 use crate::assemble::{AssembledSystem, SoftContribution};
 use crate::ceres_solver::CeresSolver;
 use crate::document::Document;
-use crate::geometries::PointExpr;
+use crate::geometry::PointExpr;
 use crate::solver::{SolverOptions, SolverPort, SystemEval};
 use crate::state::State;
 

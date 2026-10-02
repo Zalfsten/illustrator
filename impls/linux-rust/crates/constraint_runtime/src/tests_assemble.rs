@@ -1,8 +1,8 @@
 use super::*;
 use crate::constraint::Constraint;
 use crate::geom::{CurveParam, Point2};
-use crate::geometries::{GeometryId, GeometryRole, CurveExprs, EndpointExprs};
-use crate::geometries::Segment;
+use crate::geometry_kinds::Segment;
+use crate::geometry::{CurveExprs, EndpointExprs, GeometryId, GeometryRole};
 
 #[test]
 fn residual_arity_stacks() {

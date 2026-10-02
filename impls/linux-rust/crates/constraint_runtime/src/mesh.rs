@@ -4,7 +4,8 @@
 
 use crate::document::DocumentStructure;
 use crate::geom::Point2;
-use crate::geometries::{EndpointExprs, GeometryId, GeometryRole, PointExpr, Segment};
+use crate::geometry_kinds::Segment;
+use crate::geometry::{EndpointExprs, GeometryId, GeometryRole, PointExpr};
 use crate::state::State;
 
 /// Which geometries contribute edges to a Mesh.

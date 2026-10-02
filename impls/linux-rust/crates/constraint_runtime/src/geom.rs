@@ -10,7 +10,7 @@
 //! [`PointJacobian`] / [`VecJacobian`] are stack \(2 \times n\) carriers for analytical
 //! derivatives of point/vector formulas (runtime width \(n\), fixed stack cap).
 //! Concrete kinds and opaque expressions fill/return them; Document/kind IR lives
-//! under [`crate::geometries`].
+//! under [`crate::geometry_kinds`].
 
 use std::ops::{Add, Mul, Neg, Sub};
 
