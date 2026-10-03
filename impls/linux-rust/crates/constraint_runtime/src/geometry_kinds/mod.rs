@@ -5,11 +5,11 @@
 //! - [`chart_atoms!`](crate::geometry::chart::chart_atoms) naming
 //!   [`crate::geometry::StateAtom`] slots + [`geometry_shell_instance!`] →
 //!   [`crate::geometry::GeometryKind`] / [`crate::geometry::Geometry`]
-//! - [`crate::geometry::CurveExprs`] via `impl_curve_exprs!` (and
-//!   [`crate::geometry::EndpointExprs`] / `impl_endpoint_exprs!` if join
-//!   endpoints apply)
+//! - [`crate::geometry::CurveExprs`] via `impl_curve_formula_key!` (and
+//!   [`crate::geometry::EndpointExprs`] via `impl_endpoint_formula_key!` or
+//!   a default `impl EndpointExprs for Ty {}` if join endpoints apply)
 //! - one entry in [`register_expr_kinds!`](crate::geometry::expr) (same variant
-//!   names as the capability macros)
+//!   names as the formula-key macros)
 
 pub mod segment;
 

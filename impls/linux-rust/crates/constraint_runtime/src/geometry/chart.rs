@@ -78,6 +78,102 @@ impl StateAtom for Length {
     }
 }
 
+/// Pack / unpack a fixed Init tuple of [`StateAtom`]s into a contiguous chart block.
+///
+/// Used by [`chart_atoms!`] so the macro only names slots; flatten order follows the tuple.
+pub(crate) trait PackAtoms: Sized {
+    const DOF_COUNT: usize;
+    fn write_all(self, out: &mut [f64]);
+    fn read_all(params: &[f64]) -> Self;
+}
+
+impl<A: StateAtom> PackAtoms for (A,) {
+    const DOF_COUNT: usize = A::DOF_COUNT;
+
+    fn write_all(self, out: &mut [f64]) {
+        debug_assert_eq!(out.len(), Self::DOF_COUNT);
+        self.0.write_params(out);
+    }
+
+    fn read_all(params: &[f64]) -> Self {
+        debug_assert_eq!(params.len(), Self::DOF_COUNT);
+        (A::read_params(params),)
+    }
+}
+
+impl<A: StateAtom, B: StateAtom> PackAtoms for (A, B) {
+    const DOF_COUNT: usize = A::DOF_COUNT + B::DOF_COUNT;
+
+    fn write_all(self, out: &mut [f64]) {
+        debug_assert_eq!(out.len(), Self::DOF_COUNT);
+        let (a, b) = self;
+        a.write_params(&mut out[..A::DOF_COUNT]);
+        b.write_params(&mut out[A::DOF_COUNT..]);
+    }
+
+    fn read_all(params: &[f64]) -> Self {
+        debug_assert_eq!(params.len(), Self::DOF_COUNT);
+        (
+            A::read_params(&params[..A::DOF_COUNT]),
+            B::read_params(&params[A::DOF_COUNT..]),
+        )
+    }
+}
+
+impl<A: StateAtom, B: StateAtom, C: StateAtom> PackAtoms for (A, B, C) {
+    const DOF_COUNT: usize = A::DOF_COUNT + B::DOF_COUNT + C::DOF_COUNT;
+
+    fn write_all(self, out: &mut [f64]) {
+        debug_assert_eq!(out.len(), Self::DOF_COUNT);
+        let (a, b, c) = self;
+        let i1 = A::DOF_COUNT;
+        let i2 = i1 + B::DOF_COUNT;
+        a.write_params(&mut out[..i1]);
+        b.write_params(&mut out[i1..i2]);
+        c.write_params(&mut out[i2..]);
+    }
+
+    fn read_all(params: &[f64]) -> Self {
+        debug_assert_eq!(params.len(), Self::DOF_COUNT);
+        let i1 = A::DOF_COUNT;
+        let i2 = i1 + B::DOF_COUNT;
+        (
+            A::read_params(&params[..i1]),
+            B::read_params(&params[i1..i2]),
+            C::read_params(&params[i2..]),
+        )
+    }
+}
+
+impl<A: StateAtom, B: StateAtom, C: StateAtom, D: StateAtom> PackAtoms for (A, B, C, D) {
+    const DOF_COUNT: usize = A::DOF_COUNT + B::DOF_COUNT + C::DOF_COUNT + D::DOF_COUNT;
+
+    fn write_all(self, out: &mut [f64]) {
+        debug_assert_eq!(out.len(), Self::DOF_COUNT);
+        let (a, b, c, d) = self;
+        let i1 = A::DOF_COUNT;
+        let i2 = i1 + B::DOF_COUNT;
+        let i3 = i2 + C::DOF_COUNT;
+        a.write_params(&mut out[..i1]);
+        b.write_params(&mut out[i1..i2]);
+        c.write_params(&mut out[i2..i3]);
+        d.write_params(&mut out[i3..]);
+    }
+
+    fn read_all(params: &[f64]) -> Self {
+        debug_assert_eq!(params.len(), Self::DOF_COUNT);
+        let i1 = A::DOF_COUNT;
+        let i2 = i1 + B::DOF_COUNT;
+        let i3 = i2 + C::DOF_COUNT;
+        (
+            A::read_params(&params[..i1]),
+            B::read_params(&params[i1..i2]),
+            C::read_params(&params[i2..i3]),
+            D::read_params(&params[i3..]),
+        )
+    }
+}
+
 /// Contiguous local DOF window for one [`StateAtom`] inside a chart parameter block.
 ///
 /// Slot offsets define pack order and formula-local index ranges. Prefer
@@ -160,6 +256,9 @@ pub trait Chart {
 
 /// Declare named chart atoms; derive slots, [`SLOTS`](ChartSlot), and [`Chart`] pack/unpack.
 ///
+/// Pack / unpack / [`PARAMETER_COUNT`](Chart::PARAMETER_COUNT) come from [`PackAtoms`] on
+/// the Init tuple; this macro only names contiguous [`ChartSlot`]s.
+///
 /// ```ignore
 /// chart_atoms! {
 ///     Segment {
@@ -187,36 +286,21 @@ macro_rules! chart_atoms {
         }
 
         impl $crate::geometry::Chart for $ty {
-            type Init = ($first_atom $(, $atom)*);
+            // Trailing comma keeps a single atom as a 1-tuple for [`PackAtoms`].
+            type Init = ($first_atom, $($atom,)*);
 
             const PARAMETER_COUNT: usize =
-                $crate::geometry::chart::chart_atoms!(@last_end $first; $($name),*);
+                <Self::Init as $crate::geometry::chart::PackAtoms>::DOF_COUNT;
 
-            fn pack(($first $(, $name)*): Self::Init) -> impl AsRef<[f64]> {
+            fn pack(init: Self::Init) -> impl AsRef<[f64]> {
                 let mut buf = [0.0; Self::PARAMETER_COUNT];
-                $crate::geometry::StateAtom::write_params(
-                    $first,
-                    &mut buf[Self::$first.range()],
-                );
-                $(
-                    $crate::geometry::StateAtom::write_params(
-                        $name,
-                        &mut buf[Self::$name.range()],
-                    );
-                )*
+                $crate::geometry::chart::PackAtoms::write_all(init, &mut buf);
                 buf
             }
 
             fn unpack(params: &[f64]) -> Self::Init {
                 debug_assert_eq!(params.len(), Self::PARAMETER_COUNT);
-                (
-                    <$first_atom as $crate::geometry::StateAtom>::read_params(
-                        &params[Self::$first.range()],
-                    )
-                    $(, <$atom as $crate::geometry::StateAtom>::read_params(
-                        &params[Self::$name.range()],
-                    ))*
-                )
+                <Self::Init as $crate::geometry::chart::PackAtoms>::read_all(params)
             }
         }
     };
@@ -229,20 +313,6 @@ macro_rules! chart_atoms {
                 $crate::geometry::ChartSlot::for_atom::<$atom>(Self::$prev.end());
         }
         $crate::geometry::chart::chart_atoms!(@chain_slots $ty; $name; $($rest_name: $rest_atom),*);
-    };
-
-    // PARAMETER_COUNT = end offset of the last named slot.
-    (@last_end $only:ident; ) => {
-        Self::$only.end()
-    };
-    (@last_end $_first:ident; $($name:ident),+ ) => {
-        $crate::geometry::chart::chart_atoms!(@last_of $($name),+)
-    };
-    (@last_of $last:ident) => {
-        Self::$last.end()
-    };
-    (@last_of $_head:ident, $($tail:ident),+) => {
-        $crate::geometry::chart::chart_atoms!(@last_of $($tail),+)
     };
 }
 pub(crate) use chart_atoms;

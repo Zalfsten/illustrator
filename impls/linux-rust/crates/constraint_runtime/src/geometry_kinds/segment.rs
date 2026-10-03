@@ -2,7 +2,7 @@
 
 use crate::geom::{Length, Point2, PointJacobian, ScalarJacobian, Vec2, VecJacobian};
 use crate::geometry::capabilities::{
-    impl_curve_exprs, impl_endpoint_exprs, CurveLengthFormula, CurvePointFormula,
+    impl_curve_formula_key, impl_endpoint_formula_key, CurveLengthFormula, CurvePointFormula,
     EndpointPointFormula, VecFormula,
 };
 use crate::geometry::chart::chart_atoms;
@@ -16,8 +16,8 @@ use crate::geometry::{Chart, ChartSlot};
 /// pack / unpack / [`Self::SLOTS`] follow from that.
 /// Shell fields via [`crate::geometry::AsShell`] (from [`geometry_shell_instance!`]);
 /// together with [`Chart`] that yields [`crate::geometry::GeometryKind`] /
-/// [`crate::geometry::Geometry`]. Expression factories via [`impl_curve_exprs!`] /
-/// [`impl_endpoint_exprs!`] (endpoint override: sparse start/end formulas, not
+/// [`crate::geometry::Geometry`]. Expression factories via [`impl_curve_formula_key!`] /
+/// [`impl_endpoint_formula_key!`] (endpoint override: sparse start/end formulas, not
 /// default on-curve \(t = 0/1\)).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct Segment {
@@ -160,8 +160,8 @@ impl Segment {
     }
 }
 
-impl_curve_exprs!(Segment, SegmentCurve, Segment, Segment);
-impl_endpoint_exprs!(Segment, SegmentEndpoint);
+impl_curve_formula_key!(Segment, SegmentCurve, Segment, Segment);
+impl_endpoint_formula_key!(Segment, SegmentEndpoint);
 
 #[cfg(test)]
 #[path = "tests_segment.rs"]
