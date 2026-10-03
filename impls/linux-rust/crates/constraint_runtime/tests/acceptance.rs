@@ -226,8 +226,12 @@ fn equal_length_keeps_two_segments_same_length() {
     let mut interact = InteractiveSolve::new();
     interact.structural_only(&mut doc).expect("equal length solve");
     assert!(residual_ok(&doc));
-    let l0 = Segment::length_expr(s0).evaluate(&doc.structure, doc.state());
-    let l1 = Segment::length_expr(s1).evaluate(&doc.structure, doc.state());
+    let l0 = Segment::length_expr(s0)
+        .evaluate(&doc.structure, doc.state())
+        .value();
+    let l1 = Segment::length_expr(s1)
+        .evaluate(&doc.structure, doc.state())
+        .value();
     assert!((l0 - l1).abs() < 1e-4, "l0={l0} l1={l1}");
     assert!((l0 - 3.0).abs() < 1e-4, "expected length 3, got {l0}");
 }

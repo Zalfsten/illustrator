@@ -1,7 +1,7 @@
 //! Structural constraints: local residuals and analytical local Jacobians.
 
 use crate::connectivity::Connectivity;
-use crate::geometry::{PointExpr, ScalarExpr, VecExpr};
+use crate::geometry::{LengthExpr, PointExpr, VecExpr};
 use crate::geom::Point2;
 use crate::state::State;
 use crate::store::GeometryStore;
@@ -12,7 +12,7 @@ pub enum Constraint {
     Parallel { a: VecExpr, b: VecExpr },
     Orthogonal { a: VecExpr, b: VecExpr },
     FixPoint { point: PointExpr, target: Point2 },
-    EqualLength { a: ScalarExpr, b: ScalarExpr },
+    EqualLength { a: LengthExpr, b: LengthExpr },
 }
 
 impl Constraint {
@@ -72,7 +72,7 @@ impl Constraint {
                 out[1] = q.y - target.y;
             }
             Constraint::EqualLength { a, b } => {
-                out[0] = a.evaluate(store, p) - b.evaluate(store, p);
+                out[0] = a.evaluate(store, p).value() - b.evaluate(store, p).value();
             }
         }
     }
@@ -144,8 +144,8 @@ impl Constraint {
                 }
             }
             Constraint::EqualLength { a, b } => {
-                let ja = a.eval_scalar_jacobian(store, p);
-                let jb = b.eval_scalar_jacobian(store, p);
+                let ja = a.eval_length_jacobian(store, p);
+                let jb = b.eval_length_jacobian(store, p);
                 let na = ja.n();
                 let nb = jb.n();
                 debug_assert_eq!(na, a.param_indices(store).len());

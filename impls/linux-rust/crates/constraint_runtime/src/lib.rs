@@ -27,7 +27,8 @@ pub use geom::{
 };
 pub use geometry::{
     AsShell, Chart, ChartSlot, CurveExprs, EndpointExprs, Geometry, GeometryId, GeometryKind,
-    GeometryRole, GeometryShell, IdGenerator, PointExpr, ScalarExpr, StateAtom, VecExpr,
+    AngleExpr, GeometryRole, GeometryShell, IdGenerator, LengthExpr, PointExpr, StateAtom,
+    VecExpr,
 };
 pub use geometry_kinds::Segment;
 pub use interact::{DragSession, InteractiveSolve, SoftTerms, SolveError};

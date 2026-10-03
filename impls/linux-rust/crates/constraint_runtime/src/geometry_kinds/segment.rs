@@ -1,8 +1,8 @@
 //! Line segment: State layout, chart sampling, and formula evaluation.
 
-use crate::geom::{Point2, PointJacobian, ScalarJacobian, Vec2, VecJacobian};
+use crate::geom::{Length, Point2, PointJacobian, ScalarJacobian, Vec2, VecJacobian};
 use crate::geometry::capabilities::{
-    impl_curve_exprs, impl_endpoint_exprs, CurvePointFormula, CurveScalarFormula,
+    impl_curve_exprs, impl_endpoint_exprs, CurveLengthFormula, CurvePointFormula,
     EndpointPointFormula, VecFormula,
 };
 use crate::geometry::chart::chart_atoms;
@@ -124,25 +124,25 @@ impl Segment {
         }
     }
 
-    pub(crate) fn eval_scalar(f: CurveScalarFormula, (a, b): (Point2, Point2)) -> f64 {
+    pub(crate) fn eval_length(f: CurveLengthFormula, (a, b): (Point2, Point2)) -> Length {
         match f {
-            CurveScalarFormula::Length => (b - a).length(),
+            CurveLengthFormula::Length => Length::new((b - a).length()),
         }
     }
 
     /// Formula-local parameter indices (into the chart block, not global State).
-    pub(crate) fn scalar_param_indices(f: CurveScalarFormula) -> Vec<usize> {
+    pub(crate) fn length_param_indices(f: CurveLengthFormula) -> Vec<usize> {
         match f {
-            CurveScalarFormula::Length => ChartSlot::union_indices(Self::SLOTS),
+            CurveLengthFormula::Length => ChartSlot::union_indices(Self::SLOTS),
         }
     }
 
-    pub(crate) fn eval_scalar_jacobian(
-        f: CurveScalarFormula,
+    pub(crate) fn eval_length_jacobian(
+        f: CurveLengthFormula,
         (a, b): (Point2, Point2),
     ) -> ScalarJacobian {
         match f {
-            CurveScalarFormula::Length => {
+            CurveLengthFormula::Length => {
                 let mut j = ScalarJacobian::zeros(Self::PARAMETER_COUNT);
                 let d = b - a;
                 let len = d.length();
