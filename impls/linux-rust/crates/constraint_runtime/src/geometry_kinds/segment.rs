@@ -5,14 +5,15 @@ use crate::geometry::capabilities::{
     impl_curve_exprs, impl_endpoint_exprs, CurvePointFormula, CurveScalarFormula,
     EndpointPointFormula, VecFormula,
 };
+use crate::geometry::chart::chart_atoms;
 use crate::geometry::shell::{geometry_shell_instance, GeometryShell};
-use crate::geometry::{Chart, ChartSlot, StateAtom};
+use crate::geometry::{Chart, ChartSlot};
 
 /// Line-segment instance: document shell plus segment chart formulas.
 ///
 /// Parameters live at `p[shell.param_offset..shell.param_offset+PARAMETER_COUNT]`.
-/// Layout: [`Chart::Init`] = `(Point2, Point2)` with named slots [`Self::start`] /
-/// [`Self::end`]; pack / unpack come from [`crate::geometry::AtomTuple`].
+/// Layout: [`Point2`] atoms [`Self::start`] / [`Self::end`] via [`chart_atoms!`];
+/// pack / unpack / [`Self::SLOTS`] follow from that.
 /// Shell fields via [`crate::geometry::AsShell`] (from [`geometry_shell_instance!`]);
 /// together with [`Chart`] that yields [`crate::geometry::GeometryKind`] /
 /// [`crate::geometry::Geometry`]. Expression factories via [`impl_curve_exprs!`] /
@@ -25,16 +26,14 @@ pub struct Segment {
 
 geometry_shell_instance!(Segment);
 
-impl Chart for Segment {
-    type Init = (Point2, Point2);
+chart_atoms! {
+    Segment {
+        start: Point2,
+        end: Point2,
+    }
 }
 
 impl Segment {
-    #[allow(non_upper_case_globals)]
-    pub const start: ChartSlot = ChartSlot::for_atom::<Point2>(0);
-    #[allow(non_upper_case_globals)]
-    pub const end: ChartSlot = Self::start.then::<Point2>();
-
     pub(crate) fn eval_curve_point(f: CurvePointFormula, (a, b): (Point2, Point2)) -> Point2 {
         match f {
             CurvePointFormula::OnCurve { param } => {
@@ -47,9 +46,7 @@ impl Segment {
     /// Formula-local parameter indices (into the chart block, not global State).
     pub(crate) fn curve_point_param_indices(f: CurvePointFormula) -> Vec<usize> {
         match f {
-            CurvePointFormula::OnCurve { .. } => {
-                ChartSlot::union_indices(&[Self::start, Self::end])
-            }
+            CurvePointFormula::OnCurve { .. } => ChartSlot::union_indices(Self::SLOTS),
         }
     }
 
@@ -101,7 +98,7 @@ impl Segment {
 
     /// Formula-local parameter indices (into the chart block, not global State).
     pub(crate) fn vec_param_indices(_f: VecFormula) -> Vec<usize> {
-        ChartSlot::union_indices(&[Self::start, Self::end])
+        ChartSlot::union_indices(Self::SLOTS)
     }
 
     pub(crate) fn eval_vec_jacobian(f: VecFormula) -> VecJacobian {
@@ -136,7 +133,7 @@ impl Segment {
     /// Formula-local parameter indices (into the chart block, not global State).
     pub(crate) fn scalar_param_indices(f: CurveScalarFormula) -> Vec<usize> {
         match f {
-            CurveScalarFormula::Length => ChartSlot::union_indices(&[Self::start, Self::end]),
+            CurveScalarFormula::Length => ChartSlot::union_indices(Self::SLOTS),
         }
     }
 

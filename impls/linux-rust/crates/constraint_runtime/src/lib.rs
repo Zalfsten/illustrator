@@ -22,13 +22,12 @@ pub use connectivity::Connectivity;
 pub use constraint::Constraint;
 pub use document::{Document, DocumentStructure};
 pub use geom::{
-    CurveParam, Point2, PointJacobian, ScalarJacobian, Vec2, VecJacobian,
+    Angle, CurveParam, Length, Point2, PointJacobian, ScalarJacobian, Vec2, VecJacobian,
     MAX_POINT_JACOBIAN_PARAMS, MAX_SCALAR_JACOBIAN_PARAMS,
 };
 pub use geometry::{
-    AsShell, AtomTuple, Chart, ChartSlot, CurveExprs, EndpointExprs, Geometry, GeometryId,
-    GeometryKind, GeometryRole, GeometryShell, IdGenerator, PointExpr, ScalarExpr, StateAtom,
-    VecExpr,
+    AsShell, Chart, ChartSlot, CurveExprs, EndpointExprs, Geometry, GeometryId, GeometryKind,
+    GeometryRole, GeometryShell, IdGenerator, PointExpr, ScalarExpr, StateAtom, VecExpr,
 };
 pub use geometry_kinds::Segment;
 pub use interact::{DragSession, InteractiveSolve, SoftTerms, SolveError};

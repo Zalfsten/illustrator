@@ -2,19 +2,16 @@
 
 use std::ops::Range;
 
-use crate::geom::{Point2, Vec2};
+use crate::geom::{Angle, Length, Point2, Vec2};
 
-/// Packable atom in the global State vector: fixed DOF width and `[x, y]` flatten order.
+/// Packable atom in the global State vector: fixed DOF width and flatten order.
 ///
 /// Chart `pack` / `unpack` and local parameter indices go through this trait so
 /// component order lives with the layout layer, not re-stated at each kind call site.
+/// Planar atoms use [`Point2::COMP_X`] / [`Point2::COMP_Y`] (same on [`Vec2`]).
 pub trait StateAtom: Sized + Copy {
     /// Number of contiguous State scalars for one atom.
     const DOF_COUNT: usize;
-    /// Component index of \(x\) within a packed atom (`0`).
-    const COMP_X: usize = 0;
-    /// Component index of \(y\) within a packed atom (`1`).
-    const COMP_Y: usize = 1;
 
     /// Write this atom into `out` (length must be [`Self::DOF_COUNT`]).
     fn write_params(self, out: &mut [f64]);
@@ -28,13 +25,13 @@ impl StateAtom for Vec2 {
 
     fn write_params(self, out: &mut [f64]) {
         debug_assert_eq!(out.len(), Self::DOF_COUNT);
-        out[Self::COMP_X] = self.x;
-        out[Self::COMP_Y] = self.y;
+        out[Vec2::COMP_X] = self.x;
+        out[Vec2::COMP_Y] = self.y;
     }
 
     fn read_params(params: &[f64]) -> Self {
         debug_assert_eq!(params.len(), Self::DOF_COUNT);
-        Self::new(params[Self::COMP_X], params[Self::COMP_Y])
+        Self::new(params[Vec2::COMP_X], params[Vec2::COMP_Y])
     }
 }
 
@@ -43,21 +40,48 @@ impl StateAtom for Point2 {
 
     fn write_params(self, out: &mut [f64]) {
         debug_assert_eq!(out.len(), Self::DOF_COUNT);
-        out[Self::COMP_X] = self.x;
-        out[Self::COMP_Y] = self.y;
+        out[Point2::COMP_X] = self.x;
+        out[Point2::COMP_Y] = self.y;
     }
 
     fn read_params(params: &[f64]) -> Self {
         debug_assert_eq!(params.len(), Self::DOF_COUNT);
-        Self::new(params[Self::COMP_X], params[Self::COMP_Y])
+        Self::new(params[Point2::COMP_X], params[Point2::COMP_Y])
+    }
+}
+
+impl StateAtom for Angle {
+    const DOF_COUNT: usize = 1;
+
+    fn write_params(self, out: &mut [f64]) {
+        debug_assert_eq!(out.len(), Self::DOF_COUNT);
+        out[0] = self.radians();
+    }
+
+    fn read_params(params: &[f64]) -> Self {
+        debug_assert_eq!(params.len(), Self::DOF_COUNT);
+        Self::new(params[0])
+    }
+}
+
+impl StateAtom for Length {
+    const DOF_COUNT: usize = 1;
+
+    fn write_params(self, out: &mut [f64]) {
+        debug_assert_eq!(out.len(), Self::DOF_COUNT);
+        out[0] = self.value();
+    }
+
+    fn read_params(params: &[f64]) -> Self {
+        debug_assert_eq!(params.len(), Self::DOF_COUNT);
+        Self::new(params[0])
     }
 }
 
 /// Contiguous local DOF window for one [`StateAtom`] inside a chart parameter block.
 ///
-/// Slot offsets define pack order and formula-local index ranges. Kinds name
-/// slots with [`ChartSlot::for_atom`] / [`ChartSlot::then`]; pack / unpack come
-/// from [`AtomTuple`] via [`Chart`] defaults.
+/// Slot offsets define pack order and formula-local index ranges. Prefer
+/// [`chart_atoms!`] so kinds only name atoms; pack / unpack / [`SLOTS`] follow.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct ChartSlot {
     offset: usize,
@@ -78,14 +102,6 @@ impl ChartSlot {
         Self::for_atom::<A>(self.end())
     }
 
-    pub const fn offset(self) -> usize {
-        self.offset
-    }
-
-    pub const fn dof(self) -> usize {
-        self.dof
-    }
-
     /// Local index immediately after this slot (start of the next atom).
     pub const fn end(self) -> usize {
         self.offset + self.dof
@@ -95,7 +111,7 @@ impl ChartSlot {
         self.offset..self.offset + self.dof
     }
 
-    /// Global-within-chart index of component `comp` (e.g. [`Point2::COMP_X`](StateAtom::COMP_X)).
+    /// Global-within-chart index of component `comp` (e.g. [`Point2::COMP_X`]).
     pub const fn component(self, comp: usize) -> usize {
         self.offset + comp
     }
@@ -115,69 +131,121 @@ impl ChartSlot {
     }
 }
 
-/// Ordered [`StateAtom`] tuple used as a chart's [`Chart::Init`].
-///
-/// Provides flatten width and pack / unpack; [`Chart`] defaults delegate here.
-pub trait AtomTuple: Sized + Copy {
-    const DOF_COUNT: usize;
-
-    fn pack(self) -> Vec<f64>;
-
-    fn unpack(params: &[f64]) -> Self;
-}
-
-impl<A: StateAtom, B: StateAtom> AtomTuple for (A, B) {
-    const DOF_COUNT: usize = A::DOF_COUNT + B::DOF_COUNT;
-
-    fn pack(self) -> Vec<f64> {
-        let (a, b) = self;
-        let n_a = A::DOF_COUNT;
-        let mut buf = vec![0.0; n_a + B::DOF_COUNT];
-        a.write_params(&mut buf[..n_a]);
-        b.write_params(&mut buf[n_a..]);
-        buf
-    }
-
-    fn unpack(params: &[f64]) -> Self {
-        debug_assert_eq!(params.len(), Self::DOF_COUNT);
-        let n_a = A::DOF_COUNT;
-        (
-            A::read_params(&params[..n_a]),
-            B::read_params(&params[n_a..]),
-        )
-    }
-}
-
 /// Geometry kind as a chart: packs init into State.
 ///
 /// Document identity and shared shell ops live on [`super::Geometry`] (object-safe).
 /// Concrete kinds call [`crate::geometry::shell::geometry_shell_instance`] so they
 /// satisfy [`super::GeometryKind`] (and thus the [`super::Geometry`] blanket).
 ///
-/// Layout: set [`Self::Init`] to an [`AtomTuple`] and declare named [`ChartSlot`]s;
-/// [`PARAMETER_COUNT`] / `pack` / `unpack` default from the tuple.
+/// Prefer [`chart_atoms!`] to declare named [`StateAtom`] slots and derive
+/// [`PARAMETER_COUNT`] / `pack` / `unpack`.
 pub trait Chart {
     /// Kind-specific construction inputs (e.g. segment endpoints).
-    type Init: AtomTuple;
+    type Init;
 
     /// Number of contiguous State scalars for one instance of this kind.
-    const PARAMETER_COUNT: usize = Self::Init::DOF_COUNT;
+    const PARAMETER_COUNT: usize;
 
     /// Contiguous initial parameters (length = [`Self::PARAMETER_COUNT`]).
-    fn pack(init: Self::Init) -> impl AsRef<[f64]> {
-        init.pack()
-    }
+    fn pack(init: Self::Init) -> impl AsRef<[f64]>;
 
     /// Inverse of [`Self::pack`].
-    fn unpack(params: &[f64]) -> Self::Init {
-        Self::Init::unpack(params)
-    }
+    fn unpack(params: &[f64]) -> Self::Init;
 
     /// Global index window for a block that would start at `offset`.
     fn param_block_at(offset: usize) -> Range<usize> {
         offset..offset + Self::PARAMETER_COUNT
     }
 }
+
+/// Declare named chart atoms; derive slots, [`SLOTS`](ChartSlot), and [`Chart`] pack/unpack.
+///
+/// ```ignore
+/// chart_atoms! {
+///     Segment {
+///         start: Point2,
+///         end: Point2,
+///     }
+/// }
+/// ```
+macro_rules! chart_atoms {
+    ($ty:ty {
+        $first:ident : $first_atom:ty
+        $(, $name:ident : $atom:ty)* $(,)?
+    }) => {
+        impl $ty {
+            #[allow(non_upper_case_globals)]
+            pub const $first: $crate::geometry::ChartSlot =
+                $crate::geometry::ChartSlot::for_atom::<$first_atom>(0);
+        }
+        $crate::geometry::chart::chart_atoms!(@chain_slots $ty; $first; $($name: $atom),*);
+
+        impl $ty {
+            /// All chart slots in declaration order (layout metadata only).
+            pub const SLOTS: &'static [$crate::geometry::ChartSlot] =
+                &[Self::$first $(, Self::$name)*];
+        }
+
+        impl $crate::geometry::Chart for $ty {
+            type Init = ($first_atom $(, $atom)*);
+
+            const PARAMETER_COUNT: usize =
+                $crate::geometry::chart::chart_atoms!(@last_end $first; $($name),*);
+
+            fn pack(($first $(, $name)*): Self::Init) -> impl AsRef<[f64]> {
+                let mut buf = [0.0; Self::PARAMETER_COUNT];
+                $crate::geometry::StateAtom::write_params(
+                    $first,
+                    &mut buf[Self::$first.range()],
+                );
+                $(
+                    $crate::geometry::StateAtom::write_params(
+                        $name,
+                        &mut buf[Self::$name.range()],
+                    );
+                )*
+                buf
+            }
+
+            fn unpack(params: &[f64]) -> Self::Init {
+                debug_assert_eq!(params.len(), Self::PARAMETER_COUNT);
+                (
+                    <$first_atom as $crate::geometry::StateAtom>::read_params(
+                        &params[Self::$first.range()],
+                    )
+                    $(, <$atom as $crate::geometry::StateAtom>::read_params(
+                        &params[Self::$name.range()],
+                    ))*
+                )
+            }
+        }
+    };
+
+    (@chain_slots $ty:ty; $_prev:ident; ) => {};
+    (@chain_slots $ty:ty; $prev:ident; $name:ident : $atom:ty $(, $rest_name:ident : $rest_atom:ty)*) => {
+        impl $ty {
+            #[allow(non_upper_case_globals)]
+            pub const $name: $crate::geometry::ChartSlot =
+                $crate::geometry::ChartSlot::for_atom::<$atom>(Self::$prev.end());
+        }
+        $crate::geometry::chart::chart_atoms!(@chain_slots $ty; $name; $($rest_name: $rest_atom),*);
+    };
+
+    // PARAMETER_COUNT = end offset of the last named slot.
+    (@last_end $only:ident; ) => {
+        Self::$only.end()
+    };
+    (@last_end $_first:ident; $($name:ident),+ ) => {
+        $crate::geometry::chart::chart_atoms!(@last_of $($name),+)
+    };
+    (@last_of $last:ident) => {
+        Self::$last.end()
+    };
+    (@last_of $_head:ident, $($tail:ident),+) => {
+        $crate::geometry::chart::chart_atoms!(@last_of $($tail),+)
+    };
+}
+pub(crate) use chart_atoms;
 
 #[cfg(test)]
 #[path = "tests_chart.rs"]

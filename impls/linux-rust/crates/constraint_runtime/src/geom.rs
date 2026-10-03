@@ -7,8 +7,8 @@
 //! (native formula domain affinely mapped). [`CurveParam::Uniform`] is constant-speed
 //! / arc-length fraction on \([0,1]\). For line segments the two coincide.
 //!
-//! State packing of [`Point2`] / [`Vec2`] lives in [`crate::geometry::StateAtom`]
-//! (chart layout), not here.
+//! Scalar chart parameters: [`Angle`] (radians) and [`Length`] (signed State DOF).
+//! State packing of all of these lives in [`crate::geometry::StateAtom`].
 //!
 //! [`PointJacobian`] / [`VecJacobian`] are stack \(2 \times n\) carriers for analytical
 //! derivatives of point/vector formulas (runtime width \(n\), fixed stack cap).
@@ -16,6 +16,34 @@
 //! under [`crate::geometry_kinds`].
 
 use std::ops::{Add, Mul, Neg, Sub};
+
+/// Oriented angle in radians (State DOF; no wrap at the type level).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Angle(f64);
+
+impl Angle {
+    pub fn new(radians: f64) -> Self {
+        Self(radians)
+    }
+
+    pub fn radians(self) -> f64 {
+        self.0
+    }
+}
+
+/// Length parameter as a signed State DOF (geometric non-negativity is separate).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Length(f64);
+
+impl Length {
+    pub fn new(value: f64) -> Self {
+        Self(value)
+    }
+
+    pub fn value(self) -> f64 {
+        self.0
+    }
+}
 
 /// Free vector in the plane (displacement, direction, difference of points).
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -25,6 +53,11 @@ pub struct Vec2 {
 }
 
 impl Vec2 {
+    /// Component index of \(x\) within a packed [`Vec2`] atom.
+    pub const COMP_X: usize = 0;
+    /// Component index of \(y\) within a packed [`Vec2`] atom.
+    pub const COMP_Y: usize = 1;
+
     pub fn new(x: f64, y: f64) -> Self {
         Self { x, y }
     }
@@ -112,6 +145,11 @@ pub struct Point2 {
 }
 
 impl Point2 {
+    /// Component index of \(x\) within a packed [`Point2`] atom.
+    pub const COMP_X: usize = 0;
+    /// Component index of \(y\) within a packed [`Point2`] atom.
+    pub const COMP_Y: usize = 1;
+
     pub fn new(x: f64, y: f64) -> Self {
         Self { x, y }
     }
@@ -201,11 +239,11 @@ impl PointJacobian {
 
     /// Identity map for a packed [`Point2`] atom: \(J = I_2\).
     ///
-    /// Column order matches [`crate::geometry::StateAtom`] for [`Point2`] (`x`, then `y`).
+    /// Column order matches packed [`Point2`] (`COMP_X`, then `COMP_Y`).
     pub fn endpoint_identity() -> Self {
         let mut j = Self::zeros(2);
-        j.dx[0] = 1.0;
-        j.dy[1] = 1.0;
+        j.dx[Point2::COMP_X] = 1.0;
+        j.dy[Point2::COMP_Y] = 1.0;
         j
     }
 
