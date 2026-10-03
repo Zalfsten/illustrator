@@ -7,6 +7,9 @@
 //! (native formula domain affinely mapped). [`CurveParam::Uniform`] is constant-speed
 //! / arc-length fraction on \([0,1]\). For line segments the two coincide.
 //!
+//! State packing of [`Point2`] / [`Vec2`] lives in [`crate::geometry::StateAtom`]
+//! (chart layout), not here.
+//!
 //! [`PointJacobian`] / [`VecJacobian`] are stack \(2 \times n\) carriers for analytical
 //! derivatives of point/vector formulas (runtime width \(n\), fixed stack cap).
 //! Concrete kinds and opaque expressions fill/return them; Document/kind IR lives
@@ -196,7 +199,9 @@ impl PointJacobian {
         }
     }
 
-    /// Identity map \((p_0,p_1)\mapsto(x,y)\): \(J = I_2\).
+    /// Identity map for a packed [`Point2`] atom: \(J = I_2\).
+    ///
+    /// Column order matches [`crate::geometry::StateAtom`] for [`Point2`] (`x`, then `y`).
     pub fn endpoint_identity() -> Self {
         let mut j = Self::zeros(2);
         j.dx[0] = 1.0;

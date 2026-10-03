@@ -6,11 +6,13 @@ use crate::geometry::capabilities::{
     EndpointPointFormula, VecFormula,
 };
 use crate::geometry::shell::{geometry_shell_instance, GeometryShell};
-use crate::geometry::Chart;
+use crate::geometry::{Chart, ChartSlot, StateAtom};
 
 /// Line-segment instance: document shell plus segment chart formulas.
 ///
 /// Parameters live at `p[shell.param_offset..shell.param_offset+PARAMETER_COUNT]`.
+/// Layout: [`Chart::Init`] = `(Point2, Point2)` with named slots [`Self::start`] /
+/// [`Self::end`]; pack / unpack come from [`crate::geometry::AtomTuple`].
 /// Shell fields via [`crate::geometry::AsShell`] (from [`geometry_shell_instance!`]);
 /// together with [`Chart`] that yields [`crate::geometry::GeometryKind`] /
 /// [`crate::geometry::Geometry`]. Expression factories via [`impl_curve_exprs!`] /
@@ -25,24 +27,14 @@ geometry_shell_instance!(Segment);
 
 impl Chart for Segment {
     type Init = (Point2, Point2);
-
-    /// Four endpoint scalars: `x1,y1,x2,y2`.
-    const PARAMETER_COUNT: usize = 4;
-
-    fn pack((a, b): Self::Init) -> impl AsRef<[f64]> {
-        [a.x, a.y, b.x, b.y]
-    }
-
-    fn unpack(params: &[f64]) -> Self::Init {
-        debug_assert_eq!(params.len(), Self::PARAMETER_COUNT);
-        (
-            Point2::new(params[0], params[1]),
-            Point2::new(params[2], params[3]),
-        )
-    }
 }
 
 impl Segment {
+    #[allow(non_upper_case_globals)]
+    pub const start: ChartSlot = ChartSlot::for_atom::<Point2>(0);
+    #[allow(non_upper_case_globals)]
+    pub const end: ChartSlot = Self::start.then::<Point2>();
+
     pub(crate) fn eval_curve_point(f: CurvePointFormula, (a, b): (Point2, Point2)) -> Point2 {
         match f {
             CurvePointFormula::OnCurve { param } => {
@@ -55,7 +47,9 @@ impl Segment {
     /// Formula-local parameter indices (into the chart block, not global State).
     pub(crate) fn curve_point_param_indices(f: CurvePointFormula) -> Vec<usize> {
         match f {
-            CurvePointFormula::OnCurve { .. } => (0..Self::PARAMETER_COUNT).collect(),
+            CurvePointFormula::OnCurve { .. } => {
+                ChartSlot::union_indices(&[Self::start, Self::end])
+            }
         }
     }
 
@@ -64,10 +58,10 @@ impl Segment {
             CurvePointFormula::OnCurve { param } => {
                 let mut j = PointJacobian::zeros(Self::PARAMETER_COUNT);
                 let t = param.chart_t();
-                j.set_dx_dy(0, 1.0 - t, 0.0);
-                j.set_dx_dy(1, 0.0, 1.0 - t);
-                j.set_dx_dy(2, t, 0.0);
-                j.set_dx_dy(3, 0.0, t);
+                j.set_dx_dy(Self::start.component(Point2::COMP_X), 1.0 - t, 0.0);
+                j.set_dx_dy(Self::start.component(Point2::COMP_Y), 0.0, 1.0 - t);
+                j.set_dx_dy(Self::end.component(Point2::COMP_X), t, 0.0);
+                j.set_dx_dy(Self::end.component(Point2::COMP_Y), 0.0, t);
                 j
             }
         }
@@ -83,8 +77,8 @@ impl Segment {
     /// Formula-local parameter indices (into the chart block, not global State).
     pub(crate) fn endpoint_point_param_indices(f: EndpointPointFormula) -> Vec<usize> {
         match f {
-            EndpointPointFormula::StartPoint => vec![0, 1],
-            EndpointPointFormula::EndPoint => vec![2, 3],
+            EndpointPointFormula::StartPoint => Self::start.indices(),
+            EndpointPointFormula::EndPoint => Self::end.indices(),
         }
     }
 
@@ -107,27 +101,27 @@ impl Segment {
 
     /// Formula-local parameter indices (into the chart block, not global State).
     pub(crate) fn vec_param_indices(_f: VecFormula) -> Vec<usize> {
-        (0..Self::PARAMETER_COUNT).collect()
+        ChartSlot::union_indices(&[Self::start, Self::end])
     }
 
     pub(crate) fn eval_vec_jacobian(f: VecFormula) -> VecJacobian {
         match f {
             VecFormula::TangentAt { .. } => {
-                // v = end - start on params [x1,y1,x2,y2]
+                // v = end - start
                 let mut j = VecJacobian::zeros(Self::PARAMETER_COUNT);
-                j.set_dx_dy(0, -1.0, 0.0);
-                j.set_dx_dy(1, 0.0, -1.0);
-                j.set_dx_dy(2, 1.0, 0.0);
-                j.set_dx_dy(3, 0.0, 1.0);
+                j.set_dx_dy(Self::start.component(Point2::COMP_X), -1.0, 0.0);
+                j.set_dx_dy(Self::start.component(Point2::COMP_Y), 0.0, -1.0);
+                j.set_dx_dy(Self::end.component(Point2::COMP_X), 1.0, 0.0);
+                j.set_dx_dy(Self::end.component(Point2::COMP_Y), 0.0, 1.0);
                 j
             }
             VecFormula::NormalAt { .. } => {
                 // n = (-vy, vx) of tangent ⇒ rotate each column of J_tan leftward
                 let mut j = VecJacobian::zeros(Self::PARAMETER_COUNT);
-                j.set_dx_dy(0, 0.0, -1.0);
-                j.set_dx_dy(1, 1.0, 0.0);
-                j.set_dx_dy(2, 0.0, 1.0);
-                j.set_dx_dy(3, -1.0, 0.0);
+                j.set_dx_dy(Self::start.component(Point2::COMP_X), 0.0, -1.0);
+                j.set_dx_dy(Self::start.component(Point2::COMP_Y), 1.0, 0.0);
+                j.set_dx_dy(Self::end.component(Point2::COMP_X), 0.0, 1.0);
+                j.set_dx_dy(Self::end.component(Point2::COMP_Y), -1.0, 0.0);
                 j
             }
         }
@@ -142,7 +136,7 @@ impl Segment {
     /// Formula-local parameter indices (into the chart block, not global State).
     pub(crate) fn scalar_param_indices(f: CurveScalarFormula) -> Vec<usize> {
         match f {
-            CurveScalarFormula::Length => (0..Self::PARAMETER_COUNT).collect(),
+            CurveScalarFormula::Length => ChartSlot::union_indices(&[Self::start, Self::end]),
         }
     }
 
@@ -158,10 +152,10 @@ impl Segment {
                 if len > 0.0 {
                     let ux = d.x / len;
                     let uy = d.y / len;
-                    j.set_ds(0, -ux);
-                    j.set_ds(1, -uy);
-                    j.set_ds(2, ux);
-                    j.set_ds(3, uy);
+                    j.set_ds(Self::start.component(Point2::COMP_X), -ux);
+                    j.set_ds(Self::start.component(Point2::COMP_Y), -uy);
+                    j.set_ds(Self::end.component(Point2::COMP_X), ux);
+                    j.set_ds(Self::end.component(Point2::COMP_Y), uy);
                 }
                 j
             }

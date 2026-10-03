@@ -26,8 +26,9 @@ pub use geom::{
     MAX_POINT_JACOBIAN_PARAMS, MAX_SCALAR_JACOBIAN_PARAMS,
 };
 pub use geometry::{
-    AsShell, Chart, CurveExprs, EndpointExprs, Geometry, GeometryId, GeometryKind, GeometryRole,
-    GeometryShell, IdGenerator, PointExpr, ScalarExpr, VecExpr,
+    AsShell, AtomTuple, Chart, ChartSlot, CurveExprs, EndpointExprs, Geometry, GeometryId,
+    GeometryKind, GeometryRole, GeometryShell, IdGenerator, PointExpr, ScalarExpr, StateAtom,
+    VecExpr,
 };
 pub use geometry_kinds::Segment;
 pub use interact::{DragSession, InteractiveSolve, SoftTerms, SolveError};

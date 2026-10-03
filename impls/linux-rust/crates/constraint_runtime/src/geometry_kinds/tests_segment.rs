@@ -1,8 +1,9 @@
 use super::*;
 use crate::document::DocumentStructure;
 use crate::geom::{CurveParam, Point2, Vec2};
+use crate::geometry::StateAtom;
 use crate::geometry::{
-    CurveExprs, EndpointExprs, Geometry, GeometryId, GeometryRole, GeometryShell,
+    Chart, CurveExprs, EndpointExprs, Geometry, GeometryId, GeometryRole, GeometryShell,
 };
 use crate::state::State;
 
@@ -21,7 +22,9 @@ fn segment_geom(id: usize, param_offset: usize) -> Segment {
 #[test]
 fn segment_layout_and_param_block() {
     let offset = 0;
-    assert_eq!(Segment::PARAMETER_COUNT, 4);
+    assert_eq!(Segment::PARAMETER_COUNT, 2 * Point2::DOF_COUNT);
+    assert_eq!(Segment::start.indices(), vec![0, 1]);
+    assert_eq!(Segment::end.indices(), vec![2, 3]);
     let init = (Point2::new(0.0, 0.0), Point2::new(1.0, 0.0));
     assert_eq!(
         <Segment as Chart>::pack(init).as_ref(),
