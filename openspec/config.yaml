@@ -43,16 +43,19 @@ context: |
   must respect the distinction: point − point → vector; point + vector →
   point; vector + vector → vector; point + point is not meaningful.
 
-  Point / vector expressions (opaque, Model B):
-  A point or vector expression is an opaque handle to a geometry-kind-owned
-  formula that maps State parameters to a Point2 or Vec2 (plus connectivity/
-  Jacobian). Do not expose formula-kind variants on the public expression type
-  (no formula-kind match in the constraint path). Internally each kind keeps a
-  private formula catalog; an outer closed sum dispatches by geometry kind.
-  Point and free-vector Jacobians are both 2×n (rows ∂x/∂vx, ∂y/∂vy) with
-  formula-local n (sparse vs full geometry block). Parallel/Orthogonal take
-  two opaque vector expressions (v1: segment directions), not raw geometry ids.
-  Geometries construct expressions via factories; constraints, Mesh, and
+  Point / vector / length expressions (opaque, Model B):
+  A point, free-vector, or length expression is an opaque handle to a
+  geometry-kind-owned formula that maps State parameters to a Point2, Vec2,
+  or Length (plus connectivity / Jacobian). Do not expose formula-kind
+  variants on the public expression type (no formula-kind match in the
+  constraint path). Internally shared capability formula tags are keyed by
+  geometry kind in a closed sum for dispatch. Point and free-vector Jacobians
+  are both 2×n; length Jacobians are 1×n (ScalarJacobian) with formula-local n
+  (sparse vs full geometry block). Typed scalar families stay separate
+  (LengthExpr today; AngleExpr when a kind needs angles — no untyped
+  ScalarExpr). Parallel/Orthogonal take two opaque vector expressions;
+  EqualLength takes two LengthExprs. Geometries construct expressions via
+  capability factories (CurveExprs / EndpointExprs); constraints, Mesh, and
   Interact only evaluate them. See docs/constraint-mathematics.md
   (Design decision: opaque expressions).
 
@@ -76,14 +79,26 @@ context: |
 
   Rust module and unit-test layout (impls/linux-rust):
   constraint_runtime splits geometry concerns as follows:
-  - geom: shared affine types (Point2/Vec2, CurveParam) and stack
-    PointJacobian/VecJacobian (runtime width, fixed MAX cap)
-  - geometry/: GeometryShell + IdGenerator + ids/roles; object-safe Geometry
-    (geometry.rs); Chart + geometry_shell_instance! → GeometryKind marker
-    (blanket Geometry); opaque PointExpr/VecExpr/ScalarExpr (expr.rs);
-    capability traits + formula catalogs (capabilities.rs).
-  - geometry_kinds/: one file per concrete kind (charts); kinds only.
-    Document stores Vec<Box<dyn Geometry>>; add_geometry bound is GeometryKind.
+  - geom: shared affine / scalar DOF types (Point2, Vec2, Angle, Length,
+    CurveParam) and stack PointJacobian / VecJacobian / ScalarJacobian
+    (runtime width, fixed MAX cap)
+  - geometry/:
+    - shell.rs: GeometryShell, IdGenerator, ids/roles, AsShell,
+      geometry_shell_instance!
+    - geometry.rs: object-safe Geometry; GeometryKind marker (blanket)
+    - chart.rs: StateAtom, ChartSlot, PackAtoms, Chart, chart_atoms!
+      (named slots + pack/unpack from Init tuples)
+    - capabilities.rs: CurveExprs / EndpointExprs; shared formula tags;
+      CurveFormulaKey / EndpointFormulaKey with blankets (factories)
+    - expr.rs: opaque PointExpr / VecExpr / LengthExpr; register_expr_kinds!
+      (keyed enums, evaluate / param_indices / jacobian dispatch, and
+      CurveFormulaKey / EndpointFormulaKey impls for listed kinds)
+  - geometry_kinds/: one file per concrete kind. Per kind: shell +
+    chart_atoms!; eval_* + eval_*_jacobian per formula family; optional
+    sparse endpoint_point_param_indices (other families default connectivity
+    to all chart SLOTS); one register_expr_kinds! entry (no second keying
+    macro at the kind site). Document stores Vec<Box<dyn Geometry>>;
+    add_geometry bound is GeometryKind.
   - state: owned global parameter vector State (committed + working copies)
   - store: GeometryStore port (id → &dyn Geometry resolution only)
   - mapper: chart layout (param block, unpack_chart, local→global indices
