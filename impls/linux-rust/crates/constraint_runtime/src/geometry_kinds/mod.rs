@@ -5,9 +5,9 @@
 //! - [`chart_atoms!`](crate::geometry::chart::chart_atoms) naming
 //!   [`crate::geometry::StateAtom`] slots + [`geometry_shell_instance!`] →
 //!   [`crate::geometry::GeometryKind`] / [`crate::geometry::Geometry`]
-//! - one `eval_*` → [`FormulaEval`](crate::geometry::expr::FormulaEval) per
-//!   formula family (optional sparse `endpoint_point_param_indices`; other
-//!   families default connectivity to [`SLOTS`](crate::geometry::Chart))
+//! - per formula family: `eval_*` + `eval_*_jacobian` (optional sparse
+//!   `endpoint_point_param_indices`; other families default connectivity to
+//!   all chart slots)
 //! - one entry in [`register_expr_kinds!`](crate::geometry::expr) (installs
 //!   Expr dispatch + [`CurveFormulaKey`](crate::geometry::capabilities::CurveFormulaKey)
 //!   / optional [`EndpointFormulaKey`](crate::geometry::capabilities::EndpointFormulaKey))

@@ -5,7 +5,6 @@ use crate::geometry::capabilities::{
     CurveLengthFormula, CurvePointFormula, EndpointPointFormula, VecFormula,
 };
 use crate::geometry::chart::chart_atoms;
-use crate::geometry::expr::FormulaEval;
 use crate::geometry::shell::{geometry_shell_instance, GeometryShell};
 use crate::geometry::Chart;
 
@@ -33,34 +32,40 @@ chart_atoms! {
 }
 
 impl Segment {
-    pub(crate) fn eval_curve_point(
-        f: CurvePointFormula,
-        (a, b): (Point2, Point2),
-    ) -> FormulaEval<Point2, PointJacobian> {
+    pub(crate) fn eval_curve_point(f: CurvePointFormula, (a, b): (Point2, Point2)) -> Point2 {
         match f {
             CurvePointFormula::OnCurve { param } => {
                 let t = param.chart_t();
-                let value = Point2::new((1.0 - t) * a.x + t * b.x, (1.0 - t) * a.y + t * b.y);
-                let mut jac = PointJacobian::zeros(Self::PARAMETER_COUNT);
-                jac.set_dx_dy(Self::start.component(Point2::COMP_X), 1.0 - t, 0.0);
-                jac.set_dx_dy(Self::start.component(Point2::COMP_Y), 0.0, 1.0 - t);
-                jac.set_dx_dy(Self::end.component(Point2::COMP_X), t, 0.0);
-                jac.set_dx_dy(Self::end.component(Point2::COMP_Y), 0.0, t);
-                FormulaEval::new(value, jac)
+                Point2::new((1.0 - t) * a.x + t * b.x, (1.0 - t) * a.y + t * b.y)
             }
         }
     }
 
-    pub(crate) fn eval_endpoint_point(
-        f: EndpointPointFormula,
-        (a, b): (Point2, Point2),
-    ) -> FormulaEval<Point2, PointJacobian> {
+    pub(crate) fn eval_curve_point_jacobian(f: CurvePointFormula) -> PointJacobian {
         match f {
-            EndpointPointFormula::StartPoint => {
-                FormulaEval::new(a, PointJacobian::endpoint_identity())
+            CurvePointFormula::OnCurve { param } => {
+                let mut j = PointJacobian::zeros(Self::PARAMETER_COUNT);
+                let t = param.chart_t();
+                j.set_dx_dy(Self::start.component(Point2::COMP_X), 1.0 - t, 0.0);
+                j.set_dx_dy(Self::start.component(Point2::COMP_Y), 0.0, 1.0 - t);
+                j.set_dx_dy(Self::end.component(Point2::COMP_X), t, 0.0);
+                j.set_dx_dy(Self::end.component(Point2::COMP_Y), 0.0, t);
+                j
             }
-            EndpointPointFormula::EndPoint => {
-                FormulaEval::new(b, PointJacobian::endpoint_identity())
+        }
+    }
+
+    pub(crate) fn eval_endpoint_point(f: EndpointPointFormula, (a, b): (Point2, Point2)) -> Point2 {
+        match f {
+            EndpointPointFormula::StartPoint => a,
+            EndpointPointFormula::EndPoint => b,
+        }
+    }
+
+    pub(crate) fn eval_endpoint_point_jacobian(f: EndpointPointFormula) -> PointJacobian {
+        match f {
+            EndpointPointFormula::StartPoint | EndpointPointFormula::EndPoint => {
+                PointJacobian::endpoint_identity()
             }
         }
     }
@@ -73,50 +78,60 @@ impl Segment {
         }
     }
 
-    pub(crate) fn eval_vec(
-        f: VecFormula,
-        (a, b): (Point2, Point2),
-    ) -> FormulaEval<Vec2, VecJacobian> {
+    pub(crate) fn eval_vec(f: VecFormula, (a, b): (Point2, Point2)) -> Vec2 {
         match f {
             // γ'(t) = B - A (constant on a segment); length = segment length
+            VecFormula::TangentAt { .. } => b - a,
+            VecFormula::NormalAt { .. } => (b - a).left_normal(),
+        }
+    }
+
+    pub(crate) fn eval_vec_jacobian(f: VecFormula) -> VecJacobian {
+        match f {
             VecFormula::TangentAt { .. } => {
-                let mut jac = VecJacobian::zeros(Self::PARAMETER_COUNT);
-                jac.set_dx_dy(Self::start.component(Point2::COMP_X), -1.0, 0.0);
-                jac.set_dx_dy(Self::start.component(Point2::COMP_Y), 0.0, -1.0);
-                jac.set_dx_dy(Self::end.component(Point2::COMP_X), 1.0, 0.0);
-                jac.set_dx_dy(Self::end.component(Point2::COMP_Y), 0.0, 1.0);
-                FormulaEval::new(b - a, jac)
+                let mut j = VecJacobian::zeros(Self::PARAMETER_COUNT);
+                j.set_dx_dy(Self::start.component(Point2::COMP_X), -1.0, 0.0);
+                j.set_dx_dy(Self::start.component(Point2::COMP_Y), 0.0, -1.0);
+                j.set_dx_dy(Self::end.component(Point2::COMP_X), 1.0, 0.0);
+                j.set_dx_dy(Self::end.component(Point2::COMP_Y), 0.0, 1.0);
+                j
             }
             VecFormula::NormalAt { .. } => {
                 // n = (-vy, vx) of tangent ⇒ rotate each column of J_tan leftward
-                let mut jac = VecJacobian::zeros(Self::PARAMETER_COUNT);
-                jac.set_dx_dy(Self::start.component(Point2::COMP_X), 0.0, -1.0);
-                jac.set_dx_dy(Self::start.component(Point2::COMP_Y), 1.0, 0.0);
-                jac.set_dx_dy(Self::end.component(Point2::COMP_X), 0.0, 1.0);
-                jac.set_dx_dy(Self::end.component(Point2::COMP_Y), -1.0, 0.0);
-                FormulaEval::new((b - a).left_normal(), jac)
+                let mut j = VecJacobian::zeros(Self::PARAMETER_COUNT);
+                j.set_dx_dy(Self::start.component(Point2::COMP_X), 0.0, -1.0);
+                j.set_dx_dy(Self::start.component(Point2::COMP_Y), 1.0, 0.0);
+                j.set_dx_dy(Self::end.component(Point2::COMP_X), 0.0, 1.0);
+                j.set_dx_dy(Self::end.component(Point2::COMP_Y), -1.0, 0.0);
+                j
             }
         }
     }
 
-    pub(crate) fn eval_length(
+    pub(crate) fn eval_length(f: CurveLengthFormula, (a, b): (Point2, Point2)) -> Length {
+        match f {
+            CurveLengthFormula::Length => Length::new((b - a).length()),
+        }
+    }
+
+    pub(crate) fn eval_length_jacobian(
         f: CurveLengthFormula,
         (a, b): (Point2, Point2),
-    ) -> FormulaEval<Length, ScalarJacobian> {
+    ) -> ScalarJacobian {
         match f {
             CurveLengthFormula::Length => {
+                let mut j = ScalarJacobian::zeros(Self::PARAMETER_COUNT);
                 let d = b - a;
                 let len = d.length();
-                let mut jac = ScalarJacobian::zeros(Self::PARAMETER_COUNT);
                 if len > 0.0 {
                     let ux = d.x / len;
                     let uy = d.y / len;
-                    jac.set_ds(Self::start.component(Point2::COMP_X), -ux);
-                    jac.set_ds(Self::start.component(Point2::COMP_Y), -uy);
-                    jac.set_ds(Self::end.component(Point2::COMP_X), ux);
-                    jac.set_ds(Self::end.component(Point2::COMP_Y), uy);
+                    j.set_ds(Self::start.component(Point2::COMP_X), -ux);
+                    j.set_ds(Self::start.component(Point2::COMP_Y), -uy);
+                    j.set_ds(Self::end.component(Point2::COMP_X), ux);
+                    j.set_ds(Self::end.component(Point2::COMP_Y), uy);
                 }
-                FormulaEval::new(Length::new(len), jac)
+                j
             }
         }
     }
