@@ -2,12 +2,12 @@
 
 use crate::geom::{Length, Point2, PointJacobian, ScalarJacobian, Vec2, VecJacobian};
 use crate::geometry::capabilities::{
-    impl_curve_formula_key, impl_endpoint_formula_key, CurveLengthFormula, CurvePointFormula,
-    EndpointPointFormula, VecFormula,
+    CurveLengthFormula, CurvePointFormula, EndpointPointFormula, VecFormula,
 };
 use crate::geometry::chart::chart_atoms;
+use crate::geometry::expr::FormulaEval;
 use crate::geometry::shell::{geometry_shell_instance, GeometryShell};
-use crate::geometry::{Chart, ChartSlot};
+use crate::geometry::Chart;
 
 /// Line-segment instance: document shell plus segment chart formulas.
 ///
@@ -16,9 +16,8 @@ use crate::geometry::{Chart, ChartSlot};
 /// pack / unpack / [`Self::SLOTS`] follow from that.
 /// Shell fields via [`crate::geometry::AsShell`] (from [`geometry_shell_instance!`]);
 /// together with [`Chart`] that yields [`crate::geometry::GeometryKind`] /
-/// [`crate::geometry::Geometry`]. Expression factories via [`impl_curve_formula_key!`] /
-/// [`impl_endpoint_formula_key!`] (endpoint override: sparse start/end formulas, not
-/// default on-curve \(t = 0/1\)).
+/// [`crate::geometry::Geometry`]. Expression keying comes from
+/// [`register_expr_kinds!`](crate::geometry::expr) (`endpoint:` → sparse start/end).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct Segment {
     pub shell: GeometryShell,
@@ -34,44 +33,39 @@ chart_atoms! {
 }
 
 impl Segment {
-    pub(crate) fn eval_curve_point(f: CurvePointFormula, (a, b): (Point2, Point2)) -> Point2 {
+    pub(crate) fn eval_curve_point(
+        f: CurvePointFormula,
+        (a, b): (Point2, Point2),
+    ) -> FormulaEval<Point2, PointJacobian> {
         match f {
             CurvePointFormula::OnCurve { param } => {
                 let t = param.chart_t();
-                Point2::new((1.0 - t) * a.x + t * b.x, (1.0 - t) * a.y + t * b.y)
+                let value = Point2::new((1.0 - t) * a.x + t * b.x, (1.0 - t) * a.y + t * b.y);
+                let mut jac = PointJacobian::zeros(Self::PARAMETER_COUNT);
+                jac.set_dx_dy(Self::start.component(Point2::COMP_X), 1.0 - t, 0.0);
+                jac.set_dx_dy(Self::start.component(Point2::COMP_Y), 0.0, 1.0 - t);
+                jac.set_dx_dy(Self::end.component(Point2::COMP_X), t, 0.0);
+                jac.set_dx_dy(Self::end.component(Point2::COMP_Y), 0.0, t);
+                FormulaEval::new(value, jac)
             }
         }
     }
 
-    /// Formula-local parameter indices (into the chart block, not global State).
-    pub(crate) fn curve_point_param_indices(f: CurvePointFormula) -> Vec<usize> {
+    pub(crate) fn eval_endpoint_point(
+        f: EndpointPointFormula,
+        (a, b): (Point2, Point2),
+    ) -> FormulaEval<Point2, PointJacobian> {
         match f {
-            CurvePointFormula::OnCurve { .. } => ChartSlot::union_indices(Self::SLOTS),
-        }
-    }
-
-    pub(crate) fn eval_curve_point_jacobian(f: CurvePointFormula) -> PointJacobian {
-        match f {
-            CurvePointFormula::OnCurve { param } => {
-                let mut j = PointJacobian::zeros(Self::PARAMETER_COUNT);
-                let t = param.chart_t();
-                j.set_dx_dy(Self::start.component(Point2::COMP_X), 1.0 - t, 0.0);
-                j.set_dx_dy(Self::start.component(Point2::COMP_Y), 0.0, 1.0 - t);
-                j.set_dx_dy(Self::end.component(Point2::COMP_X), t, 0.0);
-                j.set_dx_dy(Self::end.component(Point2::COMP_Y), 0.0, t);
-                j
+            EndpointPointFormula::StartPoint => {
+                FormulaEval::new(a, PointJacobian::endpoint_identity())
+            }
+            EndpointPointFormula::EndPoint => {
+                FormulaEval::new(b, PointJacobian::endpoint_identity())
             }
         }
     }
 
-    pub(crate) fn eval_endpoint_point(f: EndpointPointFormula, (a, b): (Point2, Point2)) -> Point2 {
-        match f {
-            EndpointPointFormula::StartPoint => a,
-            EndpointPointFormula::EndPoint => b,
-        }
-    }
-
-    /// Formula-local parameter indices (into the chart block, not global State).
+    /// Sparse endpoint connectivity (override; curve/vec/length default to [`Self::SLOTS`]).
     pub(crate) fn endpoint_point_param_indices(f: EndpointPointFormula) -> Vec<usize> {
         match f {
             EndpointPointFormula::StartPoint => Self::start.indices(),
@@ -79,89 +73,54 @@ impl Segment {
         }
     }
 
-    pub(crate) fn eval_endpoint_point_jacobian(f: EndpointPointFormula) -> PointJacobian {
-        match f {
-            EndpointPointFormula::StartPoint | EndpointPointFormula::EndPoint => {
-                PointJacobian::endpoint_identity()
-            }
-        }
-    }
-
-    /// Evaluate a shared free-vector formula against unpacked segment endpoints.
-    pub(crate) fn eval_vec(f: VecFormula, (a, b): (Point2, Point2)) -> Vec2 {
+    pub(crate) fn eval_vec(
+        f: VecFormula,
+        (a, b): (Point2, Point2),
+    ) -> FormulaEval<Vec2, VecJacobian> {
         match f {
             // γ'(t) = B - A (constant on a segment); length = segment length
-            VecFormula::TangentAt { .. } => b - a,
-            VecFormula::NormalAt { .. } => (b - a).left_normal(),
-        }
-    }
-
-    /// Formula-local parameter indices (into the chart block, not global State).
-    pub(crate) fn vec_param_indices(_f: VecFormula) -> Vec<usize> {
-        ChartSlot::union_indices(Self::SLOTS)
-    }
-
-    pub(crate) fn eval_vec_jacobian(f: VecFormula) -> VecJacobian {
-        match f {
             VecFormula::TangentAt { .. } => {
-                // v = end - start
-                let mut j = VecJacobian::zeros(Self::PARAMETER_COUNT);
-                j.set_dx_dy(Self::start.component(Point2::COMP_X), -1.0, 0.0);
-                j.set_dx_dy(Self::start.component(Point2::COMP_Y), 0.0, -1.0);
-                j.set_dx_dy(Self::end.component(Point2::COMP_X), 1.0, 0.0);
-                j.set_dx_dy(Self::end.component(Point2::COMP_Y), 0.0, 1.0);
-                j
+                let mut jac = VecJacobian::zeros(Self::PARAMETER_COUNT);
+                jac.set_dx_dy(Self::start.component(Point2::COMP_X), -1.0, 0.0);
+                jac.set_dx_dy(Self::start.component(Point2::COMP_Y), 0.0, -1.0);
+                jac.set_dx_dy(Self::end.component(Point2::COMP_X), 1.0, 0.0);
+                jac.set_dx_dy(Self::end.component(Point2::COMP_Y), 0.0, 1.0);
+                FormulaEval::new(b - a, jac)
             }
             VecFormula::NormalAt { .. } => {
                 // n = (-vy, vx) of tangent ⇒ rotate each column of J_tan leftward
-                let mut j = VecJacobian::zeros(Self::PARAMETER_COUNT);
-                j.set_dx_dy(Self::start.component(Point2::COMP_X), 0.0, -1.0);
-                j.set_dx_dy(Self::start.component(Point2::COMP_Y), 1.0, 0.0);
-                j.set_dx_dy(Self::end.component(Point2::COMP_X), 0.0, 1.0);
-                j.set_dx_dy(Self::end.component(Point2::COMP_Y), -1.0, 0.0);
-                j
+                let mut jac = VecJacobian::zeros(Self::PARAMETER_COUNT);
+                jac.set_dx_dy(Self::start.component(Point2::COMP_X), 0.0, -1.0);
+                jac.set_dx_dy(Self::start.component(Point2::COMP_Y), 1.0, 0.0);
+                jac.set_dx_dy(Self::end.component(Point2::COMP_X), 0.0, 1.0);
+                jac.set_dx_dy(Self::end.component(Point2::COMP_Y), -1.0, 0.0);
+                FormulaEval::new((b - a).left_normal(), jac)
             }
         }
     }
 
-    pub(crate) fn eval_length(f: CurveLengthFormula, (a, b): (Point2, Point2)) -> Length {
-        match f {
-            CurveLengthFormula::Length => Length::new((b - a).length()),
-        }
-    }
-
-    /// Formula-local parameter indices (into the chart block, not global State).
-    pub(crate) fn length_param_indices(f: CurveLengthFormula) -> Vec<usize> {
-        match f {
-            CurveLengthFormula::Length => ChartSlot::union_indices(Self::SLOTS),
-        }
-    }
-
-    pub(crate) fn eval_length_jacobian(
+    pub(crate) fn eval_length(
         f: CurveLengthFormula,
         (a, b): (Point2, Point2),
-    ) -> ScalarJacobian {
+    ) -> FormulaEval<Length, ScalarJacobian> {
         match f {
             CurveLengthFormula::Length => {
-                let mut j = ScalarJacobian::zeros(Self::PARAMETER_COUNT);
                 let d = b - a;
                 let len = d.length();
+                let mut jac = ScalarJacobian::zeros(Self::PARAMETER_COUNT);
                 if len > 0.0 {
                     let ux = d.x / len;
                     let uy = d.y / len;
-                    j.set_ds(Self::start.component(Point2::COMP_X), -ux);
-                    j.set_ds(Self::start.component(Point2::COMP_Y), -uy);
-                    j.set_ds(Self::end.component(Point2::COMP_X), ux);
-                    j.set_ds(Self::end.component(Point2::COMP_Y), uy);
+                    jac.set_ds(Self::start.component(Point2::COMP_X), -ux);
+                    jac.set_ds(Self::start.component(Point2::COMP_Y), -uy);
+                    jac.set_ds(Self::end.component(Point2::COMP_X), ux);
+                    jac.set_ds(Self::end.component(Point2::COMP_Y), uy);
                 }
-                j
+                FormulaEval::new(Length::new(len), jac)
             }
         }
     }
 }
-
-impl_curve_formula_key!(Segment, SegmentCurve, Segment, Segment);
-impl_endpoint_formula_key!(Segment, SegmentEndpoint);
 
 #[cfg(test)]
 #[path = "tests_segment.rs"]

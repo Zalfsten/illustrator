@@ -1,4 +1,4 @@
-//! Opaque point/vector/length/angle expressions (Model B).
+//! Opaque point/vector/length expressions (Model B).
 //!
 //! Shared formula *tags* live in [`super::capabilities`]. This module keys them
 //! by geometry kind for evaluate dispatch ([`register_expr_kinds!`]) and owns
@@ -10,11 +10,28 @@
 //! [`crate::geom::ScalarJacobian`]); this module only returns them from
 //! evaluate helpers.
 //!
-//! **Adding a kind:** extend the [`register_expr_kinds!`] invocation at the
-//! bottom of this file (and implement the kind's `eval_*` / `*_param_indices`
-//! inherent methods). Capability keying macros pick the same variant names.
+//! **Adding a kind:** implement one `eval_*` per formula family (returns
+//! [`FormulaEval`]), optional sparse `*_param_indices` overrides, then add one
+//! block to [`register_expr_kinds!`] (generates keyed enums, Expr dispatch, and
+//! [`super::capabilities::CurveFormulaKey`] / [`EndpointFormulaKey`](super::capabilities::EndpointFormulaKey)).
 
 use super::shell::GeometryId;
+
+/// Value + analytical Jacobian for one formula evaluation.
+///
+/// Connectivity indices stay separate (often chart-independent; default = all
+/// chart slots) so [`param_indices`](PointExpr::param_indices) needs no State.
+#[derive(Clone, Debug)]
+pub(crate) struct FormulaEval<V, J> {
+    pub value: V,
+    pub jac: J,
+}
+
+impl<V, J> FormulaEval<V, J> {
+    pub(crate) fn new(value: V, jac: J) -> Self {
+        Self { value, jac }
+    }
+}
 
 /// Opaque point expression: map from State parameters to a [`crate::geom::Point2`].
 ///
@@ -69,35 +86,31 @@ impl LengthExpr {
     }
 }
 
-/// Opaque angle expression: map from State parameters to a [`crate::geom::Angle`].
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct AngleExpr {
-    geometry: GeometryId,
-    formula: AngleFormulaKeyed,
-}
-
-impl AngleExpr {
-    #[allow(dead_code)] // constructed once a kind registers `angle:` formulas
-    pub(crate) fn new(geometry: GeometryId, formula: AngleFormulaKeyed) -> Self {
-        Self { geometry, formula }
-    }
-
-    pub fn referenced_geometry(&self) -> GeometryId {
-        self.geometry
-    }
-}
-
-/// Shared evaluate / param_indices / jacobian dispatch for a single keyed catalog.
+/// Dispatch for a single keyed catalog whose kind eval returns [`FormulaEval`].
 ///
-/// - `jac_chart`: jacobian unpacks the chart (length / angle).
-/// - `jac_static`: jacobian is chart-independent (free vectors).
-/// - `by_value`: match the formula by value (required when the keyed enum may be empty).
+/// Connectivity defaults to all chart [`SLOTS`](super::ChartSlot) unless
+/// `indices:` names a kind override (e.g. sparse endpoints).
 macro_rules! impl_keyed_expr {
     (
         $Expr:ident, $Keyed:ident => $Value:ty;
         eval: $eval:ident;
-        indices: $indices:ident;
-        jac_static: $jac:ident => $Jac:ty;
+        jac: $jac_method:ident => $Jac:ty;
+        $($var:ident => $kind:ty),+ $(,)?
+    ) => {
+        impl_keyed_expr! {
+            $Expr, $Keyed => $Value;
+            eval: $eval;
+            jac: $jac_method => $Jac;
+            indices_default;
+            $($var => $kind),+
+        }
+    };
+
+    (
+        $Expr:ident, $Keyed:ident => $Value:ty;
+        eval: $eval:ident;
+        jac: $jac_method:ident => $Jac:ty;
+        indices_default;
         $($var:ident => $kind:ty),+ $(,)?
     ) => {
         impl $Expr {
@@ -111,7 +124,7 @@ macro_rules! impl_keyed_expr {
                     $(
                         $Keyed::$var(f) => {
                             let chart = $crate::mapper::Mapper::unpack_chart::<$kind>(g, p);
-                            <$kind>::$eval(*f, chart)
+                            <$kind>::$eval(*f, chart).value
                         }
                     )+
                 }
@@ -122,56 +135,9 @@ macro_rules! impl_keyed_expr {
                 store: &impl $crate::store::GeometryStore,
             ) -> Vec<usize> {
                 let local = match &self.formula {
-                    $($Keyed::$var(f) => <$kind>::$indices(*f),)+
-                };
-                $crate::mapper::Mapper::globalize_indices(
-                    store.expect_geometry(self.geometry),
-                    local,
-                )
-            }
-
-            pub fn $jac(
-                &self,
-                _store: &impl $crate::store::GeometryStore,
-                _p: &$crate::state::State,
-            ) -> $Jac {
-                match &self.formula {
-                    $($Keyed::$var(f) => <$kind>::$jac(*f),)+
-                }
-            }
-        }
-    };
-
-    (
-        $Expr:ident, $Keyed:ident => $Value:ty;
-        eval: $eval:ident;
-        indices: $indices:ident;
-        jac_chart: $jac:ident => $Jac:ty;
-        $($var:ident => $kind:ty),+ $(,)?
-    ) => {
-        impl $Expr {
-            pub fn evaluate(
-                &self,
-                store: &impl $crate::store::GeometryStore,
-                p: &$crate::state::State,
-            ) -> $Value {
-                let g = store.expect_geometry(self.geometry);
-                match &self.formula {
                     $(
-                        $Keyed::$var(f) => {
-                            let chart = $crate::mapper::Mapper::unpack_chart::<$kind>(g, p);
-                            <$kind>::$eval(*f, chart)
-                        }
+                        $Keyed::$var(_f) => $crate::geometry::ChartSlot::union_indices(<$kind>::SLOTS),
                     )+
-                }
-            }
-
-            pub fn param_indices(
-                &self,
-                store: &impl $crate::store::GeometryStore,
-            ) -> Vec<usize> {
-                let local = match &self.formula {
-                    $($Keyed::$var(f) => <$kind>::$indices(*f),)+
                 };
                 $crate::mapper::Mapper::globalize_indices(
                     store.expect_geometry(self.geometry),
@@ -179,7 +145,7 @@ macro_rules! impl_keyed_expr {
                 )
             }
 
-            pub fn $jac(
+            pub fn $jac_method(
                 &self,
                 store: &impl $crate::store::GeometryStore,
                 p: &$crate::state::State,
@@ -189,91 +155,26 @@ macro_rules! impl_keyed_expr {
                     $(
                         $Keyed::$var(f) => {
                             let chart = $crate::mapper::Mapper::unpack_chart::<$kind>(g, p);
-                            <$kind>::$jac(*f, chart)
+                            <$kind>::$eval(*f, chart).jac
                         }
                     )+
-                }
-            }
-        }
-    };
-
-    // Optional catalog (e.g. angle): may expand to an empty enum; match by value.
-    (
-        $Expr:ident, $Keyed:ident => $Value:ty;
-        eval: $eval:ident;
-        indices: $indices:ident;
-        jac_chart: $jac:ident => $Jac:ty;
-        by_value;
-        $($var:ident => $kind:ty),* $(,)?
-    ) => {
-        impl $Expr {
-            #[allow(unused_variables)]
-            pub fn evaluate(
-                &self,
-                store: &impl $crate::store::GeometryStore,
-                p: &$crate::state::State,
-            ) -> $Value {
-                match self.formula {
-                    $(
-                        $Keyed::$var(f) => {
-                            let g = store.expect_geometry(self.geometry);
-                            let chart = $crate::mapper::Mapper::unpack_chart::<$kind>(g, p);
-                            <$kind>::$eval(f, chart)
-                        }
-                    )*
-                }
-            }
-
-            #[allow(unused_variables)]
-            pub fn param_indices(
-                &self,
-                store: &impl $crate::store::GeometryStore,
-            ) -> Vec<usize> {
-                match self.formula {
-                    $(
-                        $Keyed::$var(f) => {
-                            $crate::mapper::Mapper::globalize_indices(
-                                store.expect_geometry(self.geometry),
-                                <$kind>::$indices(f),
-                            )
-                        }
-                    )*
-                }
-            }
-
-            #[allow(unused_variables)]
-            pub fn $jac(
-                &self,
-                store: &impl $crate::store::GeometryStore,
-                p: &$crate::state::State,
-            ) -> $Jac {
-                match self.formula {
-                    $(
-                        $Keyed::$var(f) => {
-                            let g = store.expect_geometry(self.geometry);
-                            let chart = $crate::mapper::Mapper::unpack_chart::<$kind>(g, p);
-                            <$kind>::$jac(f, chart)
-                        }
-                    )*
                 }
             }
         }
     };
 }
 
-/// Generate kind-keyed formula enums and evaluate / connectivity / Jacobian
-/// dispatch for opaque expressions.
+/// Generate kind-keyed formula enums, Expr dispatch, and capability keying impls.
 ///
 /// Each entry names a chart type and the enum variants used for curve points,
-/// optional endpoint points, free vectors, lengths, and optional angles.
+/// optional endpoint points, free vectors, and lengths.
 macro_rules! register_expr_kinds {
     ($(
         $kind:ty {
             curve: $curve_var:ident,
             $(endpoint: $endpoint_var:ident,)?
             vec: $vec_var:ident,
-            length: $length_var:ident,
-            $(angle: $angle_var:ident,)?
+            length: $length_var:ident $(,)?
         }
     ),+ $(,)?) => {
         /// Kind-keyed wrapper around curve / endpoint formula catalogs.
@@ -301,15 +202,37 @@ macro_rules! register_expr_kinds {
             )+
         }
 
-        /// Kind-keyed wrapper around the shared curve [`CurveAngleFormula`] catalog.
-        #[derive(Clone, Copy, Debug, PartialEq)]
-        pub(crate) enum AngleFormulaKeyed {
-            $(
-                $($angle_var($crate::geometry::capabilities::CurveAngleFormula),)?
-            )+
-        }
+        $(
+            impl $crate::geometry::capabilities::CurveFormulaKey for $kind {
+                fn curve_point(
+                    f: $crate::geometry::capabilities::CurvePointFormula,
+                ) -> PointFormulaKeyed {
+                    PointFormulaKeyed::$curve_var(f)
+                }
 
-        // PointExprs span two catalogs (curve + optional endpoint); keep match here.
+                fn vec(f: $crate::geometry::capabilities::VecFormula) -> VecFormulaKeyed {
+                    VecFormulaKeyed::$vec_var(f)
+                }
+
+                fn length(
+                    f: $crate::geometry::capabilities::CurveLengthFormula,
+                ) -> LengthFormulaKeyed {
+                    LengthFormulaKeyed::$length_var(f)
+                }
+            }
+
+            $(
+                impl $crate::geometry::capabilities::EndpointFormulaKey for $kind {
+                    fn endpoint_point(
+                        f: $crate::geometry::capabilities::EndpointPointFormula,
+                    ) -> PointFormulaKeyed {
+                        PointFormulaKeyed::$endpoint_var(f)
+                    }
+                }
+            )?
+        )+
+
+        // PointExprs span two catalogs (curve + optional endpoint).
         impl PointExpr {
             pub fn evaluate(
                 &self,
@@ -321,12 +244,12 @@ macro_rules! register_expr_kinds {
                     $(
                         PointFormulaKeyed::$curve_var(f) => {
                             let chart = $crate::mapper::Mapper::unpack_chart::<$kind>(g, p);
-                            <$kind>::eval_curve_point(*f, chart)
+                            <$kind>::eval_curve_point(*f, chart).value
                         }
                         $(
                             PointFormulaKeyed::$endpoint_var(f) => {
                                 let chart = $crate::mapper::Mapper::unpack_chart::<$kind>(g, p);
-                                <$kind>::eval_endpoint_point(*f, chart)
+                                <$kind>::eval_endpoint_point(*f, chart).value
                             }
                         )?
                     )+
@@ -339,7 +262,9 @@ macro_rules! register_expr_kinds {
             ) -> Vec<usize> {
                 let local = match &self.formula {
                     $(
-                        PointFormulaKeyed::$curve_var(f) => <$kind>::curve_point_param_indices(*f),
+                        PointFormulaKeyed::$curve_var(_f) => {
+                            $crate::geometry::ChartSlot::union_indices(<$kind>::SLOTS)
+                        }
                         $(
                             PointFormulaKeyed::$endpoint_var(f) => {
                                 <$kind>::endpoint_point_param_indices(*f)
@@ -355,15 +280,20 @@ macro_rules! register_expr_kinds {
 
             pub fn eval_point_jacobian(
                 &self,
-                _store: &impl $crate::store::GeometryStore,
-                _p: &$crate::state::State,
+                store: &impl $crate::store::GeometryStore,
+                p: &$crate::state::State,
             ) -> $crate::geom::PointJacobian {
+                let g = store.expect_geometry(self.geometry);
                 match &self.formula {
                     $(
-                        PointFormulaKeyed::$curve_var(f) => <$kind>::eval_curve_point_jacobian(*f),
+                        PointFormulaKeyed::$curve_var(f) => {
+                            let chart = $crate::mapper::Mapper::unpack_chart::<$kind>(g, p);
+                            <$kind>::eval_curve_point(*f, chart).jac
+                        }
                         $(
                             PointFormulaKeyed::$endpoint_var(f) => {
-                                <$kind>::eval_endpoint_point_jacobian(*f)
+                                let chart = $crate::mapper::Mapper::unpack_chart::<$kind>(g, p);
+                                <$kind>::eval_endpoint_point(*f, chart).jac
                             }
                         )?
                     )+
@@ -374,31 +304,21 @@ macro_rules! register_expr_kinds {
         impl_keyed_expr! {
             VecExpr, VecFormulaKeyed => $crate::geom::Vec2;
             eval: eval_vec;
-            indices: vec_param_indices;
-            jac_static: eval_vec_jacobian => $crate::geom::VecJacobian;
+            jac: eval_vec_jacobian => $crate::geom::VecJacobian;
             $($vec_var => $kind),+
         }
 
         impl_keyed_expr! {
             LengthExpr, LengthFormulaKeyed => $crate::geom::Length;
             eval: eval_length;
-            indices: length_param_indices;
-            jac_chart: eval_length_jacobian => $crate::geom::ScalarJacobian;
+            jac: eval_length_jacobian => $crate::geom::ScalarJacobian;
             $($length_var => $kind),+
-        }
-
-        impl_keyed_expr! {
-            AngleExpr, AngleFormulaKeyed => $crate::geom::Angle;
-            eval: eval_angle;
-            indices: angle_param_indices;
-            jac_chart: eval_angle_jacobian => $crate::geom::ScalarJacobian;
-            by_value;
-            $($($angle_var => $kind,)?)+
         }
     };
 }
 
 // Kind registry: add new geometry kinds here (one block each).
+// Also installs CurveFormulaKey / EndpointFormulaKey for listed kinds.
 register_expr_kinds! {
     crate::geometry_kinds::Segment {
         curve: SegmentCurve,
