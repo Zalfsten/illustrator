@@ -1,8 +1,9 @@
 //! Headless acceptance scenarios.
 
 use constraint_runtime::{
-    AssembledSystem, Constraint, CurveExprs, CurveParam, Document, DragSession, EndpointExprs,
-    GeometryRole, InteractiveSolve, Point2, SoftContribution, SystemEval, SOLVE_TOL, Segment,
+    AssembledSystem, Congruence, CurveExprs, CurveParam, Document, DragSession, EndpointExprs,
+    EqualLength, FixPoint, GeometryRole, InteractiveSolve, Orthogonal, Parallel, Point2,
+    SoftContribution, SystemEval, Segment, SOLVE_TOL,
 };
 
 fn residual_ok(doc: &Document) -> bool {
@@ -18,15 +19,15 @@ fn right_angle_soft_drag_keeps_orthogonal_and_congruence() {
     let mut doc = Document::new();
     let s0 = doc.add_geometry::<Segment>(GeometryRole::Result, (Point2::new(0.0, 0.0), Point2::new(1.0, 0.0)));
     let s1 = doc.add_geometry::<Segment>(GeometryRole::Result, (Point2::new(1.0, 0.0), Point2::new(1.0, 1.0)));
-    doc.add_constraint(Constraint::Congruence {
+    doc.add_constraint(Congruence {
         a: Segment::end_expr(s0),
         b: Segment::start_expr(s1),
     });
-    doc.add_constraint(Constraint::Orthogonal {
+    doc.add_constraint(Orthogonal {
         a: Segment::tangent_expr(s0, CurveParam::Normalized(0.0)),
         b: Segment::tangent_expr(s1, CurveParam::Normalized(0.0)),
     });
-    doc.add_constraint(Constraint::FixPoint {
+    doc.add_constraint(FixPoint {
         point: Segment::start_expr(s0),
         target: Point2::new(0.0, 0.0),
     });
@@ -57,36 +58,36 @@ fn rectangle_drag_keeps_structure_and_stays_near() {
     let cd = doc.add_geometry::<Segment>(GeometryRole::Result, (Point2::new(2.0, 0.0), Point2::new(0.0, 0.0)));
     let da = doc.add_geometry::<Segment>(GeometryRole::Result, (Point2::new(0.0, 0.0), Point2::new(0.0, 1.0)));
 
-    doc.add_constraint(Constraint::Congruence {
+    doc.add_constraint(Congruence {
         a: Segment::end_expr(ab),
         b: Segment::start_expr(bc),
     });
-    doc.add_constraint(Constraint::Congruence {
+    doc.add_constraint(Congruence {
         a: Segment::end_expr(bc),
         b: Segment::start_expr(cd),
     });
-    doc.add_constraint(Constraint::Congruence {
+    doc.add_constraint(Congruence {
         a: Segment::end_expr(cd),
         b: Segment::start_expr(da),
     });
-    doc.add_constraint(Constraint::Congruence {
+    doc.add_constraint(Congruence {
         a: Segment::end_expr(da),
         b: Segment::start_expr(ab),
     });
 
-    doc.add_constraint(Constraint::Parallel {
+    doc.add_constraint(Parallel {
         a: Segment::tangent_expr(ab, CurveParam::Normalized(0.0)),
         b: Segment::tangent_expr(cd, CurveParam::Normalized(0.0)),
     });
-    doc.add_constraint(Constraint::Parallel {
+    doc.add_constraint(Parallel {
         a: Segment::tangent_expr(da, CurveParam::Normalized(0.0)),
         b: Segment::tangent_expr(bc, CurveParam::Normalized(0.0)),
     });
-    doc.add_constraint(Constraint::Orthogonal {
+    doc.add_constraint(Orthogonal {
         a: Segment::tangent_expr(ab, CurveParam::Normalized(0.0)),
         b: Segment::tangent_expr(da, CurveParam::Normalized(0.0)),
     });
-    doc.add_constraint(Constraint::FixPoint {
+    doc.add_constraint(FixPoint {
         point: Segment::start_expr(ab),
         target: Point2::new(0.0, 1.0),
     });
@@ -125,15 +126,15 @@ fn right_angle_horizontal_drag_moves_x() {
     let mut doc = Document::new();
     let s0 = doc.add_geometry::<Segment>(GeometryRole::Result, (Point2::new(120.0, 320.0), Point2::new(320.0, 320.0)));
     let s1 = doc.add_geometry::<Segment>(GeometryRole::Result, (Point2::new(320.0, 320.0), Point2::new(320.0, 140.0)));
-    doc.add_constraint(Constraint::Congruence {
+    doc.add_constraint(Congruence {
         a: Segment::end_expr(s0),
         b: Segment::start_expr(s1),
     });
-    doc.add_constraint(Constraint::Orthogonal {
+    doc.add_constraint(Orthogonal {
         a: Segment::tangent_expr(s0, CurveParam::Normalized(0.0)),
         b: Segment::tangent_expr(s1, CurveParam::Normalized(0.0)),
     });
-    doc.add_constraint(Constraint::FixPoint {
+    doc.add_constraint(FixPoint {
         point: Segment::start_expr(s0),
         target: Point2::new(120.0, 320.0),
     });
@@ -172,15 +173,15 @@ fn congruence_to_uniform_midpoint_pins_segment() {
     let mut doc = Document::new();
     let s0 = doc.add_geometry::<Segment>(GeometryRole::Result, (Point2::new(0.0, 0.0), Point2::new(4.0, 0.0)));
     let s1 = doc.add_geometry::<Segment>(GeometryRole::Result, (Point2::new(1.0, 2.0), Point2::new(5.0, 2.0)));
-    doc.add_constraint(Constraint::FixPoint {
+    doc.add_constraint(FixPoint {
         point: Segment::start_expr(s0),
         target: Point2::new(0.0, 0.0),
     });
-    doc.add_constraint(Constraint::FixPoint {
+    doc.add_constraint(FixPoint {
         point: Segment::start_expr(s1),
         target: Point2::new(1.0, 2.0),
     });
-    doc.add_constraint(Constraint::Congruence {
+    doc.add_constraint(Congruence {
         a: Segment::on_curve_expr(s0, CurveParam::Uniform(0.5),
         ),
         b: Segment::start_expr(s1),
@@ -206,19 +207,19 @@ fn equal_length_keeps_two_segments_same_length() {
         GeometryRole::Result,
         (Point2::new(0.0, 1.0), Point2::new(1.0, 1.0)),
     );
-    doc.add_constraint(Constraint::FixPoint {
+    doc.add_constraint(FixPoint {
         point: Segment::start_expr(s0),
         target: Point2::new(0.0, 0.0),
     });
-    doc.add_constraint(Constraint::FixPoint {
+    doc.add_constraint(FixPoint {
         point: Segment::start_expr(s1),
         target: Point2::new(0.0, 1.0),
     });
-    doc.add_constraint(Constraint::EqualLength {
+    doc.add_constraint(EqualLength {
         a: Segment::length_expr(s0),
         b: Segment::length_expr(s1),
     });
-    doc.add_constraint(Constraint::FixPoint {
+    doc.add_constraint(FixPoint {
         point: Segment::end_expr(s0),
         target: Point2::new(3.0, 0.0),
     });

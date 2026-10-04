@@ -1,5 +1,5 @@
 use super::*;
-use crate::constraint::Constraint;
+use crate::constraint_kinds::{Congruence, FixPoint, Orthogonal, Parallel};
 use crate::geom::{CurveParam, Point2};
 use crate::geometry_kinds::Segment;
 use crate::geometry::{CurveExprs, EndpointExprs, GeometryId, GeometryRole};
@@ -9,19 +9,19 @@ fn residual_arity_stacks() {
     let mut doc = Document::new();
     let s0 = doc.add_geometry::<Segment>(GeometryRole::Result, (Point2::new(0.0, 0.0), Point2::new(1.0, 0.0)));
     let s1 = doc.add_geometry::<Segment>(GeometryRole::Result, (Point2::new(1.0, 0.0), Point2::new(1.0, 1.0)));
-    doc.add_constraint(Constraint::Congruence {
+    doc.add_constraint(Congruence {
         a: Segment::end_expr(s0),
         b: Segment::start_expr(s1),
     });
-    doc.add_constraint(Constraint::Parallel {
+    doc.add_constraint(Parallel {
         a: Segment::tangent_expr(s0, CurveParam::Normalized(0.0)),
         b: Segment::tangent_expr(s1, CurveParam::Normalized(0.0)),
     });
-    doc.add_constraint(Constraint::Orthogonal {
+    doc.add_constraint(Orthogonal {
         a: Segment::tangent_expr(s0, CurveParam::Normalized(0.0)),
         b: Segment::tangent_expr(s1, CurveParam::Normalized(0.0)),
     });
-    doc.add_constraint(Constraint::FixPoint {
+    doc.add_constraint(FixPoint {
         point: Segment::start_expr(s0),
         target: Point2::new(0.0, 0.0),
     });
@@ -35,11 +35,11 @@ fn assembled_jacobian_matches_global_fd() {
     let mut doc = Document::new();
     let s0 = doc.add_geometry::<Segment>(GeometryRole::Result, (Point2::new(0.0, 0.0), Point2::new(1.0, 0.0)));
     let _s1 = doc.add_geometry::<Segment>(GeometryRole::Result, (Point2::new(1.0, 0.5), Point2::new(2.0, 0.5)));
-    doc.add_constraint(Constraint::Congruence {
+    doc.add_constraint(Congruence {
         a: Segment::end_expr(s0),
         b: Segment::start_expr(GeometryId(1)),
     });
-    doc.add_constraint(Constraint::FixPoint {
+    doc.add_constraint(FixPoint {
         point: Segment::start_expr(s0),
         target: Point2::new(0.0, 0.0),
     });

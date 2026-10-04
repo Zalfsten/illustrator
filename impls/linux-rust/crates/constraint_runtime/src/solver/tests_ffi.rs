@@ -1,6 +1,6 @@
 use super::*;
 use crate::assemble::AssembledSystem;
-use crate::constraint::Constraint;
+use crate::constraint_kinds::FixPoint;
 use crate::document::Document;
 use crate::geom::Point2;
 use crate::geometry::{EndpointExprs, GeometryRole};
@@ -15,7 +15,7 @@ fn c_calling_pattern_fills_residual() {
         GeometryRole::Result,
         (Point2::new(0.0, 0.0), Point2::new(1.0, 0.0)),
     );
-    doc.add_constraint(Constraint::FixPoint {
+    doc.add_constraint(FixPoint {
         point: Segment::start_expr(s0),
         target: Point2::new(0.0, 0.0),
     });

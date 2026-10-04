@@ -5,6 +5,7 @@ pub mod assemble;
 pub mod ceres_solver;
 pub mod connectivity;
 pub mod constraint;
+pub mod constraint_kinds;
 pub mod document;
 pub mod geom;
 pub mod geometry;
@@ -20,6 +21,7 @@ pub use assemble::{structural_residual_norm, AssembledSystem, SoftContribution};
 pub use ceres_solver::CeresSolver;
 pub use connectivity::Connectivity;
 pub use constraint::Constraint;
+pub use constraint_kinds::{Congruence, EqualLength, FixPoint, Orthogonal, Parallel};
 pub use document::{Document, DocumentStructure};
 pub use geom::{
     Angle, CurveParam, Length, Point2, PointJacobian, ScalarJacobian, Vec2, VecJacobian,

@@ -1,6 +1,7 @@
 use super::*;
+use crate::constraint_kinds::{Congruence, EqualLength, FixPoint, Orthogonal, Parallel};
 use crate::document::DocumentStructure;
-use crate::geom::CurveParam;
+use crate::geom::{CurveParam, Point2};
 use crate::geometry_kinds::Segment;
 use crate::geometry::{Chart, CurveExprs, EndpointExprs, GeometryId, GeometryRole, GeometryShell};
 use crate::state::State;
@@ -25,31 +26,31 @@ fn two_segs() -> (DocumentStructure, State) {
 #[test]
 fn jacobian_matches_fd_for_catalog() {
     let (structure, p) = two_segs();
-    let constraints = [
-        Constraint::Congruence {
+    let constraints: [Box<dyn Constraint>; 6] = [
+        Box::new(Congruence {
             a: Segment::start_expr(GeometryId(0)),
             b: Segment::start_expr(GeometryId(1)),
-        },
-        Constraint::Parallel {
+        }),
+        Box::new(Parallel {
             a: Segment::tangent_expr(GeometryId(0), CurveParam::Normalized(0.0)),
             b: Segment::tangent_expr(GeometryId(1), CurveParam::Normalized(0.0)),
-        },
-        Constraint::Orthogonal {
+        }),
+        Box::new(Orthogonal {
             a: Segment::tangent_expr(GeometryId(0), CurveParam::Normalized(0.0)),
             b: Segment::tangent_expr(GeometryId(1), CurveParam::Normalized(0.0)),
-        },
-        Constraint::FixPoint {
+        }),
+        Box::new(FixPoint {
             point: Segment::start_expr(GeometryId(0)),
             target: Point2::new(0.0, 0.0),
-        },
-        Constraint::Congruence {
-            a: Segment::on_curve_expr(GeometryId(0), crate::geom::CurveParam::Uniform(0.5)),
+        }),
+        Box::new(Congruence {
+            a: Segment::on_curve_expr(GeometryId(0), CurveParam::Uniform(0.5)),
             b: Segment::start_expr(GeometryId(1)),
-        },
-        Constraint::EqualLength {
+        }),
+        Box::new(EqualLength {
             a: Segment::length_expr(GeometryId(0)),
             b: Segment::length_expr(GeometryId(1)),
-        },
+        }),
     ];
 
     let eps = 1e-7;

@@ -87,7 +87,7 @@ macro_rules! impl_keyed_expr {
         impl $Expr {
             pub fn evaluate(
                 &self,
-                store: &impl $crate::store::GeometryStore,
+                store: &dyn $crate::store::GeometryStore,
                 p: &$crate::state::State,
             ) -> $Value {
                 let g = store.expect_geometry(self.geometry);
@@ -103,7 +103,7 @@ macro_rules! impl_keyed_expr {
 
             pub fn param_indices(
                 &self,
-                store: &impl $crate::store::GeometryStore,
+                store: &dyn $crate::store::GeometryStore,
             ) -> Vec<usize> {
                 let local = match &self.formula {
                     $(
@@ -120,7 +120,7 @@ macro_rules! impl_keyed_expr {
 
             pub fn $jac(
                 &self,
-                _store: &impl $crate::store::GeometryStore,
+                _store: &dyn $crate::store::GeometryStore,
                 _p: &$crate::state::State,
             ) -> $Jac {
                 match &self.formula {
@@ -139,7 +139,7 @@ macro_rules! impl_keyed_expr {
         impl $Expr {
             pub fn evaluate(
                 &self,
-                store: &impl $crate::store::GeometryStore,
+                store: &dyn $crate::store::GeometryStore,
                 p: &$crate::state::State,
             ) -> $Value {
                 let g = store.expect_geometry(self.geometry);
@@ -155,7 +155,7 @@ macro_rules! impl_keyed_expr {
 
             pub fn param_indices(
                 &self,
-                store: &impl $crate::store::GeometryStore,
+                store: &dyn $crate::store::GeometryStore,
             ) -> Vec<usize> {
                 let local = match &self.formula {
                     $(
@@ -172,7 +172,7 @@ macro_rules! impl_keyed_expr {
 
             pub fn $jac(
                 &self,
-                store: &impl $crate::store::GeometryStore,
+                store: &dyn $crate::store::GeometryStore,
                 p: &$crate::state::State,
             ) -> $Jac {
                 let g = store.expect_geometry(self.geometry);
@@ -261,7 +261,7 @@ macro_rules! register_expr_kinds {
         impl PointExpr {
             pub fn evaluate(
                 &self,
-                store: &impl $crate::store::GeometryStore,
+                store: &dyn $crate::store::GeometryStore,
                 p: &$crate::state::State,
             ) -> $crate::geom::Point2 {
                 let g = store.expect_geometry(self.geometry);
@@ -283,7 +283,7 @@ macro_rules! register_expr_kinds {
 
             pub fn param_indices(
                 &self,
-                store: &impl $crate::store::GeometryStore,
+                store: &dyn $crate::store::GeometryStore,
             ) -> Vec<usize> {
                 let local = match &self.formula {
                     $(
@@ -305,7 +305,7 @@ macro_rules! register_expr_kinds {
 
             pub fn eval_point_jacobian(
                 &self,
-                _store: &impl $crate::store::GeometryStore,
+                _store: &dyn $crate::store::GeometryStore,
                 _p: &$crate::state::State,
             ) -> $crate::geom::PointJacobian {
                 match &self.formula {

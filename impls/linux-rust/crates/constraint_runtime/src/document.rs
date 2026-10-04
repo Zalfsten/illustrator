@@ -15,7 +15,7 @@ pub struct DocumentStructure {
     geometries: Vec<Box<dyn Geometry>>,
     /// `GeometryId` → index into `geometries` (O(1) lookup during evaluate/solve).
     geometry_index: HashMap<GeometryId, usize>,
-    constraints: Vec<Constraint>,
+    constraints: Vec<Box<dyn Constraint>>,
     ids: IdGenerator,
 }
 
@@ -24,7 +24,7 @@ impl Clone for DocumentStructure {
         Self {
             geometries: self.geometries.iter().map(|g| g.clone_box()).collect(),
             geometry_index: self.geometry_index.clone(),
-            constraints: self.constraints.clone(),
+            constraints: self.constraints.iter().map(|c| c.clone_box()).collect(),
             ids: self.ids,
         }
     }
@@ -39,7 +39,7 @@ impl DocumentStructure {
         &self.geometries
     }
 
-    pub fn constraints(&self) -> &[Constraint] {
+    pub fn constraints(&self) -> &[Box<dyn Constraint>] {
         &self.constraints
     }
 
@@ -47,8 +47,8 @@ impl DocumentStructure {
         self.geometries.iter().map(|g| g.parameter_count()).sum()
     }
 
-    pub fn add_constraint(&mut self, c: Constraint) {
-        self.constraints.push(c);
+    pub fn add_constraint(&mut self, c: impl Constraint + 'static) {
+        self.constraints.push(Box::new(c));
     }
 
     /// Register a geometry whose parameters already live in an external State.
@@ -62,21 +62,6 @@ impl DocumentStructure {
         self.geometry_index.insert(id, self.geometries.len());
         self.ids.observe(id);
         self.geometries.push(Box::new(g));
-    }
-
-    fn constraint_references_geometry(c: &Constraint, id: GeometryId) -> bool {
-        match c {
-            Constraint::Congruence { a, b } => {
-                a.referenced_geometry() == id || b.referenced_geometry() == id
-            }
-            Constraint::Parallel { a, b } | Constraint::Orthogonal { a, b } => {
-                a.referenced_geometry() == id || b.referenced_geometry() == id
-            }
-            Constraint::FixPoint { point, .. } => point.referenced_geometry() == id,
-            Constraint::EqualLength { a, b } => {
-                a.referenced_geometry() == id || b.referenced_geometry() == id
-            }
-        }
     }
 }
 
@@ -127,7 +112,7 @@ impl Document {
         self.structure.geometry(id)
     }
 
-    pub fn constraints(&self) -> &[Constraint] {
+    pub fn constraints(&self) -> &[Box<dyn Constraint>] {
         self.structure.constraints()
     }
 
@@ -135,7 +120,11 @@ impl Document {
     ///
     /// Chart pack receives only kind init (no identity). Id and State offset are
     /// assigned here via [`IdGenerator`] and the current State length.
-    pub fn add_geometry<C: GeometryKind>(&mut self, role: GeometryRole, init: C::Init) -> GeometryId {
+    pub fn add_geometry<C: GeometryKind>(
+        &mut self,
+        role: GeometryRole,
+        init: C::Init,
+    ) -> GeometryId {
         let packed = C::pack(init);
         debug_assert_eq!(packed.as_ref().len(), C::PARAMETER_COUNT);
         let id = self.structure.ids.allocate();
@@ -156,7 +145,7 @@ impl Document {
         true
     }
 
-    pub fn add_constraint(&mut self, c: Constraint) {
+    pub fn add_constraint(&mut self, c: impl Constraint + 'static) {
         self.structure.add_constraint(c);
     }
 
@@ -184,7 +173,7 @@ impl Document {
 
         self.structure
             .constraints
-            .retain(|c| !DocumentStructure::constraint_references_geometry(c, id));
+            .retain(|c| !c.references_geometry(id));
 
         debug_assert_eq!(self.state.len(), self.structure.parameter_count());
         true

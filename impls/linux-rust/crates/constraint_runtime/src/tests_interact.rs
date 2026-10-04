@@ -1,5 +1,5 @@
 use super::*;
-use crate::constraint::Constraint;
+use crate::constraint_kinds::{Congruence, FixPoint, Orthogonal};
 use crate::geom::{CurveParam, Point2};
 use crate::geometry_kinds::Segment;
 use crate::geometry::{CurveExprs, EndpointExprs, GeometryRole};
@@ -9,7 +9,7 @@ use crate::solver::StubSolver;
 fn soft_not_persisted_after_drag() {
     let mut doc = Document::new();
     let s0 = doc.add_geometry::<Segment>(GeometryRole::Result, (Point2::new(0.0, 0.0), Point2::new(1.0, 0.0)));
-    doc.add_constraint(Constraint::FixPoint {
+    doc.add_constraint(FixPoint {
         point: Segment::start_expr(s0),
         target: Point2::new(0.0, 0.0),
     });
@@ -27,7 +27,7 @@ fn soft_not_persisted_after_drag() {
 fn failed_solve_keeps_state() {
     let mut doc = Document::new();
     let s0 = doc.add_geometry::<Segment>(GeometryRole::Result, (Point2::new(0.0, 0.0), Point2::new(1.0, 0.0)));
-    doc.add_constraint(Constraint::FixPoint {
+    doc.add_constraint(FixPoint {
         point: Segment::start_expr(s0),
         target: Point2::new(0.0, 0.0),
     });
@@ -40,7 +40,7 @@ fn failed_solve_keeps_state() {
         },
     };
     // Conflicting FixPoints: start cannot be at two places.
-    doc.add_constraint(Constraint::FixPoint {
+    doc.add_constraint(FixPoint {
         point: Segment::start_expr(s0),
         target: Point2::new(10.0, 10.0),
     });
@@ -58,15 +58,15 @@ fn atomic_drag_undo() {
     let mut doc = Document::new();
     let s0 = doc.add_geometry::<Segment>(GeometryRole::Result, (Point2::new(0.0, 0.0), Point2::new(1.0, 0.0)));
     let s1 = doc.add_geometry::<Segment>(GeometryRole::Result, (Point2::new(1.0, 0.0), Point2::new(1.0, 1.0)));
-    doc.add_constraint(Constraint::Congruence {
+    doc.add_constraint(Congruence {
         a: Segment::end_expr(s0),
         b: Segment::start_expr(s1),
     });
-    doc.add_constraint(Constraint::Orthogonal {
+    doc.add_constraint(Orthogonal {
         a: Segment::tangent_expr(s0, CurveParam::Normalized(0.0)),
         b: Segment::tangent_expr(s1, CurveParam::Normalized(0.0)),
     });
-    doc.add_constraint(Constraint::FixPoint {
+    doc.add_constraint(FixPoint {
         point: Segment::start_expr(s0),
         target: Point2::new(0.0, 0.0),
     });

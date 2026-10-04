@@ -52,13 +52,7 @@ fn soft_for_drag(
     // vertical motion on an axis-aligned right angle).
     let mut mouse_exprs = vec![dragged.clone()];
     for c in doc.constraints() {
-        if let crate::constraint::Constraint::Congruence { a, b } = c {
-            if a == dragged {
-                mouse_exprs.push(b.clone());
-            } else if b == dragged {
-                mouse_exprs.push(a.clone());
-            }
-        }
+        mouse_exprs.extend(c.co_dragged_points(dragged));
     }
     let mut mouse_indices = std::collections::BTreeSet::new();
     for expr in &mouse_exprs {

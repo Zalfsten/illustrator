@@ -99,6 +99,12 @@ context: |
     to all chart SLOTS); one register_expr_kinds! entry (no second keying
     macro at the kind site). Document stores Vec<Box<dyn Geometry>>;
     add_geometry bound is GeometryKind.
+  - constraint.rs: object-safe Constraint trait (residual / Jacobian /
+    connectivity / references_geometry / co_dragged_points / clone_box).
+    No catalog enum.
+  - constraint_kinds/: one file per concrete constraint (Congruence,
+    Parallel, Orthogonal, FixPoint, EqualLength, …). Document stores
+    Vec<Box<dyn Constraint>>; add_constraint takes impl Constraint + 'static.
   - state: owned global parameter vector State (committed + working copies)
   - store: GeometryStore port (id → &dyn Geometry resolution only)
   - mapper: chart layout (param block, unpack_chart, local→global indices
