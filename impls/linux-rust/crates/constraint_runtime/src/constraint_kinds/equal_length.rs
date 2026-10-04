@@ -1,8 +1,8 @@
 //! Equal length expressions (one residual).
 
-use crate::connectivity::Connectivity;
 use crate::constraint::Constraint;
 use crate::geometry::{GeometryId, LengthExpr};
+use crate::mapper::Mapper;
 use crate::state::State;
 use crate::store::GeometryStore;
 
@@ -17,10 +17,8 @@ impl Constraint for EqualLength {
         1
     }
 
-    fn param_connectivity(&self, store: &dyn GeometryStore) -> Connectivity {
-        let mut idx = self.a.param_indices(store);
-        idx.extend(self.b.param_indices(store));
-        Connectivity::new(idx)
+    fn param_connectivity(&self, store: &dyn GeometryStore) -> Vec<usize> {
+        Mapper::join_indices([self.a.param_indices(store), self.b.param_indices(store)])
     }
 
     fn eval_residual(&self, store: &dyn GeometryStore, p: &State, out: &mut [f64]) {

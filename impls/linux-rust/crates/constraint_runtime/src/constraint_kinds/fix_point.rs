@@ -1,6 +1,5 @@
 //! Fix a point expression to a target location (two residual rows).
 
-use crate::connectivity::Connectivity;
 use crate::constraint::Constraint;
 use crate::geom::Point2;
 use crate::geometry::{GeometryId, PointExpr};
@@ -18,8 +17,8 @@ impl Constraint for FixPoint {
         2
     }
 
-    fn param_connectivity(&self, store: &dyn GeometryStore) -> Connectivity {
-        Connectivity::new(self.point.param_indices(store))
+    fn param_connectivity(&self, store: &dyn GeometryStore) -> Vec<usize> {
+        self.point.param_indices(store)
     }
 
     fn eval_residual(&self, store: &dyn GeometryStore, p: &State, out: &mut [f64]) {

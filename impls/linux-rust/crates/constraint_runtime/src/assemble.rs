@@ -128,7 +128,7 @@ impl SystemEval for AssembledSystem<'_> {
             c.eval_jacobian(self.structure, p, &mut j_local);
             let row0 = self.structural_row0[ci];
             for i in 0..m_local {
-                for (lj, &g) in conn.global_indices.iter().enumerate() {
+                for (lj, &g) in conn.iter().enumerate() {
                     j[(row0 + i) * n + g] += hard * j_local[i * n_local + lj];
                 }
             }

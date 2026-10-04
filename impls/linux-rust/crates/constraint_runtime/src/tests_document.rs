@@ -15,7 +15,7 @@ fn two_segment_join_connectivity_indices() {
     });
     let c = &doc.constraints()[0];
     let conn = c.param_connectivity(&doc.structure);
-    assert_eq!(conn.global_indices, vec![2, 3, 4, 5]);
+    assert_eq!(conn, vec![2, 3, 4, 5]);
 }
 
 #[test]

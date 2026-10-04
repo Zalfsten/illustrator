@@ -1,24 +1,41 @@
-//! Chart layout mapping: local parameters ↔ global State via [`GeometryShell`].
+//! State column maps and chart value access.
 //!
-//! [`GeometryStore`] resolves identity; this type reads `param_offset` / block
-//! width and applies chart pack layout. Kinds stay in local indices; call sites
-//! that need global State indices go through [`Mapper::globalize_indices`].
+//! **Columns of \(p\):** every participant (geometry block or constraint
+//! contribution) answers “which global indices?” as `Vec<usize>` (scatter
+//! list). Contiguous geometry windows are the dense special case — still
+//! emitted as an index list via [`Mapper::geometry_indices`]. Build all such
+//! maps here ([`indices`](Mapper::indices) / [`local_indices`](Mapper::local_indices) /
+//! [`join_indices`](Mapper::join_indices)).
+//!
+//! **Values in a block:** unpack / drain still use a contiguous
+//! [`chart_param_block`](Mapper::chart_param_block) `Range` for slice access;
+//! that is layout sugar, not a second answer to the column question.
+//!
+//! [`GeometryStore`] resolves identity; this type reads `param_offset` / width.
 
 use std::ops::Range;
 
 use crate::geometry::{Chart, Geometry};
 use crate::state::State;
 
-/// Layout authority for contiguous chart parameter windows.
+/// Layout + column-map authority (stateless namespace).
 ///
-/// Stateless namespace: Document owns offsets on each shell; Mapper only reads
-/// them (and unpacks / globalizes). Pass [`State`] per call when values are needed.
+/// Document owns offsets on each shell; Mapper reads them to unpack charts and
+/// to build global index lists. Pass [`State`] per call when values are needed.
 pub struct Mapper;
 
 impl Mapper {
-    /// Global State index window for a resolved geometry.
+    /// Contiguous State window for slice ops (unpack, structural drain).
+    ///
+    /// Prefer [`geometry_indices`](Self::geometry_indices) when the question is
+    /// only which columns are touched.
     pub fn chart_param_block(g: &dyn Geometry) -> Range<usize> {
         g.param_block()
+    }
+
+    /// All global columns owned by geometry `g` (dense block as index list).
+    pub fn geometry_indices(g: &dyn Geometry) -> Vec<usize> {
+        Self::indices(Self::chart_param_block(g))
     }
 
     /// Unpack [`Chart::Init`] from State using the geometry's parameter window.
@@ -34,8 +51,35 @@ impl Mapper {
     }
 
     /// Lift formula-local parameter indices into global State indices.
-    pub fn globalize_indices(g: &dyn Geometry, local: impl IntoIterator<Item = usize>) -> Vec<usize> {
+    pub fn globalize_indices(
+        g: &dyn Geometry,
+        local: impl IntoIterator<Item = usize>,
+    ) -> Vec<usize> {
         let offset = g.shell().param_offset;
         local.into_iter().map(|i| offset + i).collect()
     }
+
+    /// Collect already-global State indices (sparse or dense).
+    pub fn indices(global_indices: impl IntoIterator<Item = usize>) -> Vec<usize> {
+        global_indices.into_iter().collect()
+    }
+
+    /// Lift local chart indices through `g`'s offset into global indices.
+    pub fn local_indices(
+        g: &dyn Geometry,
+        local: impl IntoIterator<Item = usize>,
+    ) -> Vec<usize> {
+        Self::globalize_indices(g, local)
+    }
+
+    /// Concatenate several global index lists (constraint contribution order).
+    pub fn join_indices(
+        parts: impl IntoIterator<Item = impl IntoIterator<Item = usize>>,
+    ) -> Vec<usize> {
+        Self::indices(parts.into_iter().flatten())
+    }
 }
+
+#[cfg(test)]
+#[path = "tests_mapper.rs"]
+mod tests_mapper;

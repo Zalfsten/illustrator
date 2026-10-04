@@ -64,7 +64,7 @@ fn jacobian_matches_fd_for_catalog() {
         let mut r0 = vec![0.0; m];
         c.eval_residual(&structure, &p, &mut r0);
 
-        for (col, &g) in conn.global_indices.iter().enumerate() {
+        for (col, &g) in conn.iter().enumerate() {
             let mut p2 = p.clone();
             p2[g] += eps;
             let mut rp = vec![0.0; m];

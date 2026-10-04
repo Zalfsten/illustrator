@@ -5,7 +5,6 @@
 
 use std::fmt::Debug;
 
-use crate::connectivity::Connectivity;
 use crate::geometry::{GeometryId, PointExpr};
 use crate::state::State;
 use crate::store::GeometryStore;
@@ -17,8 +16,8 @@ use crate::store::GeometryStore;
 pub trait Constraint: Debug {
     fn residual_arity(&self) -> usize;
 
-    /// Column connectivity: global parameter indices involved in this contribution.
-    fn param_connectivity(&self, store: &dyn GeometryStore) -> Connectivity;
+    /// Global State columns involved in this contribution (assembly scatter map).
+    fn param_connectivity(&self, store: &dyn GeometryStore) -> Vec<usize>;
 
     /// Local residual `r_N` in contribution order (length = residual_arity).
     fn eval_residual(&self, store: &dyn GeometryStore, p: &State, out: &mut [f64]);

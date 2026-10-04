@@ -1,6 +1,6 @@
 //! Read-only lookup of document geometries by stable id.
 //!
-//! Chart unpack and local→global index lifts live on [`crate::mapper::Mapper`].
+//! Chart unpack and global index lists live on [`crate::mapper::Mapper`].
 //! Call sites resolve via [`Self::expect_geometry`], then map/unpack.
 
 use crate::geometry::{Geometry, GeometryId};
