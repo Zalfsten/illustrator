@@ -1,8 +1,9 @@
 //! Application shell: Document, Interact, tools, and Canvas painting.
 
 use constraint_runtime::{
-    Constraint, CurveExprs, CurveParam, Document, DragSession, EndpointExprs, GeometryId,
-    GeometryRole, InteractiveSolve, Mesh, MeshFilter, Point2, PointExpr, SolveError, Segment,
+    Congruence, CurveExprs, CurveParam, Document, DragSession, EndpointExprs, FixPoint, GeometryId,
+    GeometryRole, InteractiveSolve, Mesh, MeshFilter, Orthogonal, Parallel, Point2, PointExpr,
+    Segment, SolveError,
 };
 use eframe::egui::{self, Color32, Pos2, Rect, Sense, Stroke};
 
@@ -60,20 +61,29 @@ impl App {
     pub fn with_sample() -> Self {
         let mut doc = Document::new();
         // World units, y-up: horizontal then vertical leg of a right angle.
-        let s0 = doc.add_geometry::<Segment>(GeometryRole::Result, (Point2::new(0.0, 0.0), Point2::new(2.0, 0.0)));
-        let s1 = doc.add_geometry::<Segment>(GeometryRole::Result, (Point2::new(2.0, 0.0), Point2::new(2.0, 2.0)));
+        let s0 = doc.add_geometry::<Segment>(
+            GeometryRole::Result,
+            (Point2::new(0.0, 0.0), Point2::new(2.0, 0.0)),
+        );
+        let s1 = doc.add_geometry::<Segment>(
+            GeometryRole::Result,
+            (Point2::new(2.0, 0.0), Point2::new(2.0, 2.0)),
+        );
         // Demo: helper diagonal marked construction (hidden in result-only).
-        let helper = doc.add_geometry::<Segment>(GeometryRole::Result, (Point2::new(0.0, 0.0), Point2::new(2.0, 2.0)));
+        let helper = doc.add_geometry::<Segment>(
+            GeometryRole::Result,
+            (Point2::new(0.0, 0.0), Point2::new(2.0, 2.0)),
+        );
         assert!(doc.set_geometry_role(helper, GeometryRole::Construction));
-        doc.add_constraint(Constraint::Congruence {
+        doc.add_constraint(Congruence {
             a: Segment::end_expr(s0),
             b: Segment::start_expr(s1),
         });
-        doc.add_constraint(Constraint::Orthogonal {
+        doc.add_constraint(Orthogonal {
             a: Segment::tangent_expr(s0, CurveParam::Normalized(0.0)),
             b: Segment::tangent_expr(s1, CurveParam::Normalized(0.0)),
         });
-        doc.add_constraint(Constraint::FixPoint {
+        doc.add_constraint(FixPoint {
             point: Segment::start_expr(s0),
             target: Point2::new(0.0, 0.0),
         });
@@ -114,8 +124,7 @@ impl App {
     }
 
     fn rebuild_logical_points(&mut self) {
-        self.logical_points =
-            logical_points_for(&self.doc, self.presentation.mesh_filter());
+        self.logical_points = logical_points_for(&self.doc, self.presentation.mesh_filter());
     }
 
     fn report(&mut self, result: Result<(), SolveError>) {
@@ -172,13 +181,12 @@ impl App {
                 if self.segment_clicks.len() >= 2 {
                     let a = self.segment_clicks[0];
                     let b = self.segment_clicks[1];
-                    self.doc.add_geometry::<Segment>(GeometryRole::Result, (a, b));
+                    self.doc
+                        .add_geometry::<Segment>(GeometryRole::Result, (a, b));
                     self.segment_clicks.clear();
                     self.rebuild_logical_points();
-                    self.status = format!(
-                        "Added segment — geometries={}",
-                        self.doc.geometries().len()
-                    );
+                    self.status =
+                        format!("Added segment — geometries={}", self.doc.geometries().len());
                 } else {
                     self.status = "Segment: click second endpoint".into();
                 }
@@ -189,7 +197,7 @@ impl App {
                     if self.pick_points.len() >= 2 {
                         let a = self.pick_points[0];
                         let b = self.pick_points[1];
-                        self.doc.add_constraint(Constraint::Congruence { a, b });
+                        self.doc.add_constraint(Congruence { a, b });
                         self.pick_points.clear();
                         let r = self.interact.structural_only(&mut self.doc);
                         self.report(r);
@@ -205,18 +213,17 @@ impl App {
                     if self.pick_geoms.len() >= 2 {
                         let a = self.pick_geoms[0];
                         let b = self.pick_geoms[1];
-                        let c = if self.tool == Tool::Parallel {
-                            Constraint::Parallel {
+                        if self.tool == Tool::Parallel {
+                            self.doc.add_constraint(Parallel {
                                 a: Segment::tangent_expr(a, CurveParam::Normalized(0.0)),
                                 b: Segment::tangent_expr(b, CurveParam::Normalized(0.0)),
-                            }
+                            });
                         } else {
-                            Constraint::Orthogonal {
+                            self.doc.add_constraint(Orthogonal {
                                 a: Segment::tangent_expr(a, CurveParam::Normalized(0.0)),
                                 b: Segment::tangent_expr(b, CurveParam::Normalized(0.0)),
-                            }
-                        };
-                        self.doc.add_constraint(c);
+                            });
+                        }
                         self.pick_geoms.clear();
                         let r = self.interact.structural_only(&mut self.doc);
                         self.report(r);
@@ -228,7 +235,7 @@ impl App {
             Tool::FixPoint => {
                 if let Some(expr) = self.hit_point(screen, 12.0) {
                     let p = self.eval_point(&expr);
-                    self.doc.add_constraint(Constraint::FixPoint {
+                    self.doc.add_constraint(FixPoint {
                         point: expr,
                         target: p,
                     });
@@ -268,13 +275,9 @@ fn congruent(doc: &Document, a: &PointExpr, b: &PointExpr) -> bool {
     if a == b {
         return true;
     }
-    doc.constraints().iter().any(|c| {
-        matches!(
-            c,
-            Constraint::Congruence { a: ca, b: cb }
-                if (ca == a && cb == b) || (ca == b && cb == a)
-        )
-    })
+    doc.constraints()
+        .iter()
+        .any(|c| c.co_dragged_points(a).contains(b))
 }
 
 impl eframe::App for App {
