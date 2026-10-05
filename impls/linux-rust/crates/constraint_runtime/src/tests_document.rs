@@ -29,7 +29,10 @@ fn congruence_between_endpoint_point_exprs() {
     let c = &doc.constraints()[0];
     assert_eq!(c.residual_arity(), 2);
     assert_eq!(
-        c.co_dragged_points(&Segment::end_expr(s0)),
+        crate::constraint_kinds::points_identified_with(
+            doc.constraints(),
+            &Segment::end_expr(s0)
+        ),
         vec![Segment::start_expr(s1)]
     );
 }

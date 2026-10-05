@@ -5,10 +5,11 @@
 //! [`crate::geometry::GeometryKind`] / [`crate::geometry::Geometry`]).
 //! Document stores `Box<dyn Constraint>`.
 
+use std::any::Any;
 use std::fmt::Debug;
 
 use crate::geom::{PointJacobian, ScalarJacobian};
-use crate::geometry::{GeometryId, PointExpr};
+use crate::geometry::GeometryId;
 use crate::state::State;
 use crate::store::GeometryStore;
 
@@ -106,12 +107,6 @@ pub trait ConstraintKind: Clone + Debug + 'static {
 
     /// True if this constraint references geometry `id` (orphan drop on remove).
     fn references_geometry(&self, id: GeometryId) -> bool;
-
-    /// Extra point expressions that should share soft mouse drag with `dragged`
-    /// (Congruence). Default: none.
-    fn co_dragged_points(&self, _dragged: &PointExpr) -> Vec<PointExpr> {
-        Vec::new()
-    }
 }
 
 /// Document-held structural constraint (object-safe).
@@ -143,11 +138,10 @@ pub trait Constraint: Debug {
     /// True if this constraint references geometry `id` (orphan drop on remove).
     fn references_geometry(&self, id: GeometryId) -> bool;
 
-    /// Extra point expressions that should share soft mouse drag with `dragged`
-    /// (Congruence). Default: none.
-    fn co_dragged_points(&self, dragged: &PointExpr) -> Vec<PointExpr>;
-
     fn clone_box(&self) -> Box<dyn Constraint>;
+
+    /// Downcast escape hatch for kind-specific queries (e.g. [`crate::Congruence`]).
+    fn as_any(&self) -> &dyn Any;
 }
 
 impl<T: ConstraintKind> Constraint for T {
@@ -171,12 +165,12 @@ impl<T: ConstraintKind> Constraint for T {
         ConstraintKind::references_geometry(self, id)
     }
 
-    fn co_dragged_points(&self, dragged: &PointExpr) -> Vec<PointExpr> {
-        ConstraintKind::co_dragged_points(self, dragged)
-    }
-
     fn clone_box(&self) -> Box<dyn Constraint> {
         Box::new(self.clone())
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
     }
 }
 

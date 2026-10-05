@@ -1,6 +1,6 @@
 //! Point-point coincidence (two residual rows).
 
-use crate::constraint::{ConstraintKind, LocalJacobian};
+use crate::constraint::{Constraint, ConstraintKind, LocalJacobian};
 use crate::geometry::{GeometryId, PointExpr};
 use crate::mapper::Mapper;
 use crate::state::State;
@@ -10,6 +10,34 @@ use crate::store::GeometryStore;
 pub struct Congruence {
     pub a: PointExpr,
     pub b: PointExpr,
+}
+
+impl Congruence {
+    /// Partner expression if `point` is one side of this identification.
+    pub fn other(&self, point: &PointExpr) -> Option<PointExpr> {
+        if &self.a == point {
+            Some(self.b)
+        } else if &self.b == point {
+            Some(self.a)
+        } else {
+            None
+        }
+    }
+}
+
+/// Partners identified with `point` by any [`Congruence`] in `constraints`.
+pub fn points_identified_with(
+    constraints: &[Box<dyn Constraint>],
+    point: &PointExpr,
+) -> Vec<PointExpr> {
+    constraints
+        .iter()
+        .filter_map(|c| {
+            c.as_any()
+                .downcast_ref::<Congruence>()
+                .and_then(|g| g.other(point))
+        })
+        .collect()
 }
 
 impl ConstraintKind for Congruence {
@@ -37,15 +65,5 @@ impl ConstraintKind for Congruence {
 
     fn references_geometry(&self, id: GeometryId) -> bool {
         self.a.referenced_geometry() == id || self.b.referenced_geometry() == id
-    }
-
-    fn co_dragged_points(&self, dragged: &PointExpr) -> Vec<PointExpr> {
-        if &self.a == dragged {
-            vec![self.b]
-        } else if &self.b == dragged {
-            vec![self.a]
-        } else {
-            Vec::new()
-        }
     }
 }
