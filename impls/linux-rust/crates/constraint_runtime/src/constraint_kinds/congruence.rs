@@ -1,6 +1,6 @@
 //! Point-point coincidence (two residual rows).
 
-use crate::constraint::{ConstraintEntry, ConstraintKind, LocalJacobian};
+use crate::constraint::{ConstraintKind, LocalJacobian};
 use crate::geometry::{GeometryId, PointExpr};
 use crate::mapper::Mapper;
 use crate::state::State;
@@ -23,22 +23,6 @@ impl Congruence {
             None
         }
     }
-}
-
-/// Partners identified with `point` by any [`Congruence`] in `constraints`.
-pub fn points_identified_with(
-    constraints: &[ConstraintEntry],
-    point: &PointExpr,
-) -> Vec<PointExpr> {
-    constraints
-        .iter()
-        .filter_map(|e| {
-            e.body()
-                .as_any()
-                .downcast_ref::<Congruence>()
-                .and_then(|g| g.other(point))
-        })
-        .collect()
 }
 
 impl ConstraintKind for Congruence {

@@ -3,10 +3,33 @@
 use std::collections::HashMap;
 
 use crate::constraint::{Constraint, ConstraintEntry, ConstraintId, ConstraintKind};
-use crate::geometry::{Geometry, GeometryId, GeometryKind, GeometryRole, GeometryShell};
+use crate::constraint_kinds::Congruence;
+use crate::geometry::{
+    Geometry, GeometryId, GeometryKind, GeometryRole, GeometryShell, PointExpr,
+};
 use crate::id::IdGenerator;
 use crate::state::State;
 use crate::store::GeometryStore;
+
+/// One Congruence edge, indexed under each participating geometry.
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct IdentificationEdge {
+    constraint: ConstraintId,
+    a: PointExpr,
+    b: PointExpr,
+}
+
+impl IdentificationEdge {
+    fn partner_of(self, point: &PointExpr) -> Option<PointExpr> {
+        if &self.a == point {
+            Some(self.b)
+        } else if &self.b == point {
+            Some(self.a)
+        } else {
+            None
+        }
+    }
+}
 
 /// Discrete sketch: geometries, structural constraints, connectivity schema.
 #[derive(Debug, Default)]
@@ -19,6 +42,8 @@ pub struct DocumentStructure {
     constraint_index: HashMap<ConstraintId, usize>,
     /// `GeometryId` → constraints that reference it (incidence).
     constraints_on_geometry: HashMap<GeometryId, Vec<ConstraintId>>,
+    /// `GeometryId` → Congruence edges touching that geometry (PointExpr partners).
+    identification_by_geometry: HashMap<GeometryId, Vec<IdentificationEdge>>,
     ids: IdGenerator<GeometryId>,
     constraint_ids: IdGenerator<ConstraintId>,
 }
@@ -31,6 +56,7 @@ impl Clone for DocumentStructure {
             constraints: self.constraints.clone(),
             constraint_index: self.constraint_index.clone(),
             constraints_on_geometry: self.constraints_on_geometry.clone(),
+            identification_by_geometry: self.identification_by_geometry.clone(),
             ids: self.ids,
             constraint_ids: self.constraint_ids,
         }
@@ -63,6 +89,16 @@ impl DocumentStructure {
             .unwrap_or(&[])
     }
 
+    /// Direct Congruence partners of `point` (O(edges on its geometry)).
+    pub fn points_identified_with(&self, point: &PointExpr) -> Vec<PointExpr> {
+        self.identification_by_geometry
+            .get(&point.referenced_geometry())
+            .into_iter()
+            .flatten()
+            .filter_map(|e| e.partner_of(point))
+            .collect()
+    }
+
     pub fn parameter_count(&self) -> usize {
         self.geometries.iter().map(|g| g.parameter_count()).sum()
     }
@@ -80,6 +116,10 @@ impl DocumentStructure {
             body: Box::new(c),
         });
         self.link_constraint(id, &geos);
+        if let Some(g) = self.constraints.last().unwrap().body().as_any().downcast_ref::<Congruence>()
+        {
+            self.link_identification(id, g.a, g.b);
+        }
         id
     }
 
@@ -89,6 +129,11 @@ impl DocumentStructure {
             return false;
         };
         let geos = self.constraints[pos].body().referenced_geometries();
+        let congruence = self.constraints[pos]
+            .body()
+            .as_any()
+            .downcast_ref::<Congruence>()
+            .map(|g| (g.a, g.b));
         self.constraints.remove(pos);
         for slot in self.constraint_index.values_mut() {
             if *slot > pos {
@@ -96,6 +141,9 @@ impl DocumentStructure {
             }
         }
         self.unlink_constraint(id, &geos);
+        if let Some((a, b)) = congruence {
+            self.unlink_identification(id, a, b);
+        }
         true
     }
 
@@ -120,6 +168,41 @@ impl DocumentStructure {
         }
     }
 
+    fn link_identification(&mut self, cid: ConstraintId, a: PointExpr, b: PointExpr) {
+        let edge = IdentificationEdge {
+            constraint: cid,
+            a,
+            b,
+        };
+        let ga = a.referenced_geometry();
+        let gb = b.referenced_geometry();
+        self.identification_by_geometry
+            .entry(ga)
+            .or_default()
+            .push(edge);
+        if gb != ga {
+            self.identification_by_geometry
+                .entry(gb)
+                .or_default()
+                .push(edge);
+        }
+    }
+
+    fn unlink_identification(&mut self, cid: ConstraintId, a: PointExpr, b: PointExpr) {
+        for gid in crate::constraint::unique_geometry_ids([
+            a.referenced_geometry(),
+            b.referenced_geometry(),
+        ]) {
+            let Some(list) = self.identification_by_geometry.get_mut(&gid) else {
+                continue;
+            };
+            list.retain(|e| e.constraint != cid);
+            if list.is_empty() {
+                self.identification_by_geometry.remove(&gid);
+            }
+        }
+    }
+
     fn rebuild_constraint_index(&mut self) {
         self.constraint_index.clear();
         for (i, e) in self.constraints.iter().enumerate() {
@@ -129,12 +212,32 @@ impl DocumentStructure {
 
     fn rebuild_constraints_on_geometry(&mut self) {
         self.constraints_on_geometry.clear();
+        self.identification_by_geometry.clear();
         for e in &self.constraints {
             for gid in e.body().referenced_geometries() {
                 self.constraints_on_geometry
                     .entry(gid)
                     .or_default()
                     .push(e.id);
+            }
+            if let Some(g) = e.body().as_any().downcast_ref::<Congruence>() {
+                let edge = IdentificationEdge {
+                    constraint: e.id,
+                    a: g.a,
+                    b: g.b,
+                };
+                let ga = g.a.referenced_geometry();
+                let gb = g.b.referenced_geometry();
+                self.identification_by_geometry
+                    .entry(ga)
+                    .or_default()
+                    .push(edge);
+                if gb != ga {
+                    self.identification_by_geometry
+                        .entry(gb)
+                        .or_default()
+                        .push(edge);
+                }
             }
         }
     }
@@ -211,6 +314,11 @@ impl Document {
     /// Constraint ids that reference geometry `id`.
     pub fn constraints_on(&self, id: GeometryId) -> &[ConstraintId] {
         self.structure.constraints_on(id)
+    }
+
+    /// Direct Congruence partners of `point`.
+    pub fn points_identified_with(&self, point: &PointExpr) -> Vec<PointExpr> {
+        self.structure.points_identified_with(point)
     }
 
     /// Pack chart init → extend State → register a geometry instance.

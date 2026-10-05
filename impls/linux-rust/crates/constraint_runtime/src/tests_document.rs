@@ -30,10 +30,7 @@ fn congruence_between_endpoint_point_exprs() {
     assert_eq!(c.residual_arity(), 2);
     assert_eq!(doc.constraints()[0].id, cid);
     assert_eq!(
-        crate::constraint_kinds::points_identified_with(
-            doc.constraints(),
-            &Segment::end_expr(s0)
-        ),
+        doc.points_identified_with(&Segment::end_expr(s0)),
         vec![Segment::start_expr(s1)]
     );
 }

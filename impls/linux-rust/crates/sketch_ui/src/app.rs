@@ -275,7 +275,7 @@ fn congruent(doc: &Document, a: &PointExpr, b: &PointExpr) -> bool {
     if a == b {
         return true;
     }
-    constraint_runtime::points_identified_with(doc.constraints(), a).contains(b)
+    doc.points_identified_with(a).contains(b)
 }
 
 impl eframe::App for App {

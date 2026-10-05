@@ -104,8 +104,8 @@ context: |
   - constraint.rs: object-safe Constraint trait (residual / Jacobian /
     connectivity / referenced_geometries / references_geometry / clone_box /
     as_any). No catalog enum. ConstraintId + ConstraintEntry (id + body);
-    kind-specific queries (e.g. Congruence point identification) live beside
-    the kind, not on the trait.
+    kind-specific helpers (e.g. Congruence::other); Document::points_identified_with
+    uses constraints_on + Congruence downcast.
   - constraint_kinds/: one file per concrete constraint (Congruence,
     Parallel, Orthogonal, FixPoint, EqualLength, …). Document stores
     Vec<ConstraintEntry>; add_constraint takes impl ConstraintKind → ConstraintId.
