@@ -9,6 +9,7 @@ pub mod document;
 pub mod geom;
 pub mod geometry;
 pub mod geometry_kinds;
+pub mod id;
 pub mod interact;
 pub mod mapper;
 pub mod mesh;
@@ -18,7 +19,9 @@ pub mod store;
 
 pub use assemble::{structural_residual_norm, AssembledSystem, SoftContribution};
 pub use ceres_solver::CeresSolver;
-pub use constraint::{Constraint, ConstraintKind, LocalJacobian, LocalJacobianPlacer};
+pub use constraint::{
+    Constraint, ConstraintEntry, ConstraintId, ConstraintKind, LocalJacobian, LocalJacobianPlacer,
+};
 pub use constraint_kinds::{
     points_identified_with, Congruence, EqualLength, FixPoint, Orthogonal, Parallel,
 };
@@ -29,9 +32,10 @@ pub use geom::{
 };
 pub use geometry::{
     AsShell, Chart, ChartSlot, CurveExprs, EndpointExprs, Geometry, GeometryId, GeometryKind,
-    GeometryRole, GeometryShell, IdGenerator, LengthExpr, PointExpr, StateAtom, VecExpr,
+    GeometryRole, GeometryShell, LengthExpr, PointExpr, StateAtom, VecExpr,
 };
 pub use geometry_kinds::Segment;
+pub use id::IdGenerator;
 pub use interact::{DragSession, InteractiveSolve, SoftTerms, SolveError};
 pub use mapper::Mapper;
 pub use mesh::{Mesh, MeshEdge, MeshFilter};

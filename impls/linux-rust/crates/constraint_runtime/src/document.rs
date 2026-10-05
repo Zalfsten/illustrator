@@ -2,10 +2,11 @@
 
 use std::collections::HashMap;
 
-use crate::constraint::{Constraint, ConstraintKind};
+use crate::constraint::{Constraint, ConstraintEntry, ConstraintId, ConstraintKind};
 use crate::geometry::{
-    Geometry, GeometryId, GeometryKind, GeometryRole, GeometryShell, IdGenerator,
+    Geometry, GeometryId, GeometryKind, GeometryRole, GeometryShell,
 };
+use crate::id::IdGenerator;
 use crate::state::State;
 use crate::store::GeometryStore;
 
@@ -15,8 +16,11 @@ pub struct DocumentStructure {
     geometries: Vec<Box<dyn Geometry>>,
     /// `GeometryId` → index into `geometries` (O(1) lookup during evaluate/solve).
     geometry_index: HashMap<GeometryId, usize>,
-    constraints: Vec<Box<dyn Constraint>>,
-    ids: IdGenerator,
+    constraints: Vec<ConstraintEntry>,
+    /// `ConstraintId` → index into `constraints`.
+    constraint_index: HashMap<ConstraintId, usize>,
+    ids: IdGenerator<GeometryId>,
+    constraint_ids: IdGenerator<ConstraintId>,
 }
 
 impl Clone for DocumentStructure {
@@ -24,8 +28,10 @@ impl Clone for DocumentStructure {
         Self {
             geometries: self.geometries.iter().map(|g| g.clone_box()).collect(),
             geometry_index: self.geometry_index.clone(),
-            constraints: self.constraints.iter().map(|c| c.clone_box()).collect(),
+            constraints: self.constraints.clone(),
+            constraint_index: self.constraint_index.clone(),
             ids: self.ids,
+            constraint_ids: self.constraint_ids,
         }
     }
 }
@@ -39,16 +45,52 @@ impl DocumentStructure {
         &self.geometries
     }
 
-    pub fn constraints(&self) -> &[Box<dyn Constraint>] {
+    pub fn constraints(&self) -> &[ConstraintEntry] {
         &self.constraints
+    }
+
+    pub fn constraint(&self, id: ConstraintId) -> Option<&dyn Constraint> {
+        let &slot = self.constraint_index.get(&id)?;
+        self.constraints.get(slot).map(|e| e.body())
     }
 
     pub fn parameter_count(&self) -> usize {
         self.geometries.iter().map(|g| g.parameter_count()).sum()
     }
 
-    pub fn add_constraint(&mut self, c: impl ConstraintKind) {
-        self.constraints.push(Box::new(c));
+    pub fn add_constraint(&mut self, c: impl ConstraintKind) -> ConstraintId {
+        let id = self.constraint_ids.allocate();
+        debug_assert!(
+            !self.constraint_index.contains_key(&id),
+            "duplicate constraint id {id:?}"
+        );
+        self.constraint_index.insert(id, self.constraints.len());
+        self.constraints.push(ConstraintEntry {
+            id,
+            body: Box::new(c),
+        });
+        id
+    }
+
+    /// Remove a constraint by id. Returns false if missing.
+    pub fn remove_constraint(&mut self, id: ConstraintId) -> bool {
+        let Some(pos) = self.constraint_index.remove(&id) else {
+            return false;
+        };
+        self.constraints.remove(pos);
+        for slot in self.constraint_index.values_mut() {
+            if *slot > pos {
+                *slot -= 1;
+            }
+        }
+        true
+    }
+
+    fn rebuild_constraint_index(&mut self) {
+        self.constraint_index.clear();
+        for (i, e) in self.constraints.iter().enumerate() {
+            self.constraint_index.insert(e.id, i);
+        }
     }
 
     /// Register a geometry whose parameters already live in an external State.
@@ -112,8 +154,12 @@ impl Document {
         self.structure.geometry(id)
     }
 
-    pub fn constraints(&self) -> &[Box<dyn Constraint>] {
+    pub fn constraints(&self) -> &[ConstraintEntry] {
         self.structure.constraints()
+    }
+
+    pub fn constraint(&self, id: ConstraintId) -> Option<&dyn Constraint> {
+        self.structure.constraint(id)
     }
 
     /// Pack chart init → extend State → register a geometry instance.
@@ -145,8 +191,12 @@ impl Document {
         true
     }
 
-    pub fn add_constraint(&mut self, c: impl ConstraintKind) {
-        self.structure.add_constraint(c);
+    pub fn add_constraint(&mut self, c: impl ConstraintKind) -> ConstraintId {
+        self.structure.add_constraint(c)
+    }
+
+    pub fn remove_constraint(&mut self, id: ConstraintId) -> bool {
+        self.structure.remove_constraint(id)
     }
 
     /// Remove a geometry: compact State, remap offsets, drop orphan constraints.
@@ -173,7 +223,8 @@ impl Document {
 
         self.structure
             .constraints
-            .retain(|c| !c.references_geometry(id));
+            .retain(|e| !e.body().references_geometry(id));
+        self.structure.rebuild_constraint_index();
 
         debug_assert_eq!(self.state.len(), self.structure.parameter_count());
         true

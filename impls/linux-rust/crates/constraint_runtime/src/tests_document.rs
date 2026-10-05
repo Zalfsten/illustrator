@@ -13,7 +13,7 @@ fn two_segment_join_connectivity_indices() {
         a: Segment::end_expr(s0),
         b: Segment::start_expr(s1),
     });
-    let c = &doc.constraints()[0];
+    let c = doc.constraints()[0].body();
     let conn = c.param_connectivity(&doc.structure);
     assert_eq!(conn, vec![2, 3, 4, 5]);
 }
@@ -25,9 +25,10 @@ fn congruence_between_endpoint_point_exprs() {
     let s1 = doc.add_geometry::<Segment>(GeometryRole::Result, (Point2::new(2.0, 0.0), Point2::new(3.0, 1.0)));
     let a = Segment::end_expr(s0);
     let b = Segment::start_expr(s1);
-    doc.add_constraint(Congruence { a, b });
-    let c = &doc.constraints()[0];
+    let cid = doc.add_constraint(Congruence { a, b });
+    let c = doc.constraint(cid).unwrap();
     assert_eq!(c.residual_arity(), 2);
+    assert_eq!(doc.constraints()[0].id, cid);
     assert_eq!(
         crate::constraint_kinds::points_identified_with(
             doc.constraints(),
@@ -114,19 +115,54 @@ fn remove_geometry_compacts_state_and_drops_orphans() {
     assert_eq!(doc.state()[4], 5.0);
     // congruence + orthogonal + OnCurve FixPoint referenced s1 → dropped; FixPoint on s2 kept
     assert_eq!(doc.constraints().len(), 1);
-    assert!(doc.constraints()[0].references_geometry(s2));
-    assert!(!doc.constraints()[0].references_geometry(s0));
+    assert!(doc.constraints()[0].body().references_geometry(s2));
+    assert!(!doc.constraints()[0].body().references_geometry(s0));
 }
 
 #[test]
 fn id_generator_allocate_and_observe() {
-    use crate::geometry::{GeometryId, IdGenerator};
+    use crate::geometry::GeometryId;
+    use crate::id::IdGenerator;
 
-    let mut ids = IdGenerator::new();
+    let mut ids = IdGenerator::<GeometryId>::new();
     assert_eq!(ids.allocate(), GeometryId(0));
     assert_eq!(ids.allocate(), GeometryId(1));
     ids.observe(GeometryId(10));
     assert_eq!(ids.allocate(), GeometryId(11));
+}
+
+#[test]
+fn constraint_id_allocate_lookup_and_remove() {
+    use crate::constraint::ConstraintId;
+    use crate::id::IdGenerator;
+
+    let mut ids = IdGenerator::<ConstraintId>::new();
+    assert_eq!(ids.allocate(), ConstraintId(0));
+    assert_eq!(ids.allocate(), ConstraintId(1));
+    ids.observe(ConstraintId(10));
+    assert_eq!(ids.allocate(), ConstraintId(11));
+
+    let mut doc = Document::new();
+    let s0 = doc.add_geometry::<Segment>(
+        GeometryRole::Result,
+        (Point2::new(0.0, 0.0), Point2::new(1.0, 0.0)),
+    );
+    let c0 = doc.add_constraint(FixPoint {
+        point: Segment::start_expr(s0),
+        target: Point2::new(0.0, 0.0),
+    });
+    let c1 = doc.add_constraint(FixPoint {
+        point: Segment::end_expr(s0),
+        target: Point2::new(1.0, 0.0),
+    });
+    assert_eq!(c0, ConstraintId(0));
+    assert_eq!(c1, ConstraintId(1));
+    assert!(doc.constraint(c0).is_some());
+    assert!(doc.remove_constraint(c0));
+    assert!(doc.constraint(c0).is_none());
+    assert!(doc.constraint(c1).is_some());
+    assert_eq!(doc.constraints().len(), 1);
+    assert_eq!(doc.constraints()[0].id, c1);
 }
 
 #[test]

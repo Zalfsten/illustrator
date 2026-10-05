@@ -3,7 +3,7 @@
 //! Concrete kinds live under [`crate::constraint_kinds`] and implement
 //! [`ConstraintKind`]; [`Constraint`] follows via blanket (like
 //! [`crate::geometry::GeometryKind`] / [`crate::geometry::Geometry`]).
-//! Document stores `Box<dyn Constraint>`.
+//! Document stores [`ConstraintEntry`] (`ConstraintId` + `Box<dyn Constraint>`).
 
 use std::any::Any;
 use std::fmt::Debug;
@@ -12,6 +12,44 @@ use crate::geom::{PointJacobian, ScalarJacobian};
 use crate::geometry::GeometryId;
 use crate::state::State;
 use crate::store::GeometryStore;
+
+/// Stable document identity for a structural constraint instance.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct ConstraintId(pub usize);
+
+impl From<usize> for ConstraintId {
+    fn from(raw: usize) -> Self {
+        Self(raw)
+    }
+}
+
+impl From<ConstraintId> for usize {
+    fn from(id: ConstraintId) -> Self {
+        id.0
+    }
+}
+
+/// Document-held constraint: stable id plus kind payload.
+#[derive(Debug)]
+pub struct ConstraintEntry {
+    pub id: ConstraintId,
+    pub body: Box<dyn Constraint>,
+}
+
+impl Clone for ConstraintEntry {
+    fn clone(&self) -> Self {
+        Self {
+            id: self.id,
+            body: self.body.clone_box(),
+        }
+    }
+}
+
+impl ConstraintEntry {
+    pub fn body(&self) -> &dyn Constraint {
+        self.body.as_ref()
+    }
+}
 
 /// Mutable view of a contribution's local residual Jacobian \(J_N\).
 ///

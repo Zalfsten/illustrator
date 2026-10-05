@@ -59,7 +59,7 @@ impl<'a> AssembledSystem<'a> {
         let mut row = 0usize;
         for c in structure.constraints() {
             structural_row0.push(row);
-            row += c.residual_arity();
+            row += c.body().residual_arity();
         }
         let soft_row0 = row;
         row += soft.iter().map(SoftContribution::residual_arity).sum::<usize>();
@@ -95,7 +95,8 @@ impl SystemEval for AssembledSystem<'_> {
         } else {
             HARD_WEIGHT_WITH_SOFT
         };
-        for (ci, c) in self.structure.constraints().iter().enumerate() {
+        for (ci, entry) in self.structure.constraints().iter().enumerate() {
+            let c = entry.body();
             let m = c.residual_arity();
             let row0 = self.structural_row0[ci];
             c.eval_residual(self.structure, p, &mut r[row0..row0 + m]);
@@ -120,7 +121,8 @@ impl SystemEval for AssembledSystem<'_> {
             HARD_WEIGHT_WITH_SOFT
         };
 
-        for (ci, c) in self.structure.constraints().iter().enumerate() {
+        for (ci, entry) in self.structure.constraints().iter().enumerate() {
+            let c = entry.body();
             let conn = c.param_connectivity(self.structure);
             let n_local = conn.len();
             let m_local = c.residual_arity();
