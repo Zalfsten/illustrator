@@ -102,10 +102,10 @@ context: |
     macro at the kind site). Document stores Vec<Box<dyn Geometry>>;
     add_geometry bound is GeometryKind.
   - constraint.rs: object-safe Constraint trait (residual / Jacobian /
-    connectivity / references_geometry / clone_box / as_any). No catalog
-    enum. ConstraintId + ConstraintEntry (id + body); kind-specific queries
-    (e.g. Congruence point identification) live beside the kind, not on the
-    trait.
+    connectivity / referenced_geometries / references_geometry / clone_box /
+    as_any). No catalog enum. ConstraintId + ConstraintEntry (id + body);
+    kind-specific queries (e.g. Congruence point identification) live beside
+    the kind, not on the trait.
   - constraint_kinds/: one file per concrete constraint (Congruence,
     Parallel, Orthogonal, FixPoint, EqualLength, …). Document stores
     Vec<ConstraintEntry>; add_constraint takes impl ConstraintKind → ConstraintId.
@@ -118,7 +118,8 @@ context: |
     lifts them
   - document: DocumentStructure + committed State + geometry/constraint
     id→slot indexes + IdGenerator<GeometryId> / IdGenerator<ConstraintId>;
-    add_geometry / add_constraint return ids
+    constraints_on(GeometryId) reverse incidence; add_geometry /
+    add_constraint return ids
   Prefer sibling files once a module has unit tests: src/<module>.rs for
   production code and src/tests_<module>.rs for that module's unit tests,
   declared with `#[cfg(test)] #[path = "tests_<module>.rs"] mod tests_<module>;`

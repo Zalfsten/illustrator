@@ -3,9 +3,7 @@
 use std::collections::HashMap;
 
 use crate::constraint::{Constraint, ConstraintEntry, ConstraintId, ConstraintKind};
-use crate::geometry::{
-    Geometry, GeometryId, GeometryKind, GeometryRole, GeometryShell,
-};
+use crate::geometry::{Geometry, GeometryId, GeometryKind, GeometryRole, GeometryShell};
 use crate::id::IdGenerator;
 use crate::state::State;
 use crate::store::GeometryStore;
@@ -19,6 +17,8 @@ pub struct DocumentStructure {
     constraints: Vec<ConstraintEntry>,
     /// `ConstraintId` → index into `constraints`.
     constraint_index: HashMap<ConstraintId, usize>,
+    /// `GeometryId` → constraints that reference it (incidence).
+    constraints_on_geometry: HashMap<GeometryId, Vec<ConstraintId>>,
     ids: IdGenerator<GeometryId>,
     constraint_ids: IdGenerator<ConstraintId>,
 }
@@ -30,6 +30,7 @@ impl Clone for DocumentStructure {
             geometry_index: self.geometry_index.clone(),
             constraints: self.constraints.clone(),
             constraint_index: self.constraint_index.clone(),
+            constraints_on_geometry: self.constraints_on_geometry.clone(),
             ids: self.ids,
             constraint_ids: self.constraint_ids,
         }
@@ -54,11 +55,20 @@ impl DocumentStructure {
         self.constraints.get(slot).map(|e| e.body())
     }
 
+    /// Constraint ids that reference geometry `id` (empty if none / unknown id).
+    pub fn constraints_on(&self, id: GeometryId) -> &[ConstraintId] {
+        self.constraints_on_geometry
+            .get(&id)
+            .map(|v| v.as_slice())
+            .unwrap_or(&[])
+    }
+
     pub fn parameter_count(&self) -> usize {
         self.geometries.iter().map(|g| g.parameter_count()).sum()
     }
 
     pub fn add_constraint(&mut self, c: impl ConstraintKind) -> ConstraintId {
+        let geos = c.referenced_geometries();
         let id = self.constraint_ids.allocate();
         debug_assert!(
             !self.constraint_index.contains_key(&id),
@@ -69,6 +79,7 @@ impl DocumentStructure {
             id,
             body: Box::new(c),
         });
+        self.link_constraint(id, &geos);
         id
     }
 
@@ -77,19 +88,54 @@ impl DocumentStructure {
         let Some(pos) = self.constraint_index.remove(&id) else {
             return false;
         };
+        let geos = self.constraints[pos].body().referenced_geometries();
         self.constraints.remove(pos);
         for slot in self.constraint_index.values_mut() {
             if *slot > pos {
                 *slot -= 1;
             }
         }
+        self.unlink_constraint(id, &geos);
         true
+    }
+
+    fn link_constraint(&mut self, cid: ConstraintId, geos: &[GeometryId]) {
+        for &gid in geos {
+            self.constraints_on_geometry
+                .entry(gid)
+                .or_default()
+                .push(cid);
+        }
+    }
+
+    fn unlink_constraint(&mut self, cid: ConstraintId, geos: &[GeometryId]) {
+        for &gid in geos {
+            let Some(list) = self.constraints_on_geometry.get_mut(&gid) else {
+                continue;
+            };
+            list.retain(|&x| x != cid);
+            if list.is_empty() {
+                self.constraints_on_geometry.remove(&gid);
+            }
+        }
     }
 
     fn rebuild_constraint_index(&mut self) {
         self.constraint_index.clear();
         for (i, e) in self.constraints.iter().enumerate() {
             self.constraint_index.insert(e.id, i);
+        }
+    }
+
+    fn rebuild_constraints_on_geometry(&mut self) {
+        self.constraints_on_geometry.clear();
+        for e in &self.constraints {
+            for gid in e.body().referenced_geometries() {
+                self.constraints_on_geometry
+                    .entry(gid)
+                    .or_default()
+                    .push(e.id);
+            }
         }
     }
 
@@ -162,6 +208,11 @@ impl Document {
         self.structure.constraint(id)
     }
 
+    /// Constraint ids that reference geometry `id`.
+    pub fn constraints_on(&self, id: GeometryId) -> &[ConstraintId] {
+        self.structure.constraints_on(id)
+    }
+
     /// Pack chart init → extend State → register a geometry instance.
     ///
     /// Chart pack receives only kind init (no identity). Id and State offset are
@@ -225,6 +276,7 @@ impl Document {
             .constraints
             .retain(|e| !e.body().references_geometry(id));
         self.structure.rebuild_constraint_index();
+        self.structure.rebuild_constraints_on_geometry();
 
         debug_assert_eq!(self.state.len(), self.structure.parameter_count());
         true

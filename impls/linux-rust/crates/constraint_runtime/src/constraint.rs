@@ -13,6 +13,19 @@ use crate::geometry::GeometryId;
 use crate::state::State;
 use crate::store::GeometryStore;
 
+/// Deduplicate geometry ids while preserving first-seen order.
+pub(crate) fn unique_geometry_ids(
+    ids: impl IntoIterator<Item = GeometryId>,
+) -> Vec<GeometryId> {
+    let mut out = Vec::new();
+    for id in ids {
+        if !out.contains(&id) {
+            out.push(id);
+        }
+    }
+    out
+}
+
 /// Stable document identity for a structural constraint instance.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct ConstraintId(pub usize);
@@ -143,8 +156,13 @@ pub trait ConstraintKind: Clone + Debug + 'static {
     /// Fill a zeroed local Jacobian view (columns in [`Self::param_connectivity`] order).
     fn accumulate_jacobian(&self, store: &dyn GeometryStore, p: &State, j: &mut LocalJacobian<'_>);
 
+    /// Geometry instances this constraint depends on (incidence / reverse index).
+    fn referenced_geometries(&self) -> Vec<GeometryId>;
+
     /// True if this constraint references geometry `id` (orphan drop on remove).
-    fn references_geometry(&self, id: GeometryId) -> bool;
+    fn references_geometry(&self, id: GeometryId) -> bool {
+        self.referenced_geometries().contains(&id)
+    }
 }
 
 /// Document-held structural constraint (object-safe).
@@ -173,6 +191,9 @@ pub trait Constraint: Debug {
     /// Fill a zeroed local Jacobian view (columns in param_connectivity order).
     fn accumulate_jacobian(&self, store: &dyn GeometryStore, p: &State, j: &mut LocalJacobian<'_>);
 
+    /// Geometry instances this constraint depends on (incidence / reverse index).
+    fn referenced_geometries(&self) -> Vec<GeometryId>;
+
     /// True if this constraint references geometry `id` (orphan drop on remove).
     fn references_geometry(&self, id: GeometryId) -> bool;
 
@@ -197,6 +218,10 @@ impl<T: ConstraintKind> Constraint for T {
 
     fn accumulate_jacobian(&self, store: &dyn GeometryStore, p: &State, j: &mut LocalJacobian<'_>) {
         ConstraintKind::accumulate_jacobian(self, store, p, j)
+    }
+
+    fn referenced_geometries(&self) -> Vec<GeometryId> {
+        ConstraintKind::referenced_geometries(self)
     }
 
     fn references_geometry(&self, id: GeometryId) -> bool {

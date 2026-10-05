@@ -30,7 +30,7 @@ impl ConstraintKind for FixPoint {
         j.placer().place_point(&jp, 1.0);
     }
 
-    fn references_geometry(&self, id: GeometryId) -> bool {
-        self.point.referenced_geometry() == id
+    fn referenced_geometries(&self) -> Vec<GeometryId> {
+        vec![self.point.referenced_geometry()]
     }
 }

@@ -36,7 +36,10 @@ impl ConstraintKind for Orthogonal {
         place.place_scalar(&jb.contract(va), 1.0);
     }
 
-    fn references_geometry(&self, id: GeometryId) -> bool {
-        self.a.referenced_geometry() == id || self.b.referenced_geometry() == id
+    fn referenced_geometries(&self) -> Vec<GeometryId> {
+        crate::constraint::unique_geometry_ids([
+            self.a.referenced_geometry(),
+            self.b.referenced_geometry(),
+        ])
     }
 }

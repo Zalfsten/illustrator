@@ -117,6 +117,35 @@ fn remove_geometry_compacts_state_and_drops_orphans() {
     assert_eq!(doc.constraints().len(), 1);
     assert!(doc.constraints()[0].body().references_geometry(s2));
     assert!(!doc.constraints()[0].body().references_geometry(s0));
+    assert!(doc.constraints_on(s0).is_empty());
+    assert!(doc.constraints_on(s1).is_empty());
+    assert_eq!(doc.constraints_on(s2).len(), 1);
+}
+
+#[test]
+fn constraints_on_tracks_incidence() {
+    let mut doc = Document::new();
+    let s0 = doc.add_geometry::<Segment>(
+        GeometryRole::Result,
+        (Point2::new(0.0, 0.0), Point2::new(1.0, 0.0)),
+    );
+    let s1 = doc.add_geometry::<Segment>(
+        GeometryRole::Result,
+        (Point2::new(1.0, 0.0), Point2::new(1.0, 1.0)),
+    );
+    let cong = doc.add_constraint(Congruence {
+        a: Segment::end_expr(s0),
+        b: Segment::start_expr(s1),
+    });
+    let fix = doc.add_constraint(FixPoint {
+        point: Segment::start_expr(s0),
+        target: Point2::new(0.0, 0.0),
+    });
+    assert_eq!(doc.constraints_on(s0), &[cong, fix]);
+    assert_eq!(doc.constraints_on(s1), &[cong]);
+    assert!(doc.remove_constraint(cong));
+    assert_eq!(doc.constraints_on(s0), &[fix]);
+    assert!(doc.constraints_on(s1).is_empty());
 }
 
 #[test]
