@@ -101,11 +101,10 @@ context: |
     to all chart SLOTS); one register_expr_kinds! entry (no second keying
     macro at the kind site). Document stores Vec<Box<dyn Geometry>>;
     add_geometry bound is GeometryKind.
-  - constraint.rs: object-safe Constraint trait (residual / Jacobian /
-    connectivity / referenced_geometries / references_geometry / clone_box /
-    as_any). No catalog enum. ConstraintId + ConstraintEntry (id + body);
-    kind-specific helpers (e.g. Congruence::other); Document::points_identified_with
-    uses constraints_on + Congruence downcast.
+  - constraint.rs: ConstraintKind (per-kind residual arity + evaluate) with
+    object-safe Constraint via blanket (clone_box / as_any); LocalJacobian
+    placer for contribution Jacobians. ConstraintId + ConstraintEntry (id +
+    body). No catalog enum for storage.
   - constraint_kinds/: one file per concrete constraint (Congruence,
     Parallel, Orthogonal, FixPoint, EqualLength, …). Document stores
     Vec<ConstraintEntry>; add_constraint takes impl ConstraintKind → ConstraintId.
@@ -118,8 +117,10 @@ context: |
     lifts them
   - document: DocumentStructure + committed State + geometry/constraint
     id→slot indexes + IdGenerator<GeometryId> / IdGenerator<ConstraintId>;
-    constraints_on(GeometryId) reverse incidence; add_geometry /
-    add_constraint return ids
+    reverse incidence GeometryId → ConstraintIds; Congruence identification
+    edges indexed by participating geometries for points_identified_with;
+    add_geometry / add_constraint return ids; remove drops orphan constraints
+    and rebuilds incidence/identification indexes
   Prefer sibling files once a module has unit tests: src/<module>.rs for
   production code and src/tests_<module>.rs for that module's unit tests,
   declared with `#[cfg(test)] #[path = "tests_<module>.rs"] mod tests_<module>;`

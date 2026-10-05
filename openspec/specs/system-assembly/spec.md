@@ -39,6 +39,17 @@ Because the system is nonlinear, residual and Jacobian assembly SHALL be perform
 - **THEN** assembly computes contributions using that \(p\)
 - **AND** the returned residual/Jacobian correspond to that state
 
+### Requirement: Local Jacobian columns follow contribution connectivity order
+
+Each structural contribution’s local Jacobian \(J_N\) SHALL be shaped as (residual arity × number of columns in that contribution’s parameter connectivity), with columns in the same order as the contribution’s connectivity list. Assembly SHALL scatter those columns into global State indices via that list. Implementations MAY fill \(J_N\) through typed Jacobian blocks (point/vector/scalar formula Jacobians) placed into the local buffer; the observable contract is the scattered global \(J\).
+
+#### Scenario: Joined contribution concatenates operand connectivities
+
+- **WHEN** a contribution joins two expressions whose connectivities are \(C_a\) then \(C_b\)
+- **AND** its local Jacobian is assembled
+- **THEN** the local column count equals \(|C_a| + |C_b|\)
+- **AND** the first \(|C_a|\) local columns correspond to \(C_a\) and the remainder to \(C_b\)
+
 ### Requirement: Soft interaction terms assemble the same way
 
 Temporary soft terms used during interaction (for example mouse-follow or stay-near-previous) SHALL, when active, contribute residual and Jacobian blocks that are assembled with the same connectivity/scatter rules, without becoming persistent document constraints.

@@ -84,6 +84,38 @@ The App SHALL own a Viewport as UI session state that maps between **world coord
 - **THEN** the App converts that radius to world length using the Viewport scale before calling the Mesh hit API
 - **AND** a successful hit still returns stable geometry identity from the world-space Mesh
 
+### Requirement: Constraints are resolved by stable identity
+
+Each structural constraint in DocumentStructure SHALL have a stable constraint identity, distinct from geometry identities and from positions in the State vector. DocumentStructure SHALL resolve a constraint identity to that constraint without scanning every constraint in the document for each lookup (lookup cost SHALL be independent of the number of constraints, aside from ordinary hash/map overhead). Adding a structural constraint SHALL allocate a fresh identity; removing a constraint SHALL drop that identity from resolution. Constraints SHALL NOT be identified solely by their index in an unordered list when a stable handle is required (for example incidence queries or later UI selection).
+
+#### Scenario: Add returns a resolvable constraint identity
+
+- **WHEN** a structural constraint is added to DocumentStructure
+- **THEN** the add operation yields a stable constraint identity
+- **AND** DocumentStructure resolves that identity to the added constraint
+
+#### Scenario: Remove drops constraint identity resolution
+
+- **WHEN** a structural constraint is removed from DocumentStructure
+- **THEN** its identity is no longer resolvable
+
+### Requirement: Geometry–constraint incidence is queryable
+
+DocumentStructure SHALL answer which structural constraints reference a given geometry identity. Each structural constraint SHALL report the set of geometry identities it depends on. Removing a geometry SHALL remove every structural constraint that referenced that identity (orphan drop), consistent with geometry-ir structural-edit rules. Incidence answers SHALL remain consistent after add/remove of geometries and constraints.
+
+#### Scenario: Constraints on a geometry are listed after join
+
+- **WHEN** Congruence joins an endpoint of geometry A to an endpoint of geometry B
+- **AND** incidence for A is queried
+- **THEN** that Congruence identity appears among the constraints on A
+- **AND** incidence for B likewise includes that Congruence identity
+
+#### Scenario: Orphan constraints disappear with their geometry
+
+- **WHEN** a geometry is removed
+- **THEN** no remaining constraint in DocumentStructure references the removed identity
+- **AND** incidence queries for other geometries no longer list those removed constraints
+
 ### Requirement: World coordinates are y-up
 
 Document State parameter blocks that encode planar point coordinates, and Mesh edge positions derived from them, SHALL use a right-handed sense in the plane with **+y upward** (mathematical/scientific convention). Screen toolkits that use +y downward SHALL obtain the flip only through the Viewport mapping, not by storing inverted y in committed State.

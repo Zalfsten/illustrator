@@ -59,7 +59,7 @@ A pointer-down on a logical UI point, followed by moves, followed by pointer-up,
 
 ### Requirement: Logical UI points are congruence classes
 
-A logical UI point that the user can grab SHALL correspond to an equivalence class of endpoint expressions identified by Congruence. Dragging that UI point SHALL apply the soft mouse target to that shared location (the congruence class), not to only one segment's private endpoint parameters in isolation while leaving congruent partners unconstrained by Congruence.
+A logical UI point that the user can grab SHALL correspond to an equivalence class of endpoint expressions identified by Congruence. Dragging that UI point SHALL apply the soft mouse target to that shared location (the congruence class), not to only one segment's private endpoint parameters in isolation while leaving congruent partners unconstrained by Congruence. Soft mouse targets SHALL cover the dragged point expression and its **direct** Congruence partners (see constraint-catalog); stay-near-previous soft terms SHALL NOT be applied to State columns of those mouse-targeted expressions for that evaluation (so stay does not fight the pointer).
 
 #### Scenario: Dragging a shared corner moves all congruent endpoints together
 
@@ -67,6 +67,13 @@ A logical UI point that the user can grab SHALL correspond to an equivalence cla
 - **AND** the user drags that UI point through a successful solve
 - **THEN** both endpoint expressions remain congruent
 - **AND** both evaluate to the updated shared location
+
+#### Scenario: Direct Congruence partners share the soft mouse target
+
+- **WHEN** Congruence relates point expressions \(A\) and \(B\)
+- **AND** the user drags the logical UI point corresponding to \(A\)
+- **THEN** the soft mouse-follow terms for that evaluation include the State columns of both \(A\) and \(B\)
+- **AND** stay-near-previous soft terms omit those columns for that evaluation
 
 ### Requirement: Solver backend is replaceable
 

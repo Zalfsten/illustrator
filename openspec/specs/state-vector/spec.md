@@ -61,7 +61,7 @@ When evaluating a quantity that depends on a geometry's local parameters against
 
 ### Requirement: Structural edits rebuild State and connectivity
 
-When geometries are added or removed, the system SHALL update DocumentStructure and rebuild or remap the State vector so that every remaining local parameter has a valid global index and \(p\)'s length equals the structure's parameter count. Those updates SHALL occur as atomic structural edits through the Document composite (see *Structural edits are atomic on the Document composite*). Constraints SHALL refer to geometries by stable identity, not by raw positions in \(p\); global indices SHALL be derived via connectivity after the edit.
+When geometries are added or removed, the system SHALL update DocumentStructure and rebuild or remap the State vector so that every remaining local parameter has a valid global index and \(p\)'s length equals the structure's parameter count. Those updates SHALL occur as atomic structural edits through the Document composite (see *Structural edits are atomic on the Document composite*). Constraints SHALL refer to geometries by stable geometry identity, not by raw positions in \(p\); global indices SHALL be derived via connectivity after the edit. Structural constraints themselves SHALL carry stable constraint identities (see system-architecture); removing a geometry SHALL drop orphan constraints that referenced that geometry identity.
 
 #### Scenario: Adding a segment extends p
 
@@ -76,6 +76,7 @@ When geometries are added or removed, the system SHALL update DocumentStructure 
 - **THEN** its parameter slots are removed from State (or equivalently State is rebuilt without them)
 - **AND** remaining geometries' connectivity indices are updated to match the new State layout
 - **AND** DocumentStructure and State remain length-matched after the edit
+- **AND** structural constraints that referenced the removed geometry identity are no longer present
 
 ### Requirement: Single global state vector
 
