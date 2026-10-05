@@ -1,6 +1,6 @@
 //! Equal length expressions (one residual).
 
-use crate::constraint::ConstraintKind;
+use crate::constraint::{ConstraintKind, LocalJacobian};
 use crate::geometry::{GeometryId, LengthExpr};
 use crate::mapper::Mapper;
 use crate::state::State;
@@ -23,25 +23,13 @@ impl ConstraintKind for EqualLength {
         out[0] = self.a.evaluate(store, p).value() - self.b.evaluate(store, p).value();
     }
 
-    fn accumulate_jacobian(
-        &self,
-        store: &dyn GeometryStore,
-        p: &State,
-        _n_local: usize,
-        out: &mut [f64],
-    ) {
+    fn accumulate_jacobian(&self, store: &dyn GeometryStore, p: &State, j: &mut LocalJacobian<'_>) {
+        // r = ℓ_a - ℓ_b ⇒ ∂r/∂a = Ja, ∂r/∂b = -Jb
         let ja = self.a.eval_length_jacobian(store, p);
         let jb = self.b.eval_length_jacobian(store, p);
-        let na = ja.n();
-        let nb = jb.n();
-        debug_assert_eq!(na, self.a.param_indices(store).len());
-        debug_assert_eq!(nb, self.b.param_indices(store).len());
-        for i in 0..na {
-            out[i] = ja.ds()[i];
-        }
-        for j in 0..nb {
-            out[na + j] = -jb.ds()[j];
-        }
+        let mut place = j.placer();
+        place.place_scalar(&ja, 1.0);
+        place.place_scalar(&jb, -1.0);
     }
 
     fn references_geometry(&self, id: GeometryId) -> bool {

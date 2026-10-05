@@ -1,6 +1,6 @@
 //! Point-point coincidence (two residual rows).
 
-use crate::constraint::ConstraintKind;
+use crate::constraint::{ConstraintKind, LocalJacobian};
 use crate::geometry::{GeometryId, PointExpr};
 use crate::mapper::Mapper;
 use crate::state::State;
@@ -26,27 +26,13 @@ impl ConstraintKind for Congruence {
         out[1] = pa.y - pb.y;
     }
 
-    fn accumulate_jacobian(
-        &self,
-        store: &dyn GeometryStore,
-        p: &State,
-        n_local: usize,
-        out: &mut [f64],
-    ) {
+    fn accumulate_jacobian(&self, store: &dyn GeometryStore, p: &State, j: &mut LocalJacobian<'_>) {
+        // r = a - b ⇒ ∂r/∂a = Ja, ∂r/∂b = -Jb
         let ja = self.a.eval_point_jacobian(store, p);
         let jb = self.b.eval_point_jacobian(store, p);
-        let na = ja.n();
-        let nb = jb.n();
-        debug_assert_eq!(na, self.a.param_indices(store).len());
-        debug_assert_eq!(nb, self.b.param_indices(store).len());
-        for i in 0..na {
-            out[0 * n_local + i] = ja.dx()[i];
-            out[1 * n_local + i] = ja.dy()[i];
-        }
-        for j in 0..nb {
-            out[0 * n_local + na + j] = -jb.dx()[j];
-            out[1 * n_local + na + j] = -jb.dy()[j];
-        }
+        let mut place = j.placer();
+        place.place_point(&ja, 1.0);
+        place.place_point(&jb, -1.0);
     }
 
     fn references_geometry(&self, id: GeometryId) -> bool {

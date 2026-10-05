@@ -18,7 +18,7 @@ pub mod store;
 
 pub use assemble::{structural_residual_norm, AssembledSystem, SoftContribution};
 pub use ceres_solver::CeresSolver;
-pub use constraint::{Constraint, ConstraintKind};
+pub use constraint::{Constraint, ConstraintKind, LocalJacobian, LocalJacobianPlacer};
 pub use constraint_kinds::{Congruence, EqualLength, FixPoint, Orthogonal, Parallel};
 pub use document::{Document, DocumentStructure};
 pub use geom::{

@@ -90,6 +90,17 @@ impl Vec2 {
             y: self.x,
         }
     }
+
+    /// Rightward planar rotate \((y, -x)\) (CW 90°).
+    ///
+    /// Gradient of `u.cross(v)` w.r.t. `u` is `v.right_normal()`; w.r.t. `v` is
+    /// `u.left_normal()`.
+    pub fn right_normal(self) -> Self {
+        Self {
+            x: self.y,
+            y: -self.x,
+        }
+    }
 }
 
 impl Neg for Vec2 {
@@ -264,6 +275,15 @@ impl PointJacobian {
         assert!(i < self.n);
         self.dx[i] = dx_i;
         self.dy[i] = dy_i;
+    }
+
+    /// Left-multiply by row gradient `g`: \(\texttt{ds}[i] = g \cdot\) column \(i\).
+    pub fn contract(&self, g: Vec2) -> ScalarJacobian {
+        let mut out = ScalarJacobian::zeros(self.n);
+        for i in 0..self.n {
+            out.set_ds(i, g.x * self.dx[i] + g.y * self.dy[i]);
+        }
+        out
     }
 }
 

@@ -7,9 +7,84 @@
 
 use std::fmt::Debug;
 
+use crate::geom::{PointJacobian, ScalarJacobian};
 use crate::geometry::{GeometryId, PointExpr};
 use crate::state::State;
 use crate::store::GeometryStore;
+
+/// Mutable view of a contribution's local residual Jacobian \(J_N\).
+///
+/// Row-major layout of shape `(n_rows × n_cols)` with `n_cols` =
+/// [`Constraint::param_connectivity`] width. Formula Jacobians are placed as
+/// contiguous column blocks (see [`LocalJacobian::placer`]).
+pub struct LocalJacobian<'a> {
+    data: &'a mut [f64],
+    n_rows: usize,
+    n_cols: usize,
+}
+
+impl<'a> LocalJacobian<'a> {
+    /// Borrow a zeroed (or caller-cleared) row-major buffer as \(m \times n\).
+    pub fn new(data: &'a mut [f64], n_rows: usize, n_cols: usize) -> Self {
+        assert_eq!(data.len(), n_rows * n_cols);
+        Self {
+            data,
+            n_rows,
+            n_cols,
+        }
+    }
+
+    pub fn n_cols(&self) -> usize {
+        self.n_cols
+    }
+
+    pub fn n_rows(&self) -> usize {
+        self.n_rows
+    }
+
+    /// Sequential placer starting at column 0 (contribution join order).
+    pub fn placer(&mut self) -> LocalJacobianPlacer<'_, 'a> {
+        LocalJacobianPlacer { jac: self, col: 0 }
+    }
+
+    fn place_point(&mut self, col: usize, j: &PointJacobian, scale: f64) {
+        debug_assert_eq!(self.n_rows, 2);
+        debug_assert!(col + j.n() <= self.n_cols);
+        let n = self.n_cols;
+        for i in 0..j.n() {
+            self.data[0 * n + col + i] = scale * j.dx()[i];
+            self.data[1 * n + col + i] = scale * j.dy()[i];
+        }
+    }
+
+    fn place_scalar(&mut self, col: usize, j: &ScalarJacobian, scale: f64) {
+        debug_assert_eq!(self.n_rows, 1);
+        debug_assert!(col + j.n() <= self.n_cols);
+        for i in 0..j.n() {
+            self.data[col + i] = scale * j.ds()[i];
+        }
+    }
+}
+
+/// Places formula Jacobian blocks left-to-right into a [`LocalJacobian`].
+pub struct LocalJacobianPlacer<'p, 'a> {
+    jac: &'p mut LocalJacobian<'a>,
+    col: usize,
+}
+
+impl LocalJacobianPlacer<'_, '_> {
+    /// Place a 2-row point/vector formula block and advance the column cursor.
+    pub fn place_point(&mut self, j: &PointJacobian, scale: f64) {
+        self.jac.place_point(self.col, j, scale);
+        self.col += j.n();
+    }
+
+    /// Place a 1-row scalar formula block and advance the column cursor.
+    pub fn place_scalar(&mut self, j: &ScalarJacobian, scale: f64) {
+        self.jac.place_scalar(self.col, j, scale);
+        self.col += j.n();
+    }
+}
 
 /// Concrete constraint kind ready for Document storage.
 ///
@@ -26,14 +101,8 @@ pub trait ConstraintKind: Clone + Debug + 'static {
     /// Local residual `r_N` in contribution order (length = [`Self::RESIDUAL_ARITY`]).
     fn eval_residual(&self, store: &dyn GeometryStore, p: &State, out: &mut [f64]);
 
-    /// Write analytical Jacobian into a zeroed `out` buffer (`n_local` = connectivity width).
-    fn accumulate_jacobian(
-        &self,
-        store: &dyn GeometryStore,
-        p: &State,
-        n_local: usize,
-        out: &mut [f64],
-    );
+    /// Fill a zeroed local Jacobian view (columns in [`Self::param_connectivity`] order).
+    fn accumulate_jacobian(&self, store: &dyn GeometryStore, p: &State, j: &mut LocalJacobian<'_>);
 
     /// True if this constraint references geometry `id` (orphan drop on remove).
     fn references_geometry(&self, id: GeometryId) -> bool;
@@ -64,17 +133,12 @@ pub trait Constraint: Debug {
         let m = self.residual_arity();
         assert_eq!(out.len(), m * n_local);
         out.fill(0.0);
-        self.accumulate_jacobian(store, p, n_local, out);
+        let mut j = LocalJacobian::new(out, m, n_local);
+        self.accumulate_jacobian(store, p, &mut j);
     }
 
-    /// Write analytical Jacobian into a zeroed `out` buffer (`n_local` = connectivity width).
-    fn accumulate_jacobian(
-        &self,
-        store: &dyn GeometryStore,
-        p: &State,
-        n_local: usize,
-        out: &mut [f64],
-    );
+    /// Fill a zeroed local Jacobian view (columns in param_connectivity order).
+    fn accumulate_jacobian(&self, store: &dyn GeometryStore, p: &State, j: &mut LocalJacobian<'_>);
 
     /// True if this constraint references geometry `id` (orphan drop on remove).
     fn references_geometry(&self, id: GeometryId) -> bool;
@@ -99,14 +163,8 @@ impl<T: ConstraintKind> Constraint for T {
         ConstraintKind::eval_residual(self, store, p, out)
     }
 
-    fn accumulate_jacobian(
-        &self,
-        store: &dyn GeometryStore,
-        p: &State,
-        n_local: usize,
-        out: &mut [f64],
-    ) {
-        ConstraintKind::accumulate_jacobian(self, store, p, n_local, out)
+    fn accumulate_jacobian(&self, store: &dyn GeometryStore, p: &State, j: &mut LocalJacobian<'_>) {
+        ConstraintKind::accumulate_jacobian(self, store, p, j)
     }
 
     fn references_geometry(&self, id: GeometryId) -> bool {

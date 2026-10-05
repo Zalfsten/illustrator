@@ -1,6 +1,6 @@
 //! Fix a point expression to a target location (two residual rows).
 
-use crate::constraint::ConstraintKind;
+use crate::constraint::{ConstraintKind, LocalJacobian};
 use crate::geom::Point2;
 use crate::geometry::{GeometryId, PointExpr};
 use crate::state::State;
@@ -25,19 +25,9 @@ impl ConstraintKind for FixPoint {
         out[1] = q.y - self.target.y;
     }
 
-    fn accumulate_jacobian(
-        &self,
-        store: &dyn GeometryStore,
-        p: &State,
-        n_local: usize,
-        out: &mut [f64],
-    ) {
-        let j = self.point.eval_point_jacobian(store, p);
-        debug_assert_eq!(j.n(), self.point.param_indices(store).len());
-        for i in 0..j.n() {
-            out[0 * n_local + i] = j.dx()[i];
-            out[1 * n_local + i] = j.dy()[i];
-        }
+    fn accumulate_jacobian(&self, store: &dyn GeometryStore, p: &State, j: &mut LocalJacobian<'_>) {
+        let jp = self.point.eval_point_jacobian(store, p);
+        j.placer().place_point(&jp, 1.0);
     }
 
     fn references_geometry(&self, id: GeometryId) -> bool {

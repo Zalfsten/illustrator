@@ -1,6 +1,6 @@
 //! Orthogonal free vectors (one residual: dot product).
 
-use crate::constraint::ConstraintKind;
+use crate::constraint::{ConstraintKind, LocalJacobian};
 use crate::geometry::{GeometryId, VecExpr};
 use crate::mapper::Mapper;
 use crate::state::State;
@@ -25,28 +25,15 @@ impl ConstraintKind for Orthogonal {
         out[0] = va.dot(vb);
     }
 
-    fn accumulate_jacobian(
-        &self,
-        store: &dyn GeometryStore,
-        p: &State,
-        _n_local: usize,
-        out: &mut [f64],
-    ) {
+    fn accumulate_jacobian(&self, store: &dyn GeometryStore, p: &State, j: &mut LocalJacobian<'_>) {
+        // r = va · vb; ∂r/∂va = vb, ∂r/∂vb = va
         let va = self.a.evaluate(store, p);
         let vb = self.b.evaluate(store, p);
         let ja = self.a.eval_vec_jacobian(store, p);
         let jb = self.b.eval_vec_jacobian(store, p);
-        let na = ja.n();
-        let nb = jb.n();
-        debug_assert_eq!(na, self.a.param_indices(store).len());
-        debug_assert_eq!(nb, self.b.param_indices(store).len());
-        // r = va · vb; ∂r/∂va = vb, ∂r/∂vb = va
-        for i in 0..na {
-            out[i] = vb.x * ja.dx()[i] + vb.y * ja.dy()[i];
-        }
-        for j in 0..nb {
-            out[na + j] = va.x * jb.dx()[j] + va.y * jb.dy()[j];
-        }
+        let mut place = j.placer();
+        place.place_scalar(&ja.contract(vb), 1.0);
+        place.place_scalar(&jb.contract(va), 1.0);
     }
 
     fn references_geometry(&self, id: GeometryId) -> bool {
