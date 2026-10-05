@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 
-use crate::constraint::Constraint;
+use crate::constraint::{Constraint, ConstraintKind};
 use crate::geometry::{
     Geometry, GeometryId, GeometryKind, GeometryRole, GeometryShell, IdGenerator,
 };
@@ -47,7 +47,7 @@ impl DocumentStructure {
         self.geometries.iter().map(|g| g.parameter_count()).sum()
     }
 
-    pub fn add_constraint(&mut self, c: impl Constraint + 'static) {
+    pub fn add_constraint(&mut self, c: impl ConstraintKind) {
         self.constraints.push(Box::new(c));
     }
 
@@ -145,7 +145,7 @@ impl Document {
         true
     }
 
-    pub fn add_constraint(&mut self, c: impl Constraint + 'static) {
+    pub fn add_constraint(&mut self, c: impl ConstraintKind) {
         self.structure.add_constraint(c);
     }
 

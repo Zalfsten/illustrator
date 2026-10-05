@@ -1,6 +1,6 @@
 //! Fix a point expression to a target location (two residual rows).
 
-use crate::constraint::Constraint;
+use crate::constraint::ConstraintKind;
 use crate::geom::Point2;
 use crate::geometry::{GeometryId, PointExpr};
 use crate::state::State;
@@ -12,10 +12,8 @@ pub struct FixPoint {
     pub target: Point2,
 }
 
-impl Constraint for FixPoint {
-    fn residual_arity(&self) -> usize {
-        2
-    }
+impl ConstraintKind for FixPoint {
+    const RESIDUAL_ARITY: usize = 2;
 
     fn param_connectivity(&self, store: &dyn GeometryStore) -> Vec<usize> {
         self.point.param_indices(store)
@@ -44,9 +42,5 @@ impl Constraint for FixPoint {
 
     fn references_geometry(&self, id: GeometryId) -> bool {
         self.point.referenced_geometry() == id
-    }
-
-    fn clone_box(&self) -> Box<dyn Constraint> {
-        Box::new(self.clone())
     }
 }

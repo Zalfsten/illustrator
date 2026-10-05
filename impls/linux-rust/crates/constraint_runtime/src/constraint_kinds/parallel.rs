@@ -1,6 +1,6 @@
 //! Parallel free vectors (one residual: 2D cross).
 
-use crate::constraint::Constraint;
+use crate::constraint::ConstraintKind;
 use crate::geometry::{GeometryId, VecExpr};
 use crate::mapper::Mapper;
 use crate::state::State;
@@ -12,10 +12,8 @@ pub struct Parallel {
     pub b: VecExpr,
 }
 
-impl Constraint for Parallel {
-    fn residual_arity(&self) -> usize {
-        1
-    }
+impl ConstraintKind for Parallel {
+    const RESIDUAL_ARITY: usize = 1;
 
     fn param_connectivity(&self, store: &dyn GeometryStore) -> Vec<usize> {
         Mapper::join_indices([self.a.param_indices(store), self.b.param_indices(store)])
@@ -53,9 +51,5 @@ impl Constraint for Parallel {
 
     fn references_geometry(&self, id: GeometryId) -> bool {
         self.a.referenced_geometry() == id || self.b.referenced_geometry() == id
-    }
-
-    fn clone_box(&self) -> Box<dyn Constraint> {
-        Box::new(self.clone())
     }
 }

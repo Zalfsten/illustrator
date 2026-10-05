@@ -1,6 +1,6 @@
 //! Point-point coincidence (two residual rows).
 
-use crate::constraint::Constraint;
+use crate::constraint::ConstraintKind;
 use crate::geometry::{GeometryId, PointExpr};
 use crate::mapper::Mapper;
 use crate::state::State;
@@ -12,10 +12,8 @@ pub struct Congruence {
     pub b: PointExpr,
 }
 
-impl Constraint for Congruence {
-    fn residual_arity(&self) -> usize {
-        2
-    }
+impl ConstraintKind for Congruence {
+    const RESIDUAL_ARITY: usize = 2;
 
     fn param_connectivity(&self, store: &dyn GeometryStore) -> Vec<usize> {
         Mapper::join_indices([self.a.param_indices(store), self.b.param_indices(store)])
@@ -63,9 +61,5 @@ impl Constraint for Congruence {
         } else {
             Vec::new()
         }
-    }
-
-    fn clone_box(&self) -> Box<dyn Constraint> {
-        Box::new(self.clone())
     }
 }
