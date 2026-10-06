@@ -8,7 +8,7 @@ Defines interactive solve behavior for dragging logical UI points: structural co
 
 ### Requirement: Distinguish hard structural and soft manipulation conditions
 
-The system SHALL distinguish structural conditions (persistent constraints from the catalog) from manipulation conditions introduced only for the active interaction. Structural conditions SHALL be treated as hard (must be satisfied for a successful commit). Manipulation conditions for mouse follow SHALL be treated as soft (best-effort toward the pointer without violating hard conditions).
+The system SHALL distinguish structural conditions (persistent constraints from the catalog) from manipulation conditions introduced only for the active interaction. Structural conditions SHALL be treated as hard (must be satisfied for a successful commit). Manipulation conditions for mouse follow and stay-near-previous SHALL be treated as soft (best-effort toward the pointer / previous state without violating hard conditions). Soft terms SHALL NOT be stored as document constraints; their residual strength relative to structural residuals SHALL be carried by soft-term weights (or equivalent per-term strengths) used only for the interaction evaluation.
 
 #### Scenario: Drag does not permanently store mouse residuals
 

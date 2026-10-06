@@ -37,7 +37,7 @@ Behavioral contracts live in OpenSpec capabilities (`geometry-ir`, `state-vector
 | **Local Jacobian** | Derivatives of a local residual contribution w.r.t. the local parameters that contribution depends on. |
 | **Connectivity** $M_N$ | Explicit map from local parameter indices of contribution $N$ to global indices in $p$. Used to scatter local residuals/Jacobians into global arrays. |
 | **Assembly** | Building the global residual $r(p)$ and Jacobian $J(p)=\partial r/\partial p$ by evaluating each contribution and scattering via connectivity. |
-| **Soft contribution** | Transient residual used only during Interact (e.g. mouse follow, stay-near-previous). Not stored as a structural constraint in Document. |
+| **Soft contribution** | Transient residual used only during Interact (e.g. mouse follow, stay-near-previous). Not stored as a structural constraint in Document. Weighted relative to structural residuals via soft-term weights (not a separate global hard-row rescale). |
 | **Mesh** | View-layer tessellation of Document evaluated at a State \(p\) into drawable edges (tagged with geometry identity and role) in **world coordinates**. Derived only — not authoritative for parameters or constraints. Used for Canvas paint (via Viewport) and optional WYSIWYG hit-testing. Built with a **MeshFilter** that may omit construction geometries. |
 | **GeometryRole** | Document flag on each geometry: **Result** (published figure) or **Construction** (helper). Construction remains in State and constraints; role alone does not remove parameters. |
 | **Presentation mode** | App/UI session choice: result-only vs include-construction. Selects the MeshFilter for paint, Mesh hits, and logical handles so invisible construction is not pickable. |
@@ -208,7 +208,11 @@ Examples from the v1 catalog:
 - **EqualLength** of two scalar expressions $s_a(p), s_b(p)$:  
   $r = s_a(p) - s_b(p) \in \mathbb{R}$ (typically curve `length_expr`s).
 
-Each contribution also exposes a local Jacobian $J_N = \partial r_N / \partial p_{\mathrm{loc}}$.
+Each contribution also exposes derivatives equivalent to a contribution
+Jacobian $J_N = \partial r_N / \partial p_{\mathrm{loc}}$ whose columns follow
+that contribution's connectivity order. Assembly may pack $J_N$ then scatter,
+or write formula Jacobian blocks straight into global $J$ via connectivity
+(linux-rust: `LocalJacobian` placer).
 
 ## Assembly (FEM-style)
 
@@ -219,7 +223,7 @@ $$
 r(p) = \operatorname{assemble}\bigl(r_1(p),\ldots,r_M(p);\; M_1,\ldots,M_M\bigr) \in \mathbb{R}^{m}.
 $$
 
-The global Jacobian is the scatter of local blocks:
+The global Jacobian is the scatter of contribution derivative blocks:
 
 $$
 J[M_N^{\mathrm{row}}(i),\, M_N^{\mathrm{col}}(j)] \mathrel{+}= (J_N)_{ij}.
@@ -240,6 +244,11 @@ where $r_{\mathrm{soft}}$ may include:
 
 - mouse-follow toward a pointer (weighted),
 - stay-near-previous toward the last consistent State.
+
+Soft terms are session-only (not stored in Document). Their strength relative
+to unweighted structural residuals is carried by soft weights (linux-rust:
+`SoftTerms` → `SoftContribution.weight`, residual scale $\sqrt{w}$), not by
+rescaling structural rows in assembly.
 
 Structural parts are **hard** for commit: a successful commit requires
 $\|r_{\mathrm{structural}}(p)\|$ within solve tolerance. Soft parts are

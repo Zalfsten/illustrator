@@ -6,15 +6,15 @@ Defines the global continuous state vector as the single source of truth for unk
 
 ## Requirements
 
-### Requirement: Document and State are distinct
+### Requirement: Document owns the discrete graph and a committed State
 
-The system SHALL distinguish Document from State. Document SHALL own geometries, structural constraints, and connectivity that maps each geometry's local parameters to indices in a State of matching length. State SHALL be a first-class contiguous vector \(p\) of scalars (the sketch's continuous unknowns): the same State concept SHALL represent both the Document's **committed** values and any **working copy** used during solve or Interact. A Document SHALL be the pairing of one Document with one committed State whose length matches that structure's parameter count. Callers SHALL NOT treat an ad-hoc unstructured bag of scalars as a second competing authority for committed sketch values.
+The system SHALL treat Document as owning the discrete sketch (geometries, structural constraints, and connectivity that maps each geometry's local parameters to indices in \(p\)) together with a **committed** State whose length matches the Document's parameter count. State SHALL be a first-class contiguous vector \(p\) of scalars (the sketch's continuous unknowns): the same State concept SHALL represent both the Document's committed values and any **working copy** used during solve or Interact. Evaluate, assemble, and Mesh construction SHALL take Document for identity/connectivity resolution plus an explicit State (committed or working). Callers SHALL NOT treat an ad-hoc unstructured bag of scalars as a second competing authority for committed sketch values.
 
 #### Scenario: Structure and values can be reasoned about separately
 
 - **WHEN** a caller holds Document and a State \(p\) of the correct length
 - **THEN** evaluating geometries and assembling residuals is possible without the State living inside a GUI object
-- **AND** replacing \(p\) with another State of the same length yields a different concrete figure under the same structure
+- **AND** replacing \(p\) with another State of the same length yields a different concrete figure under the same discrete graph
 
 #### Scenario: Working copy is the same kind of State
 
@@ -32,22 +32,22 @@ Geometry evaluation, residual assembly, and Jacobian assembly SHALL accept an ex
 - **THEN** assembly uses that working State together with the current Document
 - **AND** the Document's committed State is unchanged until an explicit successful commit
 
-### Requirement: Structural edits are atomic on the Document composite
+### Requirement: Structural edits are atomic on Document
 
-Adding or removing a geometry SHALL update Document and the Document's committed State in one structural edit through the Document composite (or an equivalent pairing authority). Callers SHALL NOT independently append or remove State slots for a geometry without a matching geometry record (or the reverse) as a supported edit path. After any successful structural add or remove, State length SHALL equal the structure's parameter count and every remaining geometry's connectivity SHALL be valid for that State.
+Adding or removing a geometry SHALL update Document's discrete graph and committed State in one structural edit through Document (or an equivalent authority). Callers SHALL NOT independently append or remove State slots for a geometry without a matching geometry record (or the reverse) as a supported edit path. After any successful structural add or remove, State length SHALL equal the Document's parameter count and every remaining geometry's connectivity SHALL be valid for that State.
 
-#### Scenario: Add extends structure and State together
+#### Scenario: Add extends graph and State together
 
-- **WHEN** a parameterized geometry is added through the Document composite with kind-owned initial parameters
+- **WHEN** a parameterized geometry is added through Document with kind-owned initial parameters
 - **THEN** Document gains the geometry record (including its contiguous block placement)
-- **AND** State gains exactly that geometry's parameter slots initialized to those values
-- **AND** State length equals the structure's parameter count
+- **AND** the committed State gains exactly that geometry's parameter slots initialized to those values
+- **AND** State length equals the Document's parameter count
 
 #### Scenario: Unsupported split edit is not a supported path
 
 - **WHEN** a caller would register a geometry record without extending State, or extend State without registering the geometry
 - **THEN** that split is not a supported structural edit of the Document
-- **AND** supported APIs keep structure and State matched
+- **AND** supported APIs keep the discrete graph and State matched
 
 ### Requirement: Evaluation uses the geometry's parameter window from structure
 
@@ -61,7 +61,7 @@ When evaluating a quantity that depends on a geometry's local parameters against
 
 ### Requirement: Structural edits rebuild State and connectivity
 
-When geometries are added or removed, the system SHALL update Document and rebuild or remap the State vector so that every remaining local parameter has a valid global index and \(p\)'s length equals the structure's parameter count. Those updates SHALL occur as atomic structural edits through the Document composite (see *Structural edits are atomic on the Document composite*). Constraints SHALL refer to geometries by stable geometry identity, not by raw positions in \(p\); global indices SHALL be derived via connectivity after the edit. Structural constraints themselves SHALL carry stable constraint identities (see system-architecture); removing a geometry SHALL drop orphan constraints that referenced that geometry identity.
+When geometries are added or removed, the system SHALL update Document and rebuild or remap the State vector so that every remaining local parameter has a valid global index and \(p\)'s length equals the Document's parameter count. Those updates SHALL occur as atomic structural edits through Document (see *Structural edits are atomic on Document*). Constraints SHALL refer to geometries by stable geometry identity, not by raw positions in \(p\); global indices SHALL be derived via connectivity after the edit. Structural constraints themselves SHALL carry stable constraint identities (see system-architecture); removing a geometry SHALL drop orphan constraints that referenced that geometry identity.
 
 #### Scenario: Adding a segment extends p
 
