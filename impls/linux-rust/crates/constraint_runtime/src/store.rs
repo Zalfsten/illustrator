@@ -7,8 +7,7 @@ use crate::geometry::{Geometry, GeometryId};
 
 /// O(1) geometry resolution during evaluate/solve.
 ///
-/// Implemented by [`crate::document::DocumentStructure`] (id→slot index) and
-/// [`crate::document::Document`] (delegates to structure).
+/// Implemented by [`crate::document::Document`] (id → geometry HashMap).
 pub trait GeometryStore {
     fn geometry(&self, id: GeometryId) -> Option<&dyn Geometry>;
 

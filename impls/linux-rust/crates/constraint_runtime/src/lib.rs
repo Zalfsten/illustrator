@@ -23,7 +23,7 @@ pub use constraint::{
     Constraint, ConstraintEntry, ConstraintId, ConstraintKind, LocalJacobian, LocalJacobianPlacer,
 };
 pub use constraint_kinds::{Congruence, EqualLength, FixPoint, Orthogonal, Parallel};
-pub use document::{Document, DocumentStructure};
+pub use document::Document;
 pub use geom::{
     Angle, CurveParam, Length, Point2, PointJacobian, ScalarJacobian, Vec2, VecJacobian,
     MAX_POINT_JACOBIAN_PARAMS, MAX_SCALAR_JACOBIAN_PARAMS,

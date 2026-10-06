@@ -112,15 +112,15 @@ impl App {
     }
 
     fn mesh(&self) -> Mesh {
-        Mesh::from_structure(
-            &self.doc.structure,
+        Mesh::from_document(
+            &self.doc,
             self.doc.state(),
             self.presentation.mesh_filter(),
         )
     }
 
     fn eval_point(&self, expr: &PointExpr) -> Point2 {
-        expr.evaluate(&self.doc.structure, self.doc.state())
+        expr.evaluate(&self.doc, self.doc.state())
     }
 
     fn rebuild_logical_points(&mut self) {
@@ -251,7 +251,7 @@ impl App {
 
 fn logical_points_for(doc: &Document, filter: MeshFilter) -> Vec<PointExpr> {
     // Handles from Mesh endpoints (congruence-collapsed); not Mesh hit for drag.
-    let mesh = Mesh::from_structure(&doc.structure, doc.state(), filter);
+    let mesh = Mesh::from_document(doc, doc.state(), filter);
     let mut exprs = Vec::new();
     for e in &mesh.edges {
         exprs.push(Segment::start_expr(e.geometry));
@@ -259,9 +259,9 @@ fn logical_points_for(doc: &Document, filter: MeshFilter) -> Vec<PointExpr> {
     }
     let mut keep = Vec::new();
     for expr in exprs {
-        let p = expr.evaluate(&doc.structure, doc.state());
+        let p = expr.evaluate(doc, doc.state());
         let duplicate = keep.iter().any(|k: &PointExpr| {
-            let q = k.evaluate(&doc.structure, doc.state());
+            let q = k.evaluate(doc, doc.state());
             (p.x - q.x).hypot(p.y - q.y) < 1e-3 || congruent(doc, &expr, k)
         });
         if !duplicate {
@@ -341,7 +341,7 @@ impl eframe::App for App {
                 painter.line_segment([a, b], stroke);
             }
             for expr in &self.logical_points {
-                let p = expr.evaluate(&self.doc.structure, self.doc.state());
+                let p = expr.evaluate(&self.doc, self.doc.state());
                 painter.circle_filled(
                     self.viewport.to_screen(p),
                     5.0,

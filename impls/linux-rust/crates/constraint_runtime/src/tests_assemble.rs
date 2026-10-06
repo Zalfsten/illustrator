@@ -45,7 +45,7 @@ fn assembled_jacobian_matches_global_fd() {
     });
 
     let soft: [SoftContribution; 0] = [];
-    let sys = AssembledSystem::from_structure(&doc.structure, doc.state().len(), &soft);
+    let sys = AssembledSystem::from_document(&doc, &soft);
     let p = doc.state().clone();
     let m = sys.n_residuals();
     let n = sys.n_params();

@@ -4,7 +4,7 @@ use std::marker::PhantomData;
 
 /// Allocates non-colliding typed ids for Document registration.
 ///
-/// Owned by DocumentStructure — separate instances for each id namespace
+/// Owned by Document — separate instances for each id namespace
 /// (e.g. [`crate::GeometryId`], [`crate::ConstraintId`]).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct IdGenerator<Id> {

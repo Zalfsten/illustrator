@@ -22,7 +22,7 @@ See proposal.md — Why. linux-rust already implements shared shell + object-saf
 
 ### 1. Shared shell + object-safe instance (document storage)
 
-**Choice (linux-rust):** Each kind instance embeds/wraps `GeometryShell` (`id`, `role`, `param_offset`) and implements `Chart`; `geometry_shell_instance!` expands local `AsShell` + `From<GeometryShell>` (orphan rules block blankets over `Deref`/`From`). Blankets supply marker `GeometryKind` and object-safe `Geometry`. `Document::add_geometry` is bounded on `GeometryKind`. `DocumentStructure` holds `Vec<Box<dyn Geometry>>` with an id→slot map.
+**Choice (linux-rust):** Each kind instance embeds/wraps `GeometryShell` (`id`, `role`, `param_offset`) and implements `Chart`; `geometry_shell_instance!` expands local `AsShell` + `From<GeometryShell>` (orphan rules block blankets over `Deref`/`From`). Blankets supply marker `GeometryKind` and object-safe `Geometry`. `Document::add_geometry` is bounded on `GeometryKind`. `Document` holds `HashMap<GeometryId, Box<dyn Geometry>>`.
 
 **Why:** Evaluate/solve and Document ops (role, param block, reindex, parameter count) need a uniform API without a growing `GeometryBody` enum. Kind knowledge stays in chart pack/unpack and formula factories.
 
@@ -54,7 +54,7 @@ See proposal.md — Why. linux-rust already implements shared shell + object-saf
 
 - **[Risk] Spec language too Rust-specific** → Mitigation: requirements speak of “uniform instance contract” and “shared shell metadata,” not `dyn` / `Box`.
 - **[Risk] Mesh still kind-specialized while Document is open** → Mitigation: acceptable until multi-kind tessellation; document in Mesh code, not as a Document kind enum.
-- **[Trade-off] Cloning DocumentStructure** → requires `clone_box` on the instance contract (already present).
+- **[Trade-off] Cloning Document** → requires `clone_box` on the instance contract (already present).
 
 ## Migration Plan
 

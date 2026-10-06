@@ -7,7 +7,7 @@
 
 ## 2. Verify linux-rust already matches
 
-- [ ] 2.1 Confirm DocumentStructure stores `Box<dyn Geometry>` / shell-backed instances as in design.md (spot-check `document.rs` + `geometries/geometry.rs`)
+- [ ] 2.1 Confirm Document stores `Box<dyn Geometry>` / shell-backed instances as in design.md (spot-check `document.rs` + `geometries/geometry.rs`)
 - [ ] 2.2 Run `cargo test -p constraint_runtime` from `impls/linux-rust` and verify the suite passes
 
 ## 3. Close out

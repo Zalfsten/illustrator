@@ -1,5 +1,5 @@
 use super::*;
-use crate::document::DocumentStructure;
+use crate::document::Document;
 use crate::geom::{CurveParam, Point2, Vec2};
 use crate::geometry::StateAtom;
 use crate::geometry::{
@@ -7,10 +7,10 @@ use crate::geometry::{
 };
 use crate::state::State;
 
-fn store_with(g: Segment) -> DocumentStructure {
-    let mut s = DocumentStructure::new();
-    s.push_geometry(g);
-    s
+fn store_with(g: Segment) -> Document {
+    let mut doc = Document::new();
+    doc.push_geometry(g);
+    doc
 }
 
 fn segment_geom(id: usize, param_offset: usize) -> Segment {

@@ -2,20 +2,20 @@
 
 ## Purpose
 
-Defines the display Mesh: a view-layer tessellation of DocumentStructure evaluated at a concrete State into drawable edge primitives, including identity tags so hit-testing against those primitives returns stable geometry references for tools.
+Defines the display Mesh: a view-layer tessellation of Document evaluated at a concrete State into drawable edge primitives, including identity tags so hit-testing against those primitives returns stable geometry references for tools.
 
 ## Requirements
 
 ### Requirement: Mesh is derived from structure and state
 
-The system SHALL provide a Mesh that is computed solely from DocumentStructure and a concrete State \(p\). The Mesh SHALL NOT be an authoritative store of continuous parameters or structural constraints. Rebuilding the Mesh for the same structure and State SHALL yield equivalent drawable content (same edges up to ordering conventions documented by the implementation).
+The system SHALL provide a Mesh that is computed solely from Document and a concrete State \(p\). The Mesh SHALL NOT be an authoritative store of continuous parameters or structural constraints. Rebuilding the Mesh for the same structure and State SHALL yield equivalent drawable content (same edges up to ordering conventions documented by the implementation).
 
 #### Scenario: Mesh rebuild tracks state
 
-- **WHEN** DocumentStructure is unchanged and State \(p\) changes endpoint coordinates of a line segment
+- **WHEN** Document is unchanged and State \(p\) changes endpoint coordinates of a line segment
 - **AND** the Mesh is rebuilt from that structure and State
 - **THEN** the Mesh edge corresponding to that geometry has the new endpoint locations
-- **AND** DocumentStructure itself is not mutated by the rebuild
+- **AND** Document itself is not mutated by the rebuild
 
 #### Scenario: Mesh is not a second parameter store
 
@@ -61,7 +61,7 @@ Building a Mesh for display or hit-testing SHALL accept a visibility filter that
 
 #### Scenario: Result-only Mesh omits construction edges
 
-- **WHEN** DocumentStructure contains a construction geometry and a result geometry
+- **WHEN** Document contains a construction geometry and a result geometry
 - **AND** a Mesh is built with a filter that excludes construction geometries
 - **THEN** the Mesh contains no edge tagged with the construction geometry's identity
 - **AND** a hit query near that construction geometry's evaluated location returns no hit for that geometry

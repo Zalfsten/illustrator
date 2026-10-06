@@ -1,6 +1,6 @@
 //! FEM-style assembly of global residual and Jacobian from local contributions.
 
-use crate::document::{Document, DocumentStructure};
+use crate::document::Document;
 use crate::solver::SystemEval;
 use crate::state::State;
 use crate::SOLVE_TOL;
@@ -38,8 +38,11 @@ impl SoftContribution {
 }
 
 /// Assembled structural (+ optional soft) system implementing [`SystemEval`].
+///
+/// Holds `&Document` for the discrete graph; evaluates against an explicit
+/// State (committed or working copy) passed to residual/jacobian.
 pub struct AssembledSystem<'a> {
-    pub structure: &'a DocumentStructure,
+    pub doc: &'a Document,
     pub soft: &'a [SoftContribution],
     n_params: usize,
     n_res: usize,
@@ -49,22 +52,18 @@ pub struct AssembledSystem<'a> {
 }
 
 impl<'a> AssembledSystem<'a> {
-    pub fn from_structure(
-        structure: &'a DocumentStructure,
-        n_params: usize,
-        soft: &'a [SoftContribution],
-    ) -> Self {
-        debug_assert_eq!(n_params, structure.parameter_count());
-        let mut structural_row0 = Vec::with_capacity(structure.constraints().len());
+    pub fn new(doc: &'a Document, n_params: usize, soft: &'a [SoftContribution]) -> Self {
+        debug_assert_eq!(n_params, doc.parameter_count());
+        let mut structural_row0 = Vec::with_capacity(doc.constraints().len());
         let mut row = 0usize;
-        for c in structure.constraints() {
+        for c in doc.constraints().values() {
             structural_row0.push(row);
             row += c.body().residual_arity();
         }
         let soft_row0 = row;
         row += soft.iter().map(SoftContribution::residual_arity).sum::<usize>();
         Self {
-            structure,
+            doc,
             soft,
             n_params,
             n_res: row,
@@ -74,7 +73,7 @@ impl<'a> AssembledSystem<'a> {
     }
 
     pub fn from_document(doc: &'a Document, soft: &'a [SoftContribution]) -> Self {
-        Self::from_structure(&doc.structure, doc.state().len(), soft)
+        Self::new(doc, doc.state().len(), soft)
     }
 }
 
@@ -95,11 +94,11 @@ impl SystemEval for AssembledSystem<'_> {
         } else {
             HARD_WEIGHT_WITH_SOFT
         };
-        for (ci, entry) in self.structure.constraints().iter().enumerate() {
+        for (ci, entry) in self.doc.constraints().values().enumerate() {
             let c = entry.body();
             let m = c.residual_arity();
             let row0 = self.structural_row0[ci];
-            c.eval_residual(self.structure, p, &mut r[row0..row0 + m]);
+            c.eval_residual(self.doc, p, &mut r[row0..row0 + m]);
             for x in &mut r[row0..row0 + m] {
                 *x *= hard;
             }
@@ -121,13 +120,13 @@ impl SystemEval for AssembledSystem<'_> {
             HARD_WEIGHT_WITH_SOFT
         };
 
-        for (ci, entry) in self.structure.constraints().iter().enumerate() {
+        for (ci, entry) in self.doc.constraints().values().enumerate() {
             let c = entry.body();
-            let conn = c.param_connectivity(self.structure);
+            let conn = c.param_connectivity(self.doc);
             let n_local = conn.len();
             let m_local = c.residual_arity();
             let mut j_local = vec![0.0; m_local * n_local];
-            c.eval_jacobian(self.structure, p, &mut j_local);
+            c.eval_jacobian(self.doc, p, &mut j_local);
             let row0 = self.structural_row0[ci];
             for i in 0..m_local {
                 for (lj, &g) in conn.iter().enumerate() {
@@ -146,12 +145,12 @@ impl SystemEval for AssembledSystem<'_> {
 }
 
 pub fn structural_residual_norm(doc: &Document) -> f64 {
-    structural_residual_norm_at(&doc.structure, doc.state())
+    structural_residual_norm_at(doc, doc.state())
 }
 
-pub fn structural_residual_norm_at(structure: &DocumentStructure, p: &State) -> f64 {
+pub fn structural_residual_norm_at(doc: &Document, p: &State) -> f64 {
     let soft: [SoftContribution; 0] = [];
-    let sys = AssembledSystem::from_structure(structure, p.len(), &soft);
+    let sys = AssembledSystem::new(doc, p.len(), &soft);
     let mut r = vec![0.0; sys.n_residuals()];
     sys.residual(p, &mut r);
     r.iter().map(|x| x * x).sum::<f64>().sqrt()

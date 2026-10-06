@@ -5,7 +5,5 @@ edition = "2021"
 description = "Model E constraint IR and owned/external solvers for scientific illustration sketches"
 license = "MIT OR Apache-2.0"
 
-[dependencies]
-
 [build-dependencies]
 cc = "1"

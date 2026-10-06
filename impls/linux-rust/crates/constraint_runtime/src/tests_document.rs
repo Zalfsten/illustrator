@@ -13,8 +13,8 @@ fn two_segment_join_connectivity_indices() {
         a: Segment::end_expr(s0),
         b: Segment::start_expr(s1),
     });
-    let c = doc.constraints()[0].body();
-    let conn = c.param_connectivity(&doc.structure);
+    let c = doc.constraints().values().next().unwrap().body();
+    let conn = c.param_connectivity(&doc);
     assert_eq!(conn, vec![2, 3, 4, 5]);
 }
 
@@ -28,7 +28,7 @@ fn congruence_between_endpoint_point_exprs() {
     let cid = doc.add_constraint(Congruence { a, b });
     let c = doc.constraint(cid).unwrap();
     assert_eq!(c.residual_arity(), 2);
-    assert_eq!(doc.constraints()[0].id, cid);
+    assert_eq!(doc.constraints().values().next().unwrap().id, cid);
     assert_eq!(
         doc.points_identified_with(&Segment::end_expr(s0)),
         vec![Segment::start_expr(s1)]
@@ -41,11 +41,11 @@ fn add_geometry_grows_state_and_param_block() {
     assert_eq!(doc.state().len(), 0);
     let s0 = doc.add_geometry::<Segment>(GeometryRole::Result, (Point2::new(0.0, 0.0), Point2::new(1.0, 0.0)));
     assert_eq!(doc.state().len(), Segment::PARAMETER_COUNT);
-    assert_eq!(doc.structure.parameter_count(), Segment::PARAMETER_COUNT);
+    assert_eq!(doc.parameter_count(), Segment::PARAMETER_COUNT);
     let s = doc.geometry(s0).unwrap();
     assert_eq!(s.param_block(), 0..4);
     assert_eq!(
-        doc.structure.geometry(s0).unwrap().role(),
+        doc.geometry(s0).unwrap().role(),
         GeometryRole::Result
     );
     let s1 = doc.add_geometry::<Segment>(GeometryRole::Result, (Point2::new(2.0, 0.0), Point2::new(3.0, 1.0)));
@@ -58,21 +58,21 @@ fn set_geometry_role_round_trips() {
     let mut doc = Document::new();
     let id = doc.add_geometry::<Segment>(GeometryRole::Result, (Point2::new(0.0, 0.0), Point2::new(1.0, 0.0)));
     assert_eq!(
-        doc.structure.geometry(id).unwrap().role(),
+        doc.geometry(id).unwrap().role(),
         GeometryRole::Result
     );
     assert!(doc.set_geometry_role(id, GeometryRole::Construction));
     assert_eq!(
-        doc.structure.geometry(id).unwrap().role(),
+        doc.geometry(id).unwrap().role(),
         GeometryRole::Construction
     );
     assert_eq!(
-        doc.structure.geometry(id).unwrap().role(),
+        doc.geometry(id).unwrap().role(),
         GeometryRole::Construction
     );
     assert!(doc.set_geometry_role(id, GeometryRole::Result));
     assert_eq!(
-        doc.structure.geometry(id).unwrap().role(),
+        doc.geometry(id).unwrap().role(),
         GeometryRole::Result
     );
 }
@@ -112,8 +112,9 @@ fn remove_geometry_compacts_state_and_drops_orphans() {
     assert_eq!(doc.state()[4], 5.0);
     // congruence + orthogonal + OnCurve FixPoint referenced s1 → dropped; FixPoint on s2 kept
     assert_eq!(doc.constraints().len(), 1);
-    assert!(doc.constraints()[0].body().references_geometry(s2));
-    assert!(!doc.constraints()[0].body().references_geometry(s0));
+    let kept = doc.constraints().values().next().unwrap().body();
+    assert!(kept.references_geometry(s2));
+    assert!(!kept.references_geometry(s0));
     assert!(doc.constraints_on(s0).is_empty());
     assert!(doc.constraints_on(s1).is_empty());
     assert_eq!(doc.constraints_on(s2).len(), 1);
@@ -188,7 +189,7 @@ fn constraint_id_allocate_lookup_and_remove() {
     assert!(doc.constraint(c0).is_none());
     assert!(doc.constraint(c1).is_some());
     assert_eq!(doc.constraints().len(), 1);
-    assert_eq!(doc.constraints()[0].id, c1);
+    assert_eq!(doc.constraints().values().next().unwrap().id, c1);
 }
 
 #[test]

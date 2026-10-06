@@ -1,8 +1,8 @@
-//! Display Mesh: tessellation of DocumentStructure + State into drawable edges.
+//! Display Mesh: tessellation of Document + State into drawable edges.
 //!
 //! Derived view only — not authoritative for parameters or constraints.
 
-use crate::document::DocumentStructure;
+use crate::document::Document;
 use crate::geom::Point2;
 use crate::geometry_kinds::Segment;
 use crate::geometry::{EndpointExprs, GeometryId, GeometryRole, PointExpr};
@@ -48,13 +48,9 @@ pub struct Mesh {
 }
 
 impl Mesh {
-    pub fn from_structure(
-        structure: &DocumentStructure,
-        p: &State,
-        filter: MeshFilter,
-    ) -> Self {
-        let mut edges = Vec::with_capacity(structure.geometries().len());
-        for g in structure.geometries() {
+    pub fn from_document(doc: &Document, p: &State, filter: MeshFilter) -> Self {
+        let mut edges = Vec::with_capacity(doc.geometries().len());
+        for g in doc.geometries().values() {
             if !filter.include_construction && g.role() == GeometryRole::Construction {
                 continue;
             }
@@ -63,8 +59,8 @@ impl Mesh {
                 geometry: id,
                 role: g.role(),
                 // Today every kind is a segment; widen when other charts exist.
-                a: Segment::start_expr(id).evaluate(structure, p),
-                b: Segment::end_expr(id).evaluate(structure, p),
+                a: Segment::start_expr(id).evaluate(doc, p),
+                b: Segment::end_expr(id).evaluate(doc, p),
             });
         }
         Self { edges }

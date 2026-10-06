@@ -142,13 +142,13 @@ fn right_angle_horizontal_drag_moves_x() {
     let mut interact = InteractiveSolve::new();
     interact.structural_only(&mut doc).expect("initial");
     let free = Segment::end_expr(s1);
-    let before = free.evaluate(&doc.structure, doc.state());
+    let before = free.evaluate(&doc, doc.state());
 
     let mut drag = DragSession::new();
     drag.pointer_down(&doc, free.clone());
     drag.pointer_move(&mut interact, &mut doc, (200.0, 140.0))
         .expect("move");
-    let after = free.evaluate(&doc.structure, doc.state());
+    let after = free.evaluate(&doc, doc.state());
     assert!(
         (after.x - before.x).abs() > 40.0,
         "expected horizontal motion, C {before:?} -> {after:?}"
@@ -158,7 +158,7 @@ fn right_angle_horizontal_drag_moves_x() {
     // Large further drag should still track (not stick at first feasible point).
     drag.pointer_move(&mut interact, &mut doc, (80.0, 100.0))
         .expect("large move");
-    let far = free.evaluate(&doc.structure, doc.state());
+    let far = free.evaluate(&doc, doc.state());
     assert!(
         (far.x - 80.0).abs() < 40.0 && (far.y - 100.0).abs() < 40.0,
         "expected to follow large drag, got {far:?}"
@@ -192,7 +192,7 @@ fn congruence_to_uniform_midpoint_pins_segment() {
     assert!(residual_ok(&doc));
     let mid_pt = Segment::on_curve_expr(s0, CurveParam::Uniform(0.5),
     )
-    .evaluate(&doc.structure, doc.state());
+    .evaluate(&doc, doc.state());
     assert!((mid_pt.x - 1.0).abs() < 1e-4 && (mid_pt.y - 2.0).abs() < 1e-4);
 }
 
@@ -228,10 +228,10 @@ fn equal_length_keeps_two_segments_same_length() {
     interact.structural_only(&mut doc).expect("equal length solve");
     assert!(residual_ok(&doc));
     let l0 = Segment::length_expr(s0)
-        .evaluate(&doc.structure, doc.state())
+        .evaluate(&doc, doc.state())
         .value();
     let l1 = Segment::length_expr(s1)
-        .evaluate(&doc.structure, doc.state())
+        .evaluate(&doc, doc.state())
         .value();
     assert!((l0 - l1).abs() < 1e-4, "l0={l0} l1={l1}");
     assert!((l0 - 3.0).abs() < 1e-4, "expected length 3, got {l0}");

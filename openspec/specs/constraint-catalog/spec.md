@@ -18,7 +18,7 @@ The system SHALL provide a Congruence relationship between two point expressions
 
 ### Requirement: Direct Congruence partners of a point expression are enumerable
 
-Given a point expression \(P\) and the set of structural Congruence relationships in DocumentStructure, the system SHALL enumerate the point expressions that are **directly** identified with \(P\) (the other side of each Congruence that names \(P\)). That enumeration SHALL NOT require scanning unrelated constraint kinds for correctness of the partner set. Transitive closure of Congruence (longer identification chains) is NOT required by this catalog; Interact MAY use the direct-partner set when applying soft mouse targets to a congruence class.
+Given a point expression \(P\) and the set of structural Congruence relationships in Document, the system SHALL enumerate the point expressions that are **directly** identified with \(P\) (the other side of each Congruence that names \(P\)). That enumeration SHALL NOT require scanning unrelated constraint kinds for correctness of the partner set. Transitive closure of Congruence (longer identification chains) is NOT required by this catalog; Interact MAY use the direct-partner set when applying soft mouse targets to a congruence class.
 
 #### Scenario: Partner of a joined endpoint is the other side
 
@@ -75,7 +75,7 @@ The system SHALL provide an EqualLength relationship between two **opaque length
 
 ### Requirement: Each catalog constraint has a fixed residual arity
 
-Each structural constraint kind in this catalog SHALL contribute a fixed number of residual components (Congruence and FixPoint: two; Parallel, Orthogonal, and EqualLength: one). Assembly SHALL size the structural residual block as the sum of those arities over the constraints present in DocumentStructure.
+Each structural constraint kind in this catalog SHALL contribute a fixed number of residual components (Congruence and FixPoint: two; Parallel, Orthogonal, and EqualLength: one). Assembly SHALL size the structural residual block as the sum of those arities over the constraints present in Document.
 
 #### Scenario: Residual length matches sum of arities
 

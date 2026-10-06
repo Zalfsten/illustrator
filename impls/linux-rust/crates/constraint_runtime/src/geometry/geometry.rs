@@ -59,3 +59,9 @@ impl<T: GeometryKind> Geometry for T {
         Box::new(self.clone())
     }
 }
+
+impl Clone for Box<dyn Geometry> {
+    fn clone(&self) -> Self {
+        self.clone_box()
+    }
+}

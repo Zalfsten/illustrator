@@ -6,7 +6,7 @@ Document geometry storage in the shared specs still describes a **closed sum of 
 
 ## What Changes
 
-- **BREAKING (spec language):** DocumentStructure SHALL store geometries as instances under a uniform instance contract over shared shell metadata, not as a mandatory closed kind-sum enum on the evaluate/solve path.
+- **BREAKING (spec language):** Document SHALL store geometries as instances under a uniform instance contract over shared shell metadata, not as a mandatory closed kind-sum enum on the evaluate/solve path.
 - Clarify that **shared shell** (stable id, role, contiguous parameter window) is kind-agnostic; **chart pack/unpack and formula catalogs** remain kind-owned.
 - Keep **opaque point/vector expressions** (closed formula catalog behind a facade) as the evaluate/solve surface; kind matching for Mesh tessellation remains allowed where a discriminant is required.
 - Record that structural add goes through Document with kind chart init → State block → shell-backed instance registration (`add_geometry`-style), not a privileged segment-only store API.
@@ -31,5 +31,5 @@ _(none)_
 ## Impact
 
 - Main specs under `openspec/specs/geometry-ir/` after sync.
-- linux-rust already matches (`GeometryShell`, `Geometry` trait, `Vec<Box<dyn Geometry>>`, `Document::add_geometry`); apply phase is primarily **spec sync + verify**, not a greenfield rewrite.
+- linux-rust already matches (`GeometryShell`, `Geometry` trait, `HashMap<GeometryId, Box<dyn Geometry>>`, `Document::add_geometry`); apply phase is primarily **spec sync + verify**, not a greenfield rewrite.
 - Docs (`docs/constraint-mathematics.md`) and `openspec/config.yaml` context already describe this layout; keep them aligned when archiving.

@@ -54,7 +54,7 @@ fn soft_for_drag(
     mouse_exprs.extend(doc.points_identified_with(dragged));
     let mut mouse_indices = std::collections::BTreeSet::new();
     for expr in &mouse_exprs {
-        for &i in &expr.param_indices(&doc.structure) {
+        for &i in &expr.param_indices(doc) {
             mouse_indices.insert(i);
         }
     }
@@ -71,7 +71,7 @@ fn soft_for_drag(
         });
     }
     for expr in &mouse_exprs {
-        let ix = expr.param_indices(&doc.structure);
+        let ix = expr.param_indices(doc);
         // Soft mouse targets the expression's coordinate slots. Endpoint exprs
         // expose (x,y) as two indices; OnCurve is not a drag target in the UI yet.
         if ix.len() >= 2 {
@@ -115,7 +115,7 @@ impl Default for InteractiveSolve<CeresSolver> {
 impl<S: SolverPort> InteractiveSolve<S> {
     fn structural_norm(doc: &Document, p: &State) -> f64 {
         let soft0: [SoftContribution; 0] = [];
-        let sys0 = AssembledSystem::from_structure(&doc.structure, p.len(), &soft0);
+        let sys0 = AssembledSystem::new(doc, p.len(), &soft0);
         let mut r = vec![0.0; sys0.n_residuals()];
         sys0.residual(p, &mut r);
         r.iter().map(|x| x * x).sum::<f64>().sqrt()
@@ -135,7 +135,7 @@ impl<S: SolverPort> InteractiveSolve<S> {
         let mut working = doc.clone_state();
 
         // Phase 1: soft + hard (when soft is empty, this is structural-only).
-        let sys = AssembledSystem::from_structure(&doc.structure, doc.state().len(), soft);
+        let sys = AssembledSystem::from_document(doc, soft);
         let _ = self.solver.solve(&sys, &mut working, &self.opts);
 
         if self.structural_ok(doc, &working) {
@@ -146,7 +146,7 @@ impl<S: SolverPort> InteractiveSolve<S> {
         // Phase 2: polish onto the constraint manifold from the soft attempt.
         if !soft.is_empty() {
             let soft0: [SoftContribution; 0] = [];
-            let sys0 = AssembledSystem::from_structure(&doc.structure, working.len(), &soft0);
+            let sys0 = AssembledSystem::new(doc, working.len(), &soft0);
             let _ = self.solver.solve(&sys0, &mut working, &self.opts);
             if self.structural_ok(doc, &working) {
                 doc.commit_state(&working);

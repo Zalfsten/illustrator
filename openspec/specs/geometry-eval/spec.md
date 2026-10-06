@@ -8,7 +8,7 @@ Defines that geometries (and derived constraint contributions) expose evaluable 
 
 ### Requirement: Expressions evaluate geometry quantities from State
 
-The production evaluate/solve path SHALL obtain geometric quantities needed by residuals and assembly (endpoint locations, on-curve samples, tangent and normal vectors, segment direction, and other chart-defined outputs) by evaluating **opaque point expressions** and **opaque vector expressions** against DocumentStructure (or an equivalent geometry-resolution port) and an explicit State \(p\). Those expressions SHALL map the involved geometries' local parameters (via connectivity into \(p\)) to points or free vectors by applying the **kind-owned** chart formulas of the named geometries. Point-valued outputs SHALL be distinguished from free-vector-valued outputs. Constraint and assembly code SHALL NOT match on private formula kinds.
+The production evaluate/solve path SHALL obtain geometric quantities needed by residuals and assembly (endpoint locations, on-curve samples, tangent and normal vectors, segment direction, and other chart-defined outputs) by evaluating **opaque point expressions** and **opaque vector expressions** against Document (or an equivalent geometry-resolution port) and an explicit State \(p\). Those expressions SHALL map the involved geometries' local parameters (via connectivity into \(p\)) to points or free vectors by applying the **kind-owned** chart formulas of the named geometries. Point-valued outputs SHALL be distinguished from free-vector-valued outputs. Constraint and assembly code SHALL NOT match on private formula kinds.
 
 #### Scenario: Endpoint expression depends on local parameters
 
@@ -53,7 +53,7 @@ Each structural constraint SHALL define a residual contribution \(r_N\) as a fun
 
 ### Requirement: Scalar expressions evaluate with analytical derivatives
 
-Opaque scalar expressions that appear in structural constraints SHALL evaluate to a real number from DocumentStructure (or an equivalent geometry-resolution port) and State \(p\), applying kind-owned formulas of the named geometries. They SHALL provide analytical derivative information with respect to the formula-local parameters they depend on as a \(1 \times n\) Jacobian (row \(\partial s / \partial p_i\)), where \(n\) is the number of parameters the formula depends on and column order matches the expression's reported parameter-index list. The production Jacobian path SHALL use those analytical derivatives; finite-difference SHALL NOT be the production path for scalar-expression derivatives.
+Opaque scalar expressions that appear in structural constraints SHALL evaluate to a real number from Document (or an equivalent geometry-resolution port) and State \(p\), applying kind-owned formulas of the named geometries. They SHALL provide analytical derivative information with respect to the formula-local parameters they depend on as a \(1 \times n\) Jacobian (row \(\partial s / \partial p_i\)), where \(n\) is the number of parameters the formula depends on and column order matches the expression's reported parameter-index list. The production Jacobian path SHALL use those analytical derivatives; finite-difference SHALL NOT be the production path for scalar-expression derivatives.
 
 #### Scenario: Segment length Jacobian feeds EqualLength
 
@@ -87,7 +87,7 @@ For curve geometries, on-curve point expressions and tangent/normal vector expre
 
 ### Requirement: On-curve and Uniform parameters are evaluable
 
-Point expressions that sample a curve at `Normalized` or `Uniform` parameters, and vector expressions for tangents and normals at those parameters, SHALL be evaluable against a state vector given DocumentStructure (or an equivalent geometry store that resolves geometry identities). Evaluation SHALL obtain the named geometry by identity resolution from that structure, then apply the curve (or endpoint) capability of that geometry. For line segments, evaluation at `Uniform(u)` SHALL match evaluation at `Normalized(t)` for \(t = u\), including derivatives w.r.t. the segment's local parameters. Implementations SHALL document how `Uniform` will be obtained for future non-constant-speed curves (closed form or inversion); this capability requires a correct segment path and a defined extension point, not a general numerical arc-length solver.
+Point expressions that sample a curve at `Normalized` or `Uniform` parameters, and vector expressions for tangents and normals at those parameters, SHALL be evaluable against a state vector given Document (or an equivalent geometry store that resolves geometry identities). Evaluation SHALL obtain the named geometry by identity resolution from that structure, then apply the curve (or endpoint) capability of that geometry. For line segments, evaluation at `Uniform(u)` SHALL match evaluation at `Normalized(t)` for \(t = u\), including derivatives w.r.t. the segment's local parameters. Implementations SHALL document how `Uniform` will be obtained for future non-constant-speed curves (closed form or inversion); this capability requires a correct segment path and a defined extension point, not a general numerical arc-length solver.
 
 #### Scenario: Segment OnCurve Uniform matches Normalized
 
@@ -99,5 +99,5 @@ Point expressions that sample a curve at `Normalized` or `Uniform` parameters, a
 #### Scenario: Assembly evaluates expressions via identity resolution
 
 - **WHEN** residual or Jacobian assembly evaluates a constraint that names geometries by identity
-- **THEN** each named geometry is obtained from DocumentStructure by identity resolution
+- **THEN** each named geometry is obtained from Document by identity resolution
 - **AND** assembly SHALL NOT scan the full geometry list once per named identity to locate that geometry
