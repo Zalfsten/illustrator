@@ -54,27 +54,30 @@ fn jacobian_matches_fd_for_catalog() {
     ];
 
     let eps = 1e-7;
+    let n_global = p.len();
     for c in &constraints {
         let conn = c.param_connectivity(&doc);
         let m = c.residual_arity();
-        let n = conn.len();
-        let mut j_an = vec![0.0; m * n];
-        c.eval_jacobian(&doc, &p, &mut j_an);
+        let mut j_an = vec![0.0; m * n_global];
+        {
+            let mut jac = LocalJacobian::new(&mut j_an, n_global, 0, m, &conn);
+            c.accumulate_jacobian(&doc, &p, &mut jac);
+        }
 
         let mut r0 = vec![0.0; m];
         c.eval_residual(&doc, &p, &mut r0);
 
-        for (col, &g) in conn.iter().enumerate() {
+        for &g in &conn {
             let mut p2 = p.clone();
             p2[g] += eps;
             let mut rp = vec![0.0; m];
             c.eval_residual(&doc, &p2, &mut rp);
             for row in 0..m {
                 let fd = (rp[row] - r0[row]) / eps;
-                let an = j_an[row * n + col];
+                let an = j_an[row * n_global + g];
                 assert!(
                     (fd - an).abs() < 1e-5,
-                    "constraint {c:?} row={row} col={col} fd={fd} an={an}"
+                    "constraint {c:?} row={row} col={g} fd={fd} an={an}"
                 );
             }
         }

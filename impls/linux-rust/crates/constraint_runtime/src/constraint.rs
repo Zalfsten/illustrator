@@ -64,30 +64,43 @@ impl ConstraintEntry {
     }
 }
 
-/// Mutable view of a contribution's local residual Jacobian \(J_N\).
+/// Scatter view for a contribution Jacobian into a global residual×state matrix.
 ///
-/// Row-major layout of shape `(n_rows × n_cols)` with `n_cols` =
-/// [`Constraint::param_connectivity`] width. Formula Jacobians are placed as
-/// contiguous column blocks (see [`LocalJacobian::placer`]).
+/// Writes formula blocks through [`LocalJacobian::placer`] at residual rows
+/// `[row0, row0 + n_rows)` and State columns given by `conn` (local column
+/// order = [`Constraint::param_connectivity`]). Layout is row-major with stride
+/// `n_global`.
 pub struct LocalJacobian<'a> {
     data: &'a mut [f64],
+    n_global: usize,
+    row0: usize,
     n_rows: usize,
-    n_cols: usize,
+    conn: &'a [usize],
 }
 
 impl<'a> LocalJacobian<'a> {
-    /// Borrow a zeroed (or caller-cleared) row-major buffer as \(m \times n\).
-    pub fn new(data: &'a mut [f64], n_rows: usize, n_cols: usize) -> Self {
-        assert_eq!(data.len(), n_rows * n_cols);
+    /// Scatter into a global residual×state Jacobian (already zeroed by caller).
+    pub fn new(
+        data: &'a mut [f64],
+        n_global: usize,
+        row0: usize,
+        n_rows: usize,
+        conn: &'a [usize],
+    ) -> Self {
+        debug_assert!(n_global > 0);
+        debug_assert_eq!(data.len() % n_global, 0);
+        debug_assert!(row0 + n_rows <= data.len() / n_global);
         Self {
             data,
+            n_global,
+            row0,
             n_rows,
-            n_cols,
+            conn,
         }
     }
 
     pub fn n_cols(&self) -> usize {
-        self.n_cols
+        self.conn.len()
     }
 
     pub fn n_rows(&self) -> usize {
@@ -101,19 +114,23 @@ impl<'a> LocalJacobian<'a> {
 
     fn place_point(&mut self, col: usize, j: &PointJacobian, scale: f64) {
         debug_assert_eq!(self.n_rows, 2);
-        debug_assert!(col + j.n() <= self.n_cols);
-        let n = self.n_cols;
+        debug_assert!(col + j.n() <= self.conn.len());
+        let n = self.n_global;
+        let r0 = self.row0;
         for i in 0..j.n() {
-            self.data[0 * n + col + i] = scale * j.dx()[i];
-            self.data[1 * n + col + i] = scale * j.dy()[i];
+            let g = self.conn[col + i];
+            self.data[r0 * n + g] = scale * j.dx()[i];
+            self.data[(r0 + 1) * n + g] = scale * j.dy()[i];
         }
     }
 
     fn place_scalar(&mut self, col: usize, j: &ScalarJacobian, scale: f64) {
         debug_assert_eq!(self.n_rows, 1);
-        debug_assert!(col + j.n() <= self.n_cols);
+        debug_assert!(col + j.n() <= self.conn.len());
+        let n = self.n_global;
         for i in 0..j.n() {
-            self.data[col + i] = scale * j.ds()[i];
+            let g = self.conn[col + i];
+            self.data[self.row0 * n + g] = scale * j.ds()[i];
         }
     }
 }
@@ -153,7 +170,7 @@ pub trait ConstraintKind: Clone + Debug + 'static {
     /// Local residual `r_N` in contribution order (length = [`Self::RESIDUAL_ARITY`]).
     fn eval_residual(&self, store: &dyn GeometryStore, p: &State, out: &mut [f64]);
 
-    /// Fill a zeroed local Jacobian view (columns in [`Self::param_connectivity`] order).
+    /// Scatter this contribution's Jacobian into the global matrix via `j`.
     fn accumulate_jacobian(&self, store: &dyn GeometryStore, p: &State, j: &mut LocalJacobian<'_>);
 
     /// Geometry instances this constraint depends on (incidence / reverse index).
@@ -178,17 +195,7 @@ pub trait Constraint: Debug {
     /// Local residual `r_N` in contribution order (length = residual_arity).
     fn eval_residual(&self, store: &dyn GeometryStore, p: &State, out: &mut [f64]);
 
-    /// Local Jacobian `J_N` row-major, shape `(residual_arity × param_connectivity.len())`.
-    fn eval_jacobian(&self, store: &dyn GeometryStore, p: &State, out: &mut [f64]) {
-        let n_local = self.param_connectivity(store).len();
-        let m = self.residual_arity();
-        assert_eq!(out.len(), m * n_local);
-        out.fill(0.0);
-        let mut j = LocalJacobian::new(out, m, n_local);
-        self.accumulate_jacobian(store, p, &mut j);
-    }
-
-    /// Fill a zeroed local Jacobian view (columns in param_connectivity order).
+    /// Scatter this contribution's Jacobian into the global matrix via `j`.
     fn accumulate_jacobian(&self, store: &dyn GeometryStore, p: &State, j: &mut LocalJacobian<'_>);
 
     /// Geometry instances this constraint depends on (incidence / reverse index).

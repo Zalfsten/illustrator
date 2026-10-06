@@ -25,6 +25,12 @@ impl std::fmt::Display for SolveError {
 
 impl std::error::Error for SolveError {}
 
+/// Soft least-squares weights for interactive drag (mouse follow / stay-near).
+///
+/// Residual scale is `sqrt(weight)`, relative to unweighted structural residuals.
+/// Defaults fold in the soft-vs-hard tradeoff (formerly a separate ~1e-3 assemble
+/// scale on top of mouse=40 / stay=0.02): too small vs canvas coords (~1e2) makes
+/// the pointer numerically invisible; too large lets soft fight hard constraints.
 #[derive(Clone, Debug)]
 pub struct SoftTerms {
     pub mouse_weight: f64,
@@ -33,9 +39,10 @@ pub struct SoftTerms {
 
 impl Default for SoftTerms {
     fn default() -> Self {
+        // 40 * (1e-3)^2 and 0.02 * (1e-3)^2 — same effective scale as before.
         Self {
-            mouse_weight: 40.0,
-            stay_weight: 0.02,
+            mouse_weight: 4e-5,
+            stay_weight: 2e-8,
         }
     }
 }
@@ -115,7 +122,7 @@ impl Default for InteractiveSolve<CeresSolver> {
 impl<S: SolverPort> InteractiveSolve<S> {
     fn structural_norm(doc: &Document, p: &State) -> f64 {
         let soft0: [SoftContribution; 0] = [];
-        let sys0 = AssembledSystem::new(doc, p.len(), &soft0);
+        let sys0 = AssembledSystem::new(doc, &soft0);
         let mut r = vec![0.0; sys0.n_residuals()];
         sys0.residual(p, &mut r);
         r.iter().map(|x| x * x).sum::<f64>().sqrt()
@@ -146,7 +153,7 @@ impl<S: SolverPort> InteractiveSolve<S> {
         // Phase 2: polish onto the constraint manifold from the soft attempt.
         if !soft.is_empty() {
             let soft0: [SoftContribution; 0] = [];
-            let sys0 = AssembledSystem::new(doc, working.len(), &soft0);
+            let sys0 = AssembledSystem::new(doc, &soft0);
             let _ = self.solver.solve(&sys0, &mut working, &self.opts);
             if self.structural_ok(doc, &working) {
                 doc.commit_state(&working);

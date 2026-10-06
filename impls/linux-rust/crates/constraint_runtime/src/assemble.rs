@@ -1,17 +1,14 @@
 //! FEM-style assembly of global residual and Jacobian from local contributions.
 
+use crate::constraint::LocalJacobian;
 use crate::document::Document;
 use crate::solver::SystemEval;
 use crate::state::State;
 use crate::SOLVE_TOL;
 
-/// Relative weight of structural residuals vs soft terms during interactive solves.
-/// Must stay modest vs soft Jacobian scale: at canvas/pixel coordinates (~1e2),
-/// values ≫ 1e3 make soft mouse terms numerically invisible and trap drags in
-/// the previous nullspace (e.g. only vertical motion on an axis-aligned right angle).
-pub const HARD_WEIGHT_WITH_SOFT: f64 = 1e3;
-
 /// Soft residual: sqrt(w) * (p[index] - target); local J is scalar sqrt(w).
+///
+/// `weight` already includes the soft-vs-hard strength (see [`crate::SoftTerms`]).
 #[derive(Clone, Debug)]
 pub struct SoftContribution {
     pub index: usize,
@@ -44,7 +41,6 @@ impl SoftContribution {
 pub struct AssembledSystem<'a> {
     pub doc: &'a Document,
     pub soft: &'a [SoftContribution],
-    n_params: usize,
     n_res: usize,
     /// Starting residual row for each structural constraint.
     structural_row0: Vec<usize>,
@@ -52,8 +48,8 @@ pub struct AssembledSystem<'a> {
 }
 
 impl<'a> AssembledSystem<'a> {
-    pub fn new(doc: &'a Document, n_params: usize, soft: &'a [SoftContribution]) -> Self {
-        debug_assert_eq!(n_params, doc.parameter_count());
+    pub fn new(doc: &'a Document, soft: &'a [SoftContribution]) -> Self {
+        debug_assert_eq!(doc.state().len(), doc.parameter_count());
         let mut structural_row0 = Vec::with_capacity(doc.constraints().len());
         let mut row = 0usize;
         for c in doc.constraints().values() {
@@ -65,7 +61,6 @@ impl<'a> AssembledSystem<'a> {
         Self {
             doc,
             soft,
-            n_params,
             n_res: row,
             structural_row0,
             soft_row0,
@@ -73,13 +68,13 @@ impl<'a> AssembledSystem<'a> {
     }
 
     pub fn from_document(doc: &'a Document, soft: &'a [SoftContribution]) -> Self {
-        Self::new(doc, doc.state().len(), soft)
+        Self::new(doc, soft)
     }
 }
 
 impl SystemEval for AssembledSystem<'_> {
     fn n_params(&self) -> usize {
-        self.n_params
+        self.doc.parameter_count()
     }
 
     fn n_residuals(&self) -> usize {
@@ -89,19 +84,11 @@ impl SystemEval for AssembledSystem<'_> {
     fn residual(&self, p: &State, r: &mut [f64]) {
         assert_eq!(r.len(), self.n_res);
         r.fill(0.0);
-        let hard = if self.soft.is_empty() {
-            1.0
-        } else {
-            HARD_WEIGHT_WITH_SOFT
-        };
         for (ci, entry) in self.doc.constraints().values().enumerate() {
             let c = entry.body();
             let m = c.residual_arity();
             let row0 = self.structural_row0[ci];
             c.eval_residual(self.doc, p, &mut r[row0..row0 + m]);
-            for x in &mut r[row0..row0 + m] {
-                *x *= hard;
-            }
         }
         for (si, s) in self.soft.iter().enumerate() {
             let row = self.soft_row0 + si;
@@ -110,29 +97,18 @@ impl SystemEval for AssembledSystem<'_> {
     }
 
     fn jacobian(&self, p: &State, j: &mut [f64]) {
-        let n = self.n_params;
+        let n = self.n_params();
         let m = self.n_res;
         assert_eq!(j.len(), m * n);
         j.fill(0.0);
-        let hard = if self.soft.is_empty() {
-            1.0
-        } else {
-            HARD_WEIGHT_WITH_SOFT
-        };
 
         for (ci, entry) in self.doc.constraints().values().enumerate() {
             let c = entry.body();
             let conn = c.param_connectivity(self.doc);
-            let n_local = conn.len();
             let m_local = c.residual_arity();
-            let mut j_local = vec![0.0; m_local * n_local];
-            c.eval_jacobian(self.doc, p, &mut j_local);
             let row0 = self.structural_row0[ci];
-            for i in 0..m_local {
-                for (lj, &g) in conn.iter().enumerate() {
-                    j[(row0 + i) * n + g] += hard * j_local[i * n_local + lj];
-                }
-            }
+            let mut jac = LocalJacobian::new(j, n, row0, m_local, &conn);
+            c.accumulate_jacobian(self.doc, p, &mut jac);
         }
 
         for (si, s) in self.soft.iter().enumerate() {
@@ -150,7 +126,7 @@ pub fn structural_residual_norm(doc: &Document) -> f64 {
 
 pub fn structural_residual_norm_at(doc: &Document, p: &State) -> f64 {
     let soft: [SoftContribution; 0] = [];
-    let sys = AssembledSystem::new(doc, p.len(), &soft);
+    let sys = AssembledSystem::new(doc, &soft);
     let mut r = vec![0.0; sys.n_residuals()];
     sys.residual(p, &mut r);
     r.iter().map(|x| x * x).sum::<f64>().sqrt()
