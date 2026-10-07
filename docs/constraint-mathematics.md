@@ -10,7 +10,7 @@ Behavioral contracts live in OpenSpec capabilities (`geometry-ir`, `state-vector
 | Term | Meaning |
 |------|---------|
 | **Document** | Discrete sketch (geometries, structural constraints, connectivity) plus a **committed** State. Independent of GUI and of any concrete solver algorithm. **Structural sync point:** add/remove geometry updates graph and State together (kinds only pack initial chart parameters). Evaluate/assemble take Document as geometry resolution plus an explicit State (committed or working). |
-| **State** $p$ | First-class contiguous vector of continuous scalars (degrees of freedom). One State length matches the Document's parameter count. The Document holds a **committed** State; Interact/solvers use **working** States of the same kind. In linux-rust: `state::State` (owned), not a bare ad-hoc `Vec` as the authority. |
+| **State** $p$ | Role name for the contiguous parameter vector (degrees of freedom). Length matches the Document's parameter count. The Document holds a **committed** \(p\); Interact/solvers use **working** copies of the same kind. In linux-rust the owned buffer type is `vector::Vector` (also used for the assembled residual \(r\)); roles stay in names (`p` vs `r`), not in distinct types. |
 | **Chart (kind)** | Kind-owned packing of initial parameters and formula catalog for that geometry kind. Does not mutate Document or State by itself. |
 | **Parameter window** | Contiguous index range on a geometry record (offset + count) identifying that geometry's slots in State; evaluate/formulas read \(p\) through this window. |
 | **Vec2 / free vector** | Displacement or direction in the plane. Fundamental linear quantity: difference of points, segment direction, etc. |
@@ -50,7 +50,7 @@ Behavioral contracts live in OpenSpec capabilities (`geometry-ir`, `state-vector
 
 **Why:** Call sites should see “a point/vector map”, not `Endpoint | OnCurve | …`. A small fixed catalog stays data-driven (`PartialEq`, `Copy`, easy Debug/serde) without exposing variants. True openness (trait objects / closures) was tried and rejected for this codebase in favor of this facade — see approaches below.
 
-**Consequences (linux-rust):** Per-kind private formula **structs** (e.g. `StartPoint` / `EndPoint` / `OnCurve`) under `geometry_kinds/<kind>.rs`, catalogued by a private enum; outer kind sum and opaque `PointExpr` / `VecExpr` / `ScalarExpr` in `geometry/expr.rs`. Stack Jacobians live in `geom` (erased runtime \(n\), fixed cap). Kind instances implement `Chart` (`pack`/`unpack`) and get `AsShell` + `From<GeometryShell>` from `geometry_shell_instance!`; blankets supply `GeometryKind` and object-safe `Geometry`. Document stores `HashMap` by id for geometries and constraints and owns `IdGenerator`. Shared affine types + Jacobians in `geom`; owned `State` in `state.rs`; identity resolution then chart unpack-by-ref in `store`. Constraints never match on formula kinds.
+**Consequences (linux-rust):** Per-kind private formula **structs** (e.g. `StartPoint` / `EndPoint` / `OnCurve`) under `geometry_kinds/<kind>.rs`, catalogued by a private enum; outer kind sum and opaque `PointExpr` / `VecExpr` / `LengthExpr` in `geometry/expr.rs`. Formula Jacobians write directly into `MatrixView` / `MatrixWrite` (`accumulate_jacobian`, and `accumulate_contracted` for \(g^\top J_v\) into a residual row). Kind instances implement `Chart` (`pack`/`unpack`) and get `AsShell` + `From<GeometryShell>` from `geometry_shell_instance!`; blankets supply `GeometryKind` and object-safe `Geometry`. Document stores `HashMap` by id for geometries and constraints and owns `IdGenerator`. Shared affine types in `geom`; owned `Vector` / `Matrix` in `vector.rs` / `matrix.rs`; identity resolution then chart unpack-by-ref in `store`. Constraints never match on formula kinds.
 
 ### Approaches considered
 
@@ -212,9 +212,11 @@ Each contribution also exposes derivatives equivalent to a contribution
 Jacobian $J_N = \partial r_N / \partial p_{\mathrm{loc}}$ whose columns follow
 that contribution's connectivity order. Assembly may pack $J_N$ then scatter,
 or write formula Jacobian blocks straight into global $J$ via connectivity
-(linux-rust: `ScatterMatrix` / `DenseMatrix` via `MatrixView`; expressions
-`accumulate_jacobian` / `accumulate_contracted` write formula-local columns,
-placed by same-kind `block_slice` windows).
+(linux-rust: assembly opens a `ScatterMatrix` over global \(J\) via
+connectivity; expressions `accumulate_jacobian` / `accumulate_contracted`
+write formula-local columns into `MatrixWrite`; successive operand blocks
+are placed with same-kind `block_slice`. Solver eval fills owned `Vector` \(r\)
+and `Matrix` \(J\).)
 
 ## Assembly (FEM-style)
 

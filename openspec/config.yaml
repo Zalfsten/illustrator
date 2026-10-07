@@ -45,13 +45,14 @@ context: |
 
   Point / vector / length expressions (opaque, Model B):
   A point, free-vector, or length expression is an opaque handle to a
-  geometry-kind-owned formula that maps State parameters to a Point2, Vec2,
+  geometry-kind-owned formula that maps parameter State \(p\) to a Point2, Vec2,
   or Length (plus connectivity / MatrixWrite). Do not expose formula-kind
   variants on the public expression type (no formula-kind match in the
   constraint path). Internally shared capability formula tags are keyed by
   geometry kind in a closed sum for dispatch. Point and free-vector Jacobians
   are both 2×n; length Jacobians are 1×n, written into MatrixView with
-  formula-local columns (sparse vs full geometry block). Typed scalar families
+  formula-local columns (sparse vs full geometry block). Parallel/Orthogonal
+  may write \(g^\top J_v\) via accumulate_contracted. Typed scalar families
   stay separate
   (LengthExpr today; AngleExpr when a kind needs angles — no untyped
   ScalarExpr). Parallel/Orthogonal take two opaque vector expressions;
@@ -70,13 +71,14 @@ context: |
 
   State layout (contiguous blocks):
   Each geometry owns a contiguous parameter block in the global State vector
-  (offset + parameter count / parameter window). Geometries do not share State
-  indices; joins are constraints (e.g. Congruence), not aliased DOFs.
+  \(p\) (offset + parameter count / parameter window). Geometries do not share
+  State indices; joins are constraints (e.g. Congruence), not aliased DOFs.
   Connectivity for assembly is derived from that block. Committed and working
-  copies share one State type. Structural add/remove goes through the Document
-  composite so graph and State stay length-matched; kinds pack/unpack chart
-  init and own formulas, and evaluate reads the geometry's recorded parameter
-  window. See openspec/specs/state-vector/spec.md
+  copies share one owned vector type (linux-rust: Vector). Assembled residual
+  \(r\) is a separate Vector of length m. Structural add/remove goes through
+  the Document composite so graph and State stay length-matched; kinds
+  pack/unpack chart init and own formulas, and evaluate reads the geometry's
+  recorded parameter window. See openspec/specs/state-vector/spec.md
   (Contiguous parameter block per geometry; atomic structural edits).
 
   Rust module and unit-test layout (impls/linux-rust):
@@ -96,32 +98,33 @@ context: |
       CurveFormulaKey / EndpointFormulaKey impls for listed kinds)
   - id.rs: IdGenerator<Id> (shared by geometry + constraint namespaces)
   - geometry_kinds/: one file per concrete kind. Per kind: shell +
-    chart_atoms!; eval_* + eval_*_jacobian per formula family; optional
-    sparse endpoint_point_param_indices (other families default connectivity
-    to all chart SLOTS); one register_expr_kinds! entry (no second keying
-    macro at the kind site). Document stores HashMap<GeometryId, Box<dyn Geometry>>;
-    add_geometry bound is GeometryKind.
+    chart_atoms!; eval_* + accumulate_*_jacobian per formula family;
+    optional sparse endpoint_point_param_indices (other families default
+    connectivity to all chart SLOTS); one register_expr_kinds! entry (no
+    second keying macro at the kind site). Document stores
+    HashMap<GeometryId, Box<dyn Geometry>>; add_geometry bound is GeometryKind.
   - constraint.rs: ConstraintKind (per-kind residual arity + evaluate) with
-    object-safe Constraint via blanket (clone_box / as_any); accumulate_jacobian
-    takes ScatterMatrix (kinds generic over MatrixWrite). ConstraintId +
-    ConstraintEntry (id + body).
+    object-safe Constraint via blanket (clone_box / as_any); eval_residual
+    generic over VecWrite (R); accumulate_jacobian generic over MatrixWrite.
+    ConstraintId + ConstraintEntry (id + body).
   - matrix.rs: owned Matrix; borrowed DenseMatrix / ScatterMatrix;
     MatrixView / MatrixWrite (block_slice / scatter_slice). Assemble uses
     ScatterMatrix so kinds monomorphize.
-  - vector.rs: owned Vector; borrowed DenseVec / ScatterVec; VecView / VecWrite
-    (as_dense / block_slice / scatter_slice over p)
+  - vector.rs: owned Vector (p and r); borrowed DenseVec / ScatterVec;
+    VecView / VecWrite (as_dense / block_slice / scatter_slice)
   - constraint_kinds/: one file per concrete constraint (Congruence,
     Parallel, Orthogonal, FixPoint, EqualLength, …). Document stores
     HashMap<ConstraintId, ConstraintEntry>; add_constraint takes impl
     ConstraintKind → ConstraintId.
   - assemble: AssembledSystem(&'a Document, soft); SoftContribution is
-    session-only (Vector index + target + weight); soft-vs-hard strength is
-    in SoftTerms / SoftContribution.weight (sqrt(w) in residual), not a
-    separate structural rescale in assembly
+    session-only (parameter index + target + weight); soft-vs-hard strength
+    is in SoftTerms / SoftContribution.weight (sqrt(w) in residual), not a
+    separate structural rescale in assembly. SystemEval fills Vector r and
+    Matrix J.
   - interact: SoftTerms (mouse/stay weights); soft_for_drag builds
     SoftContribution list; InteractiveSolve commits working Vector
   - store: GeometryStore port (id → &dyn Geometry); implemented by Document
-  - mapper: single authority for “which columns of Vector?” — Vec<usize>
+  - mapper: single authority for “which columns of p?” — Vec<usize>
     scatter lists (geometry_indices / local_indices / join_indices); also
     unpack_chart / chart_param_block Range for contiguous slice ops only.
     Constraints use join_indices; kinds stay in local indices until Mapper
@@ -134,6 +137,8 @@ context: |
     add_constraint return ids; remove drops orphan constraints and rebuilds
     incidence/identification indexes. Assemble/Mesh/Interact take &Document
     plus an explicit Vector (working or committed).
+  - solver: SystemEval::residual(p, &mut Vector) /
+    jacobian(p, &mut Matrix); FFI trampolines may copy to/from C buffers
   Prefer sibling files once a module has unit tests: src/<module>.rs for
   production code and src/tests_<module>.rs for that module's unit tests,
   declared with `#[cfg(test)] #[path = "tests_<module>.rs"] mod tests_<module>;`

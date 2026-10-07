@@ -8,14 +8,15 @@ Defines FEM-style assembly: local residual and Jacobian contributions are scatte
 
 ### Requirement: Global residual is assembled from local contributions
 
-The system SHALL form the global residual vector \(r(p)\) by evaluating each active contribution’s local residual and scattering (accumulating) its entries into global residual indices according to connectivity.
+The system SHALL form the global residual vector \(r(p)\) by evaluating each active contribution’s local residual and placing its entries into contiguous residual-row windows of a first-class residual buffer (same storage kind as the parameter State vector \(p\), but a separate buffer of length equal to the residual arity sum). Local writes SHALL NOT mutate \(p\).
 
 #### Scenario: Multiple constraints fill one residual vector
 
 - **WHEN** a sketch has several structural constraints
 - **AND** the residual is evaluated at state \(p\)
-- **THEN** each constraint’s local residual entries appear in the global residual at the positions dictated by connectivity
+- **THEN** each constraint’s local residual entries appear in the global residual at the positions dictated by contribution row offsets
 - **AND** the global residual length equals the sum of the arities of active residual contributions (for the structural system without soft terms)
+- **AND** the parameter State \(p\) is unchanged by residual assembly
 
 ### Requirement: Global Jacobian is assembled from local contributions
 
@@ -23,7 +24,7 @@ The system SHALL form the global Jacobian \(J(p) = \partial r / \partial p\) by 
 
 \(J[M_N^{\mathrm{row}}(i), M_N^{\mathrm{col}}(j)] \mathrel{+}= (J_N)_{ij}\) (up to residual-row indexing conventions).
 
-Implementations MAY materialize a dense packed \(J_N\) buffer before scattering, or MAY write formula Jacobian blocks directly into the global matrix through the connectivity map. The observable contract is the assembled global \(J\).
+Implementations MAY materialize a dense packed \(J_N\) buffer before scattering, or MAY write formula Jacobian blocks directly into the global matrix through a connectivity scatter view. When a contribution concatenates several formula blocks, implementations MAY place successive column windows with same-kind matrix block slices (dense→dense, scatter→scatter). The observable contract is the assembled global \(J\).
 
 #### Scenario: Local derivative lands at mapped global indices
 
@@ -43,7 +44,7 @@ Because the system is nonlinear, residual and Jacobian assembly SHALL be perform
 
 ### Requirement: Contribution Jacobian columns follow connectivity order
 
-Each structural contribution’s Jacobian columns SHALL follow the same order as that contribution’s parameter connectivity list (residual arity × connectivity length, whether packed locally or written straight into global \(J\)). Assembly SHALL map those columns to global State indices via that list. Implementations MAY fill contributions through typed Jacobian blocks (point/vector/scalar formula Jacobians) placed via a sequential column cursor; the observable contract is the scattered global \(J\).
+Each structural contribution’s Jacobian columns SHALL follow the same order as that contribution’s parameter connectivity list (residual arity × connectivity length, whether packed locally or written straight into global \(J\)). Assembly SHALL map those columns to global State indices via that list. Implementations MAY fill contributions by writing point/vector/scalar formula Jacobians (formula-local columns) into the contribution matrix window, placing successive operand blocks via same-kind column block slices; the observable contract is the scattered global \(J\).
 
 #### Scenario: Joined contribution concatenates operand connectivities
 
@@ -51,6 +52,12 @@ Each structural contribution’s Jacobian columns SHALL follow the same order as
 - **AND** its Jacobian contribution is assembled
 - **THEN** the contribution column count equals \(|C_a| + |C_b|\)
 - **AND** the first \(|C_a|\) columns correspond to \(C_a\) and the remainder to \(C_b\)
+
+#### Scenario: Formula Jacobians write with formula-local columns
+
+- **WHEN** a contribution accumulates an expression’s analytical Jacobian into the assembled system
+- **THEN** that expression writes with formula-local column indices \(0..n-1\) matching its reported parameter-index list
+- **AND** assembly/connectivity is responsible for mapping those columns into global State indices
 
 ### Requirement: Soft interaction terms assemble the same way
 

@@ -37,6 +37,18 @@ The solver port SHALL support configuration of common nonlinear-solve controls, 
 - **THEN** the active backend uses those settings in its stopping criteria (or rejects the configuration if it cannot)
 - **AND** a successful solve reports satisfaction within the configured residual tolerance for structural residuals
 
+### Requirement: Evaluation fills first-class residual and Jacobian buffers
+
+The evaluation interface used by the solver port SHALL accept the current parameter State \(p\) and fill a first-class residual buffer \(r\) and a first-class dense Jacobian buffer \(J\) (row-major \(m \times n\) layout, or an equivalent agreed packing). \(r\) and \(p\) SHALL be distinct buffers: residual length is the assembled residual arity, not the parameter count. Implementations MAY expose the same contract at a C ABI as opaque user data plus raw fill pointers; adapters MAY copy between foreign buffers and the first-class buffers.
+
+#### Scenario: Residual and Jacobian buffer kinds
+
+- **WHEN** the solver requests a residual evaluation at \(p\)
+- **THEN** assembly writes into a residual buffer of length equal to the number of residual rows
+- **AND** that buffer is not the parameter State \(p\)
+- **WHEN** the solver requests a Jacobian evaluation at \(p\)
+- **THEN** assembly writes into a dense \(m \times n\) Jacobian buffer (or equivalent)
+
 ### Requirement: FFI-friendly evaluation contract
 
 The evaluation interface used by the solver port SHALL be expressible in a form suitable for binding to foreign-language solvers (for example opaque user data plus residual/Jacobian fill callbacks), so that an external library can call back into assembly without requiring Rust-specific closure types at the ABI boundary.
