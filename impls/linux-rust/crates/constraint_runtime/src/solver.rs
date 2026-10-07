@@ -1,6 +1,7 @@
 //! Swappable nonlinear solver port over residual/Jacobian evaluation.
 
-use crate::state::State;
+use crate::matrix::Matrix;
+use crate::vector::Vector;
 use crate::SOLVE_TOL;
 
 #[derive(Clone, Debug, PartialEq)]
@@ -26,19 +27,19 @@ impl Default for SolverOptions {
     }
 }
 
-/// Evaluation contract: residual and dense row-major Jacobian at `p`.
+/// Evaluation contract: residual and dense Jacobian at `p`.
 pub trait SystemEval {
     fn n_params(&self) -> usize;
     fn n_residuals(&self) -> usize;
-    fn residual(&self, p: &State, r: &mut [f64]);
-    fn jacobian(&self, p: &State, j: &mut [f64]);
+    fn residual(&self, p: &Vector, r: &mut Vector);
+    fn jacobian(&self, p: &Vector, j: &mut Matrix);
 }
 
 pub trait SolverPort {
     fn solve(
         &mut self,
         eval: &dyn SystemEval,
-        p: &mut State,
+        p: &mut Vector,
         opts: &SolverOptions,
     ) -> SolveOutcome;
 }
@@ -52,11 +53,11 @@ impl SolverPort for StubSolver {
     fn solve(
         &mut self,
         eval: &dyn SystemEval,
-        p: &mut State,
+        p: &mut Vector,
         opts: &SolverOptions,
     ) -> SolveOutcome {
         let _ = opts;
-        let mut r = vec![0.0; eval.n_residuals()];
+        let mut r = Vector::zeros(eval.n_residuals());
         eval.residual(p, &mut r);
         let n = r.iter().map(|x| x * x).sum::<f64>().sqrt();
         if self.succeed {
@@ -77,7 +78,7 @@ impl SolverPort for LmSolver {
     fn solve(
         &mut self,
         eval: &dyn SystemEval,
-        p: &mut State,
+        p: &mut Vector,
         opts: &SolverOptions,
     ) -> SolveOutcome {
         let n = eval.n_params();
@@ -96,14 +97,14 @@ impl SolverPort for LmSolver {
         let mut lambda = opts.lm_lambda0;
         let mut best_p = p.clone();
         let mut best_norm = {
-            let mut r = vec![0.0; m];
+            let mut r = Vector::zeros(m);
             eval.residual(p, &mut r);
             r.iter().map(|x| x * x).sum::<f64>().sqrt()
         };
         let mut stagnant = 0usize;
 
         for _ in 0..opts.max_iters {
-            let mut r = vec![0.0; m];
+            let mut r = Vector::zeros(m);
             eval.residual(p, &mut r);
             let norm = r.iter().map(|x| x * x).sum::<f64>().sqrt();
             if norm < best_norm {
@@ -116,8 +117,9 @@ impl SolverPort for LmSolver {
                 };
             }
 
-            let mut j = vec![0.0; m * n];
+            let mut j = Matrix::zeros(m, n);
             eval.jacobian(p, &mut j);
+            let j = j.as_slice();
 
             // (J^T J + lambda I) dp = J^T r
             let mut jtj = vec![0.0; n * n];
@@ -148,7 +150,7 @@ impl SolverPort for LmSolver {
             for i in 0..n {
                 p_trial[i] -= dp[i];
             }
-            let mut r_trial = vec![0.0; m];
+            let mut r_trial = Vector::zeros(m);
             eval.residual(&p_trial, &mut r_trial);
             let trial_norm = r_trial.iter().map(|x| x * x).sum::<f64>().sqrt();
 
@@ -166,7 +168,7 @@ impl SolverPort for LmSolver {
         }
 
         p.copy_from(&best_p);
-        let mut r = vec![0.0; m];
+        let mut r = Vector::zeros(m);
         eval.residual(p, &mut r);
         let norm = r.iter().map(|x| x * x).sum::<f64>().sqrt();
         if norm <= opts.tol {

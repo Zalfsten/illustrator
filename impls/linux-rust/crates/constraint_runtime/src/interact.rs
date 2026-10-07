@@ -5,7 +5,7 @@ use crate::ceres_solver::CeresSolver;
 use crate::document::Document;
 use crate::geometry::PointExpr;
 use crate::solver::{SolverOptions, SolverPort, SystemEval};
-use crate::state::State;
+use crate::vector::Vector;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct SolveError {
@@ -49,7 +49,7 @@ impl Default for SoftTerms {
 
 fn soft_for_drag(
     doc: &Document,
-    prev: &State,
+    prev: &Vector,
     dragged: &PointExpr,
     mouse: (f64, f64),
     weights: &SoftTerms,
@@ -120,33 +120,33 @@ impl Default for InteractiveSolve<CeresSolver> {
 }
 
 impl<S: SolverPort> InteractiveSolve<S> {
-    fn structural_norm(doc: &Document, p: &State) -> f64 {
+    fn structural_norm(doc: &Document, p: &Vector) -> f64 {
         let soft0: [SoftContribution; 0] = [];
         let sys0 = AssembledSystem::new(doc, &soft0);
-        let mut r = vec![0.0; sys0.n_residuals()];
+        let mut r = Vector::zeros(sys0.n_residuals());
         sys0.residual(p, &mut r);
         r.iter().map(|x| x * x).sum::<f64>().sqrt()
     }
 
-    fn structural_ok(&self, doc: &Document, p: &State) -> bool {
+    fn structural_ok(&self, doc: &Document, p: &Vector) -> bool {
         Self::structural_norm(doc, p) <= self.opts.tol * 10.0
     }
 
-    /// Solve on a working copy of State; commit only if structural residuals pass.
+    /// Solve on a working copy of Vector; commit only if structural residuals pass.
     pub fn solve_commit(
         &mut self,
         doc: &mut Document,
         soft: &[SoftContribution],
-        fallback: &State,
+        fallback: &Vector,
     ) -> Result<(), SolveError> {
-        let mut working = doc.clone_state();
+        let mut working = doc.clone_vector();
 
         // Phase 1: soft + hard (when soft is empty, this is structural-only).
         let sys = AssembledSystem::from_document(doc, soft);
         let _ = self.solver.solve(&sys, &mut working, &self.opts);
 
         if self.structural_ok(doc, &working) {
-            doc.commit_state(&working);
+            doc.commit_vector(&working);
             return Ok(());
         }
 
@@ -156,13 +156,13 @@ impl<S: SolverPort> InteractiveSolve<S> {
             let sys0 = AssembledSystem::new(doc, &soft0);
             let _ = self.solver.solve(&sys0, &mut working, &self.opts);
             if self.structural_ok(doc, &working) {
-                doc.commit_state(&working);
+                doc.commit_vector(&working);
                 return Ok(());
             }
         }
 
         let s_norm = Self::structural_norm(doc, &working);
-        doc.restore_state(fallback);
+        doc.restore_vector(fallback);
         Err(SolveError {
             message: format!(
                 "structural residuals not satisfied after soft solve + polish (structural={s_norm})"
@@ -172,7 +172,7 @@ impl<S: SolverPort> InteractiveSolve<S> {
     }
 
     pub fn structural_only(&mut self, doc: &mut Document) -> Result<(), SolveError> {
-        let fallback = doc.clone_state();
+        let fallback = doc.clone_vector();
         let soft: [SoftContribution; 0] = [];
         self.solve_commit(doc, &soft, &fallback)
     }
@@ -180,22 +180,22 @@ impl<S: SolverPort> InteractiveSolve<S> {
 
 #[derive(Clone, Debug)]
 pub struct DragSession {
-    snapshot: State,
-    undo_stack: Vec<State>,
+    snapshot: Vector,
+    undo_stack: Vec<Vector>,
     active: Option<PointExpr>,
 }
 
 impl DragSession {
     pub fn new() -> Self {
         Self {
-            snapshot: State::new(),
+            snapshot: Vector::new(),
             undo_stack: Vec::new(),
             active: None,
         }
     }
 
     pub fn pointer_down(&mut self, doc: &Document, point: PointExpr) {
-        self.snapshot = doc.clone_state();
+        self.snapshot = doc.clone_vector();
         self.active = Some(point);
     }
 
@@ -209,7 +209,7 @@ impl DragSession {
             return Ok(());
         };
         let soft = soft_for_drag(doc, &self.snapshot, point, mouse, &interact.soft_weights);
-        let fallback = doc.clone_state();
+        let fallback = doc.clone_vector();
         interact.solve_commit(doc, &soft, &fallback)
     }
 
@@ -237,7 +237,7 @@ impl DragSession {
 
     pub fn undo(&mut self, doc: &mut Document) -> bool {
         if let Some(prev) = self.undo_stack.pop() {
-            doc.restore_state(&prev);
+            doc.restore_vector(&prev);
             true
         } else {
             false
@@ -250,7 +250,7 @@ impl DragSession {
 
     pub fn cancel(&mut self, doc: &mut Document) {
         if self.active.is_some() {
-            doc.restore_state(&self.snapshot);
+            doc.restore_vector(&self.snapshot);
             self.active = None;
         }
     }

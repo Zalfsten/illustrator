@@ -12,7 +12,7 @@ fn stub_backend_swaps() {
     doc.add_geometry::<Segment>(GeometryRole::Result, (Point2::new(0.0, 0.0), Point2::new(1.0, 0.0)));
     let soft: [crate::assemble::SoftContribution; 0] = [];
     let sys = AssembledSystem::from_document(&doc, &soft);
-    let mut p = doc.clone_state();
+    let mut p = doc.clone_vector();
     let opts = SolverOptions::default();
     assert!(matches!(
         StubSolver { succeed: true }.solve(&sys, &mut p, &opts),
@@ -34,11 +34,11 @@ fn lm_solves_fixpoint_analytically() {
     });
     let soft: [crate::assemble::SoftContribution; 0] = [];
     let sys = AssembledSystem::from_document(&doc, &soft);
-    let mut p = doc.clone_state();
+    let mut p = doc.clone_vector();
     let out = LmSolver.solve(&sys, &mut p, &SolverOptions::default());
     assert!(matches!(out, SolveOutcome::Success { .. }), "{out:?}");
-    doc.restore_state(&p);
-    let q = Segment::start_expr(s0).evaluate(&doc, doc.state());
+    doc.restore_vector(&p);
+    let q = Segment::start_expr(s0).evaluate(&doc, doc.vector());
     assert!(q.x.abs() < 1e-5 && q.y.abs() < 1e-5);
 }
 
@@ -61,11 +61,11 @@ fn lm_solves_congruence() {
     });
     let soft: [crate::assemble::SoftContribution; 0] = [];
     let sys = AssembledSystem::from_document(&doc, &soft);
-    let mut p = doc.clone_state();
+    let mut p = doc.clone_vector();
     let out = LmSolver.solve(&sys, &mut p, &SolverOptions::default());
     assert!(matches!(out, SolveOutcome::Success { .. }), "{out:?}");
-    doc.restore_state(&p);
-    let a = Segment::end_expr(s0).evaluate(&doc, doc.state());
-    let b = Segment::start_expr(GeometryId(1)).evaluate(&doc, doc.state());
+    doc.restore_vector(&p);
+    let a = Segment::end_expr(s0).evaluate(&doc, doc.vector());
+    let b = Segment::start_expr(GeometryId(1)).evaluate(&doc, doc.vector());
     assert!((a.x - b.x).abs() < 1e-5 && (a.y - b.y).abs() < 1e-5);
 }

@@ -38,9 +38,9 @@ fn congruence_between_endpoint_point_exprs() {
 #[test]
 fn add_geometry_grows_state_and_param_block() {
     let mut doc = Document::new();
-    assert_eq!(doc.state().len(), 0);
+    assert_eq!(doc.vector().len(), 0);
     let s0 = doc.add_geometry::<Segment>(GeometryRole::Result, (Point2::new(0.0, 0.0), Point2::new(1.0, 0.0)));
-    assert_eq!(doc.state().len(), Segment::PARAMETER_COUNT);
+    assert_eq!(doc.vector().len(), Segment::PARAMETER_COUNT);
     assert_eq!(doc.parameter_count(), Segment::PARAMETER_COUNT);
     let s = doc.geometry(s0).unwrap();
     assert_eq!(s.param_block(), 0..4);
@@ -49,7 +49,7 @@ fn add_geometry_grows_state_and_param_block() {
         GeometryRole::Result
     );
     let s1 = doc.add_geometry::<Segment>(GeometryRole::Result, (Point2::new(2.0, 0.0), Point2::new(3.0, 1.0)));
-    assert_eq!(doc.state().len(), 2 * Segment::PARAMETER_COUNT);
+    assert_eq!(doc.vector().len(), 2 * Segment::PARAMETER_COUNT);
     assert_eq!(doc.geometry(s1).unwrap().param_block(), 4..8);
 }
 
@@ -102,14 +102,14 @@ fn remove_geometry_compacts_state_and_drops_orphans() {
     assert_eq!(doc.constraints().len(), 4);
     assert!(doc.remove_geometry(s1));
     assert_eq!(doc.geometries().len(), 2);
-    assert_eq!(doc.state().len(), 2 * Segment::PARAMETER_COUNT);
+    assert_eq!(doc.vector().len(), 2 * Segment::PARAMETER_COUNT);
     // s0 still at 0..4; s2 remapped from 8..12 to 4..8
     assert_eq!(doc.geometry(s0).unwrap().param_block().start, 0);
     assert_eq!(
         doc.geometry(s2).unwrap().param_block().start,
         Segment::PARAMETER_COUNT
     );
-    assert_eq!(doc.state()[4], 5.0);
+    assert_eq!(doc.vector()[4], 5.0);
     // congruence + orthogonal + OnCurve FixPoint referenced s1 → dropped; FixPoint on s2 kept
     assert_eq!(doc.constraints().len(), 1);
     let kept = doc.constraints().values().next().unwrap().body();

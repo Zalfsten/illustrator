@@ -15,8 +15,8 @@ pub mod mapper;
 pub mod matrix;
 pub mod mesh;
 pub mod solver;
-pub mod state;
 pub mod store;
+pub mod vector;
 
 pub use assemble::{structural_residual_norm, AssembledSystem, SoftContribution};
 pub use ceres_solver::CeresSolver;
@@ -32,12 +32,10 @@ pub use geometry_kinds::Segment;
 pub use id::IdGenerator;
 pub use interact::{DragSession, InteractiveSolve, SoftTerms, SolveError};
 pub use mapper::Mapper;
-pub use matrix::{
-    DenseJac, DenseVec, JacCols, JacView, Matrix, ScatterJac, ScatterVec, VecView,
-};
+pub use matrix::{DenseMatrix, MatrixWrite, Matrix, MatrixView, ScatterMatrix};
 pub use mesh::{Mesh, MeshEdge, MeshFilter};
 pub use solver::{ffi, LmSolver, SolveOutcome, SolverOptions, SolverPort, StubSolver, SystemEval};
-pub use state::State;
 pub use store::GeometryStore;
+pub use vector::{DenseVec, ScatterVec, VecWrite, VecView, Vector};
 
 pub const SOLVE_TOL: f64 = 1e-6;

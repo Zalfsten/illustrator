@@ -3,8 +3,8 @@
 use crate::constraint::ConstraintKind;
 use crate::geometry::{GeometryId, LengthExpr};
 use crate::mapper::Mapper;
-use crate::matrix::{JacCols, JacView, VecView};
-use crate::state::State;
+use crate::matrix::MatrixWrite;
+use crate::vector::{VecWrite, Vector};
 use crate::store::GeometryStore;
 
 #[derive(Clone, Debug, PartialEq)]
@@ -20,15 +20,25 @@ impl ConstraintKind for EqualLength {
         Mapper::join_indices([self.a.param_indices(store), self.b.param_indices(store)])
     }
 
-    fn eval_residual(&self, store: &dyn GeometryStore, p: &State, out: &mut dyn VecView) {
+    fn eval_residual<R: VecWrite>(
+        &self,
+        store: &dyn GeometryStore,
+        p: &Vector,
+        out: &mut R,
+    ) {
         out[0] = self.a.evaluate(store, p).value() - self.b.evaluate(store, p).value();
     }
 
-    fn accumulate_jacobian(&self, store: &dyn GeometryStore, p: &State, j: &mut dyn JacView) {
+    fn accumulate_jacobian<J: MatrixWrite>(
+        &self,
+        store: &dyn GeometryStore,
+        p: &Vector,
+        j: &mut J,
+    ) {
         // r = ℓ_a - ℓ_b ⇒ ∂r/∂a = Ja, ∂r/∂b = -Jb
         let na = self.a.param_indices(store).len();
         self.a.accumulate_jacobian(store, p, j, 1.0);
-        let mut jb = JacCols::from(j, na);
+        let mut jb = j.block_slice(0, na, j.nrows(), j.ncols() - na);
         self.b.accumulate_jacobian(store, p, &mut jb, -1.0);
     }
 

@@ -4,13 +4,17 @@
 //! [`ConstraintKind`]; [`Constraint`] follows via blanket (like
 //! [`crate::geometry::GeometryKind`] / [`crate::geometry::Geometry`]).
 //! Document stores [`ConstraintEntry`] (`ConstraintId` + `Box<dyn Constraint>`).
+//!
+//! Kind methods are generic over [`MatrixWrite`] / [`VecWrite`] so assembly into
+//! concrete [`ScatterMatrix`] / [`DenseVec`] monomorphizes. The object-safe
+//! [`Constraint`] facade takes those concrete view types (the assemble path).
 
 use std::any::Any;
 use std::fmt::Debug;
 
 use crate::geometry::GeometryId;
-use crate::matrix::{JacView, VecView};
-use crate::state::State;
+use crate::matrix::{MatrixWrite, ScatterMatrix};
+use crate::vector::{DenseVec, VecWrite, Vector};
 use crate::store::GeometryStore;
 
 /// Deduplicate geometry ids while preserving first-seen order.
@@ -66,21 +70,30 @@ impl ConstraintEntry {
 
 /// Concrete constraint kind ready for Document storage.
 ///
-/// Not object-safe ([`Self::RESIDUAL_ARITY`]). Implement this on each kind;
-/// [`Constraint`] (including [`residual_arity`](Constraint::residual_arity) and
-/// [`clone_box`](Constraint::clone_box)) follows via the blanket below.
+/// Not object-safe ([`Self::RESIDUAL_ARITY`], generic residual/Jacobian).
+/// Implement this on each kind; [`Constraint`] follows via the blanket below.
 pub trait ConstraintKind: Clone + Debug + 'static {
     /// Residual row count for this contribution.
     const RESIDUAL_ARITY: usize;
 
-    /// Global State columns involved in this contribution (assembly scatter map).
+    /// Global Vector columns involved in this contribution (assembly scatter map).
     fn param_connectivity(&self, store: &dyn GeometryStore) -> Vec<usize>;
 
     /// Local residual `r_N` in contribution order (length = [`Self::RESIDUAL_ARITY`]).
-    fn eval_residual(&self, store: &dyn GeometryStore, p: &State, out: &mut dyn VecView);
+    fn eval_residual<R: VecWrite>(
+        &self,
+        store: &dyn GeometryStore,
+        p: &Vector,
+        out: &mut R,
+    );
 
     /// Write this contribution's Jacobian into `j` (dense or scatter local indices).
-    fn accumulate_jacobian(&self, store: &dyn GeometryStore, p: &State, j: &mut dyn JacView);
+    fn accumulate_jacobian<J: MatrixWrite>(
+        &self,
+        store: &dyn GeometryStore,
+        p: &Vector,
+        j: &mut J,
+    );
 
     /// Geometry instances this constraint depends on (incidence / reverse index).
     fn referenced_geometries(&self) -> Vec<GeometryId>;
@@ -93,19 +106,27 @@ pub trait ConstraintKind: Clone + Debug + 'static {
 
 /// Document-held structural constraint (object-safe).
 ///
+/// Residual / Jacobian take the concrete assemble views so the kind generics
+/// monomorphize for [`DenseVec`] / [`ScatterMatrix`].
+///
 /// Supplied automatically for every [`ConstraintKind`].
 pub trait Constraint: Debug {
     /// Object-safe accessor for the kind's [`ConstraintKind::RESIDUAL_ARITY`].
     fn residual_arity(&self) -> usize;
 
-    /// Global State columns involved in this contribution (assembly scatter map).
+    /// Global Vector columns involved in this contribution (assembly scatter map).
     fn param_connectivity(&self, store: &dyn GeometryStore) -> Vec<usize>;
 
     /// Local residual `r_N` in contribution order (length = residual_arity).
-    fn eval_residual(&self, store: &dyn GeometryStore, p: &State, out: &mut dyn VecView);
+    fn eval_residual(&self, store: &dyn GeometryStore, p: &Vector, out: &mut DenseVec<'_>);
 
-    /// Write this contribution's Jacobian into `j` (dense or scatter local indices).
-    fn accumulate_jacobian(&self, store: &dyn GeometryStore, p: &State, j: &mut dyn JacView);
+    /// Write this contribution's Jacobian into a scatter window.
+    fn accumulate_jacobian(
+        &self,
+        store: &dyn GeometryStore,
+        p: &Vector,
+        j: &mut ScatterMatrix<'_>,
+    );
 
     /// Geometry instances this constraint depends on (incidence / reverse index).
     fn referenced_geometries(&self) -> Vec<GeometryId>;
@@ -128,11 +149,16 @@ impl<T: ConstraintKind> Constraint for T {
         ConstraintKind::param_connectivity(self, store)
     }
 
-    fn eval_residual(&self, store: &dyn GeometryStore, p: &State, out: &mut dyn VecView) {
+    fn eval_residual(&self, store: &dyn GeometryStore, p: &Vector, out: &mut DenseVec<'_>) {
         ConstraintKind::eval_residual(self, store, p, out)
     }
 
-    fn accumulate_jacobian(&self, store: &dyn GeometryStore, p: &State, j: &mut dyn JacView) {
+    fn accumulate_jacobian(
+        &self,
+        store: &dyn GeometryStore,
+        p: &Vector,
+        j: &mut ScatterMatrix<'_>,
+    ) {
         ConstraintKind::accumulate_jacobian(self, store, p, j)
     }
 

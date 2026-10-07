@@ -17,7 +17,7 @@ impl<T> GeometryKind for T where T: Chart + AsShell + From<GeometryShell> + Clon
 
 /// Document-held geometry instance (object-safe).
 ///
-/// Extends [`AsShell`] for identity / State-block fields. Supplied automatically
+/// Extends [`AsShell`] for identity / Vector-block fields. Supplied automatically
 /// for every [`GeometryKind`] so Document can store `Box<dyn Geometry>` without
 /// a kind enum.
 pub trait Geometry: AsShell + Debug {
@@ -41,7 +41,7 @@ pub trait Geometry: AsShell + Debug {
         o..o + self.parameter_count()
     }
 
-    /// After a contiguous block was removed from State, shift this instance if
+    /// After a contiguous block was removed from Vector, shift this instance if
     /// it lay after the hole.
     fn reindex_after_removal(&mut self, removed_start: usize, removed_len: usize) {
         if self.shell().param_offset > removed_start {

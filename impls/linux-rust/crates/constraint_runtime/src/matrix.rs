@@ -1,11 +1,10 @@
-//! Row-major matrices and dense / scatter views.
+//! Row-major matrices and dense / scatter matrix views.
 //!
-//! [`Matrix`] owns matrix storage; the owned parameter / residual vector is
-//! [`crate::state::State`]. Borrowed windows are [`DenseJac`] / [`DenseVec`]
-//! (contiguous) or [`ScatterJac`] / [`ScatterVec`] (local index → connectivity;
-//! not CSR). Shared semantics: [`JacView`] / [`VecView`].
+//! [`Matrix`] owns matrix storage. Borrowed windows are [`DenseMatrix`]
+//! (contiguous) or [`ScatterMatrix`] (local column index → connectivity; not CSR).
+//! Shared semantics: [`MatrixView`] / [`MatrixWrite`].
 //!
-//! Matrix types support `m[(i, j)]`; vector views support `v[i]`.
+//! For the parameter / residual vector see [`crate::vector`].
 
 use std::ops::{Index, IndexMut};
 
@@ -26,13 +25,29 @@ impl Matrix {
         }
     }
 
+    pub fn nrows(&self) -> usize {
+        self.nrows
+    }
+
+    pub fn ncols(&self) -> usize {
+        self.ncols
+    }
+
     pub fn as_slice(&self) -> &[f64] {
         &self.data
     }
 
+    pub fn as_mut_slice(&mut self) -> &mut [f64] {
+        &mut self.data
+    }
+
+    pub fn fill(&mut self, value: f64) {
+        self.data.fill(value);
+    }
+
     /// Borrow the whole matrix as a dense view.
-    pub fn as_dense(&mut self) -> DenseJac<'_> {
-        DenseJac::packed(&mut self.data, self.nrows, self.ncols)
+    pub fn as_dense(&mut self) -> DenseMatrix<'_> {
+        DenseMatrix::packed(&mut self.data, self.nrows, self.ncols)
     }
 
     fn flat(&self, i: usize, j: usize) -> usize {
@@ -58,7 +73,7 @@ impl IndexMut<(usize, usize)> for Matrix {
 /// Dense local index space over a contiguous rectangular window of a parent
 /// buffer (or a packed standalone matrix when offsets are zero and
 /// `stride == ncols`).
-pub struct DenseJac<'a> {
+pub struct DenseMatrix<'a> {
     data: &'a mut [f64],
     stride: usize,
     row0: usize,
@@ -67,7 +82,7 @@ pub struct DenseJac<'a> {
     ncols: usize,
 }
 
-impl<'a> DenseJac<'a> {
+impl<'a> DenseMatrix<'a> {
     /// Packed standalone dense matrix (row-major, no parent padding).
     pub fn packed(data: &'a mut [f64], nrows: usize, ncols: usize) -> Self {
         assert_eq!(data.len(), nrows.saturating_mul(ncols));
@@ -82,16 +97,16 @@ impl<'a> DenseJac<'a> {
     }
 
     /// Contiguous sub-block with local dense indices.
-    pub fn dense_block(
+    pub fn block_slice(
         &mut self,
         row0: usize,
         col0: usize,
         block_rows: usize,
         block_cols: usize,
-    ) -> DenseJac<'_> {
+    ) -> DenseMatrix<'_> {
         debug_assert!(row0 + block_rows <= self.nrows);
         debug_assert!(col0 + block_cols <= self.ncols);
-        DenseJac {
+        DenseMatrix {
             data: self.data,
             stride: self.stride,
             row0: self.row0 + row0,
@@ -103,20 +118,21 @@ impl<'a> DenseJac<'a> {
 
     /// Scatter view: local columns map through `conn` into this window's columns
     /// (then into the parent buffer via `col0` / `stride`).
-    pub fn scatter<'c>(
+    pub fn scatter_slice(
         &mut self,
         row0: usize,
         nrows: usize,
-        conn: &'c [usize],
-    ) -> ScatterJac<'_, 'c> {
+        conn: &[usize],
+    ) -> ScatterMatrix<'_> {
         debug_assert!(row0 + nrows <= self.nrows);
-        ScatterJac {
+        debug_assert!(conn.iter().all(|&c| c < self.ncols));
+        ScatterMatrix {
             data: self.data,
             stride: self.stride,
             row0: self.row0 + row0,
             col0: self.col0,
             nrows,
-            conn,
+            conn: conn.to_vec(),
         }
     }
 
@@ -126,14 +142,14 @@ impl<'a> DenseJac<'a> {
     }
 }
 
-impl Index<(usize, usize)> for DenseJac<'_> {
+impl Index<(usize, usize)> for DenseMatrix<'_> {
     type Output = f64;
     fn index(&self, (i, j): (usize, usize)) -> &f64 {
         &self.data[self.flat(i, j)]
     }
 }
 
-impl IndexMut<(usize, usize)> for DenseJac<'_> {
+impl IndexMut<(usize, usize)> for DenseMatrix<'_> {
     fn index_mut(&mut self, (i, j): (usize, usize)) -> &mut f64 {
         let idx = self.flat(i, j);
         &mut self.data[idx]
@@ -141,41 +157,86 @@ impl IndexMut<(usize, usize)> for DenseJac<'_> {
 }
 
 /// Scatter local \((i,j)\) into parent rows / columns `col0 + conn[j]`.
-pub struct ScatterJac<'d, 'c> {
+///
+/// `conn` is owned so [`scatter_slice`](Self::scatter_slice) can compose
+/// connectivity without borrowing nested maps.
+pub struct ScatterMatrix<'d> {
     data: &'d mut [f64],
     stride: usize,
     row0: usize,
     col0: usize,
     nrows: usize,
-    conn: &'c [usize],
+    conn: Vec<usize>,
 }
 
-impl ScatterJac<'_, '_> {
+impl<'d> ScatterMatrix<'d> {
+    /// Local row/column window (same scatter kind).
+    pub fn block_slice(
+        &mut self,
+        row0: usize,
+        col0: usize,
+        block_rows: usize,
+        block_cols: usize,
+    ) -> ScatterMatrix<'_> {
+        debug_assert!(row0 + block_rows <= self.nrows);
+        debug_assert!(col0 + block_cols <= self.conn.len());
+        ScatterMatrix {
+            data: self.data,
+            stride: self.stride,
+            row0: self.row0 + row0,
+            col0: self.col0,
+            nrows: block_rows,
+            conn: self.conn[col0..col0 + block_cols].to_vec(),
+        }
+    }
+
+    /// Scatter through this view's local columns: `conn[j]` selects parent-local
+    /// column, then the existing map into the dense parent.
+    pub fn scatter_slice(
+        &mut self,
+        row0: usize,
+        nrows: usize,
+        conn: &[usize],
+    ) -> ScatterMatrix<'_> {
+        debug_assert!(row0 + nrows <= self.nrows);
+        debug_assert!(conn.iter().all(|&c| c < self.conn.len()));
+        let composed = conn.iter().map(|&j| self.conn[j]).collect();
+        ScatterMatrix {
+            data: self.data,
+            stride: self.stride,
+            row0: self.row0 + row0,
+            col0: self.col0,
+            nrows,
+            conn: composed,
+        }
+    }
+
     fn flat(&self, i: usize, j: usize) -> usize {
         debug_assert!(i < self.nrows && j < self.conn.len());
         (self.row0 + i) * self.stride + (self.col0 + self.conn[j])
     }
 }
 
-impl Index<(usize, usize)> for ScatterJac<'_, '_> {
+impl Index<(usize, usize)> for ScatterMatrix<'_> {
     type Output = f64;
     fn index(&self, (i, j): (usize, usize)) -> &f64 {
         &self.data[self.flat(i, j)]
     }
 }
 
-impl IndexMut<(usize, usize)> for ScatterJac<'_, '_> {
+impl IndexMut<(usize, usize)> for ScatterMatrix<'_> {
     fn index_mut(&mut self, (i, j): (usize, usize)) -> &mut f64 {
         let idx = self.flat(i, j);
         &mut self.data[idx]
     }
 }
 
-/// Matrix semantics on a dense local \((i, j)\) index space (`dyn`-friendly).
+/// Matrix semantics on a dense local \((i, j)\) index space.
 ///
-/// Primitives are [`cell`](Self::cell) / [`cell_mut`](Self::cell_mut) so
-/// [`Index`] / [`IndexMut`] work on `dyn JacView` (`j[(i, k)] = …`).
-pub trait JacView {
+/// Used via generics (`J: MatrixView` / [`MatrixWrite`]) so accesses monomorphize.
+/// Primitives are [`cell`](Self::cell) / [`cell_mut`](Self::cell_mut); concrete
+/// types also implement [`Index`] / [`IndexMut`] for `j[(i, k)]`.
+pub trait MatrixView {
     fn nrows(&self) -> usize;
     fn ncols(&self) -> usize;
     fn cell(&self, i: usize, j: usize) -> &f64;
@@ -198,61 +259,37 @@ pub trait JacView {
     }
 }
 
-impl Index<(usize, usize)> for dyn JacView + '_ {
-    type Output = f64;
-    fn index(&self, (i, j): (usize, usize)) -> &f64 {
-        self.cell(i, j)
-    }
-}
-
-impl IndexMut<(usize, usize)> for dyn JacView + '_ {
-    fn index_mut(&mut self, (i, j): (usize, usize)) -> &mut f64 {
-        self.cell_mut(i, j)
-    }
-}
-
-/// Column window over a [`JacView`]: local column `j` maps to `inner` column `col0 + j`.
+/// Writable matrix buffer: [`MatrixView`] plus `m[(i, k)]` indexing and slices.
 ///
-/// Lets expressions write at formula-local columns `0..` while constraints place
-/// successive blocks via the view (no `col0` on accumulate APIs).
-pub struct JacCols<'a> {
-    inner: &'a mut dyn JacView,
-    col0: usize,
-    ncols: usize,
+/// Concrete backends: [`DenseMatrix`], [`ScatterMatrix`]. `block_slice` stays same-kind;
+/// `scatter_slice` always yields [`ScatterMatrix`].
+pub trait MatrixWrite:
+    MatrixView + Index<(usize, usize), Output = f64> + IndexMut<(usize, usize), Output = f64>
+{
+    type BlockSlice<'a>: MatrixWrite
+    where
+        Self: 'a;
+    type ScatterSlice<'a>: MatrixWrite
+    where
+        Self: 'a;
+
+    fn block_slice(
+        &mut self,
+        row0: usize,
+        col0: usize,
+        block_rows: usize,
+        block_cols: usize,
+    ) -> Self::BlockSlice<'_>;
+
+    fn scatter_slice(
+        &mut self,
+        row0: usize,
+        nrows: usize,
+        conn: &[usize],
+    ) -> Self::ScatterSlice<'_>;
 }
 
-impl<'a> JacCols<'a> {
-    /// Window starting at `col0` with width `inner.ncols() - col0`.
-    pub fn from(inner: &'a mut dyn JacView, col0: usize) -> Self {
-        let ncols = inner.ncols().saturating_sub(col0);
-        debug_assert!(col0 + ncols <= inner.ncols());
-        Self {
-            inner,
-            col0,
-            ncols,
-        }
-    }
-}
-
-impl JacView for JacCols<'_> {
-    fn nrows(&self) -> usize {
-        self.inner.nrows()
-    }
-
-    fn ncols(&self) -> usize {
-        self.ncols
-    }
-
-    fn cell(&self, i: usize, j: usize) -> &f64 {
-        self.inner.cell(i, self.col0 + j)
-    }
-
-    fn cell_mut(&mut self, i: usize, j: usize) -> &mut f64 {
-        self.inner.cell_mut(i, self.col0 + j)
-    }
-}
-
-impl JacView for DenseJac<'_> {
+impl MatrixView for DenseMatrix<'_> {
     fn nrows(&self) -> usize {
         self.nrows
     }
@@ -291,7 +328,7 @@ impl JacView for DenseJac<'_> {
     }
 }
 
-impl JacView for ScatterJac<'_, '_> {
+impl MatrixView for ScatterMatrix<'_> {
     fn nrows(&self) -> usize {
         self.nrows
     }
@@ -310,174 +347,63 @@ impl JacView for ScatterJac<'_, '_> {
     }
 }
 
-// --- vector views ------------------------------------------------------------
+impl MatrixWrite for DenseMatrix<'_> {
+    type BlockSlice<'a>
+        = DenseMatrix<'a>
+    where
+        Self: 'a;
+    type ScatterSlice<'a>
+        = ScatterMatrix<'a>
+    where
+        Self: 'a;
 
-/// Dense local index space over a contiguous segment of a parent vector.
-pub struct DenseVec<'a> {
-    data: &'a mut [f64],
-    start: usize,
-    len: usize,
-}
-
-impl<'a> DenseVec<'a> {
-    pub fn new(data: &'a mut [f64], start: usize, len: usize) -> Self {
-        debug_assert!(start + len <= data.len());
-        Self { data, start, len }
+    fn block_slice(
+        &mut self,
+        row0: usize,
+        col0: usize,
+        block_rows: usize,
+        block_cols: usize,
+    ) -> Self::BlockSlice<'_> {
+        DenseMatrix::block_slice(self, row0, col0, block_rows, block_cols)
     }
 
-    pub fn packed(data: &'a mut [f64]) -> Self {
-        let len = data.len();
-        Self::new(data, 0, len)
-    }
-
-    pub fn len(&self) -> usize {
-        self.len
-    }
-
-    /// Contiguous sub-segment with local indices `0..len`.
-    pub fn dense_block(&mut self, start: usize, len: usize) -> DenseVec<'_> {
-        debug_assert!(start + len <= self.len);
-        DenseVec::new(self.data, self.start + start, len)
-    }
-
-    /// Scatter view: local `i` maps to `start + conn[i]` in the parent buffer.
-    pub fn scatter<'c>(&mut self, conn: &'c [usize]) -> ScatterVec<'_, 'c> {
-        ScatterVec {
-            data: self.data,
-            start: self.start,
-            conn,
-        }
-    }
-
-    fn flat(&self, i: usize) -> usize {
-        debug_assert!(i < self.len);
-        self.start + i
+    fn scatter_slice(
+        &mut self,
+        row0: usize,
+        nrows: usize,
+        conn: &[usize],
+    ) -> Self::ScatterSlice<'_> {
+        DenseMatrix::scatter_slice(self, row0, nrows, conn)
     }
 }
 
-impl Index<usize> for DenseVec<'_> {
-    type Output = f64;
-    fn index(&self, i: usize) -> &f64 {
-        &self.data[self.flat(i)]
-    }
-}
+impl MatrixWrite for ScatterMatrix<'_> {
+    type BlockSlice<'a>
+        = ScatterMatrix<'a>
+    where
+        Self: 'a;
+    type ScatterSlice<'a>
+        = ScatterMatrix<'a>
+    where
+        Self: 'a;
 
-impl IndexMut<usize> for DenseVec<'_> {
-    fn index_mut(&mut self, i: usize) -> &mut f64 {
-        let idx = self.flat(i);
-        &mut self.data[idx]
-    }
-}
-
-/// Scatter local `i` into parent entry `start + conn[i]`.
-pub struct ScatterVec<'d, 'c> {
-    data: &'d mut [f64],
-    start: usize,
-    conn: &'c [usize],
-}
-
-impl<'d, 'c> ScatterVec<'d, 'c> {
-    /// Absolute connectivity into `data` (`start == 0`).
-    pub fn new(data: &'d mut [f64], conn: &'c [usize]) -> Self {
-        Self {
-            data,
-            start: 0,
-            conn,
-        }
+    fn block_slice(
+        &mut self,
+        row0: usize,
+        col0: usize,
+        block_rows: usize,
+        block_cols: usize,
+    ) -> Self::BlockSlice<'_> {
+        ScatterMatrix::block_slice(self, row0, col0, block_rows, block_cols)
     }
 
-    fn flat(&self, i: usize) -> usize {
-        debug_assert!(i < self.conn.len());
-        let g = self.start + self.conn[i];
-        debug_assert!(g < self.data.len());
-        g
-    }
-}
-
-impl Index<usize> for ScatterVec<'_, '_> {
-    type Output = f64;
-    fn index(&self, i: usize) -> &f64 {
-        &self.data[self.flat(i)]
-    }
-}
-
-impl IndexMut<usize> for ScatterVec<'_, '_> {
-    fn index_mut(&mut self, i: usize) -> &mut f64 {
-        let idx = self.flat(i);
-        &mut self.data[idx]
-    }
-}
-
-/// Vector semantics on a dense local index space (`dyn`-friendly).
-///
-/// Primitives are [`cell`](Self::cell) / [`cell_mut`](Self::cell_mut) so
-/// [`Index`] / [`IndexMut`] work on `dyn VecView` (`v[i] = …`).
-pub trait VecView {
-    fn len(&self) -> usize;
-    fn cell(&self, i: usize) -> &f64;
-    fn cell_mut(&mut self, i: usize) -> &mut f64;
-    fn get(&self, i: usize) -> f64 {
-        *self.cell(i)
-    }
-    fn set(&mut self, i: usize, v: f64) {
-        *self.cell_mut(i) = v;
-    }
-    fn add(&mut self, i: usize, v: f64) {
-        *self.cell_mut(i) += v;
-    }
-    fn fill(&mut self, value: f64) {
-        for i in 0..self.len() {
-            *self.cell_mut(i) = value;
-        }
-    }
-}
-
-impl Index<usize> for dyn VecView + '_ {
-    type Output = f64;
-    fn index(&self, i: usize) -> &f64 {
-        self.cell(i)
-    }
-}
-
-impl IndexMut<usize> for dyn VecView + '_ {
-    fn index_mut(&mut self, i: usize) -> &mut f64 {
-        self.cell_mut(i)
-    }
-}
-
-impl VecView for DenseVec<'_> {
-    fn len(&self) -> usize {
-        self.len
-    }
-
-    fn cell(&self, i: usize) -> &f64 {
-        &self.data[self.flat(i)]
-    }
-
-    fn cell_mut(&mut self, i: usize) -> &mut f64 {
-        let idx = self.flat(i);
-        &mut self.data[idx]
-    }
-
-    fn fill(&mut self, value: f64) {
-        let start = self.start;
-        let end = start + self.len;
-        self.data[start..end].fill(value);
-    }
-}
-
-impl VecView for ScatterVec<'_, '_> {
-    fn len(&self) -> usize {
-        self.conn.len()
-    }
-
-    fn cell(&self, i: usize) -> &f64 {
-        &self.data[self.flat(i)]
-    }
-
-    fn cell_mut(&mut self, i: usize) -> &mut f64 {
-        let idx = self.flat(i);
-        &mut self.data[idx]
+    fn scatter_slice(
+        &mut self,
+        row0: usize,
+        nrows: usize,
+        conn: &[usize],
+    ) -> Self::ScatterSlice<'_> {
+        ScatterMatrix::scatter_slice(self, row0, nrows, conn)
     }
 }
 

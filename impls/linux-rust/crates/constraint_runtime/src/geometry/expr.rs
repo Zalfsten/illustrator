@@ -5,7 +5,7 @@
 //! the geometry identity so constraints and Interact never match on formula kinds.
 //! Local→global index lifts use [`crate::mapper::Mapper`].
 //!
-//! Jacobians write directly into a [`crate::matrix::JacView`] via
+//! Jacobians write directly into a [`crate::matrix::MatrixView`] via
 //! `accumulate_jacobian` / `accumulate_contracted` (no stack carriers on the
 //! constraint path).
 //!
@@ -18,7 +18,7 @@
 
 use super::shell::GeometryId;
 
-/// Opaque point expression: map from State parameters to a [`crate::geom::Point2`].
+/// Opaque point expression: map from Vector parameters to a [`crate::geom::Point2`].
 ///
 /// Construct via capability factories (e.g. [`super::EndpointExprs::start_expr`] on a kind).
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -37,7 +37,7 @@ impl PointExpr {
     }
 }
 
-/// Opaque free-vector expression: map from State parameters to a [`crate::geom::Vec2`].
+/// Opaque free-vector expression: map from Vector parameters to a [`crate::geom::Vec2`].
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct VecExpr {
     geometry: GeometryId,
@@ -54,7 +54,7 @@ impl VecExpr {
     }
 }
 
-/// Opaque length expression: map from State parameters to a [`crate::geom::Length`].
+/// Opaque length expression: map from Vector parameters to a [`crate::geom::Length`].
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct LengthExpr {
     geometry: GeometryId,
@@ -73,7 +73,7 @@ impl LengthExpr {
 
 /// Dispatch for a single keyed catalog: value eval + Jacobian accumulate.
 ///
-/// - `jac_static`: Jacobian ignores chart/State (affine / constant derivatives).
+/// - `jac_static`: Jacobian ignores chart/Vector (affine / constant derivatives).
 /// - `jac_chart`: Jacobian needs an unpacked chart.
 /// Connectivity defaults to all chart slots.
 macro_rules! impl_keyed_expr {
@@ -87,7 +87,7 @@ macro_rules! impl_keyed_expr {
             pub fn evaluate(
                 &self,
                 store: &dyn $crate::store::GeometryStore,
-                p: &$crate::state::State,
+                p: &$crate::vector::Vector,
             ) -> $Value {
                 let g = store.expect_geometry(self.geometry);
                 match &self.formula {
@@ -118,11 +118,11 @@ macro_rules! impl_keyed_expr {
             }
 
             /// Write the formula Jacobian into `j` (formula-local columns), scaled by `scale`.
-            pub fn accumulate_jacobian(
+            pub fn accumulate_jacobian<J: $crate::matrix::MatrixWrite>(
                 &self,
                 _store: &dyn $crate::store::GeometryStore,
-                _p: &$crate::state::State,
-                j: &mut dyn $crate::matrix::JacView,
+                _p: &$crate::vector::Vector,
+                j: &mut J,
                 scale: f64,
             ) {
                 match &self.formula {
@@ -142,7 +142,7 @@ macro_rules! impl_keyed_expr {
             pub fn evaluate(
                 &self,
                 store: &dyn $crate::store::GeometryStore,
-                p: &$crate::state::State,
+                p: &$crate::vector::Vector,
             ) -> $Value {
                 let g = store.expect_geometry(self.geometry);
                 match &self.formula {
@@ -173,11 +173,11 @@ macro_rules! impl_keyed_expr {
             }
 
             /// Write the formula Jacobian into `j` (formula-local columns), scaled by `scale`.
-            pub fn accumulate_jacobian(
+            pub fn accumulate_jacobian<J: $crate::matrix::MatrixWrite>(
                 &self,
                 store: &dyn $crate::store::GeometryStore,
-                p: &$crate::state::State,
-                j: &mut dyn $crate::matrix::JacView,
+                p: &$crate::vector::Vector,
+                j: &mut J,
                 scale: f64,
             ) {
                 let g = store.expect_geometry(self.geometry);
@@ -267,7 +267,7 @@ macro_rules! register_expr_kinds {
             pub fn evaluate(
                 &self,
                 store: &dyn $crate::store::GeometryStore,
-                p: &$crate::state::State,
+                p: &$crate::vector::Vector,
             ) -> $crate::geom::Point2 {
                 let g = store.expect_geometry(self.geometry);
                 match &self.formula {
@@ -309,11 +309,11 @@ macro_rules! register_expr_kinds {
             }
 
             /// Write the \(2 \times n\) point Jacobian into `j` (formula-local columns).
-            pub fn accumulate_jacobian(
+            pub fn accumulate_jacobian<J: $crate::matrix::MatrixWrite>(
                 &self,
                 _store: &dyn $crate::store::GeometryStore,
-                _p: &$crate::state::State,
-                j: &mut dyn $crate::matrix::JacView,
+                _p: &$crate::vector::Vector,
+                j: &mut J,
                 scale: f64,
             ) {
                 match &self.formula {
@@ -340,11 +340,11 @@ macro_rules! register_expr_kinds {
 
         impl VecExpr {
             /// Contract the free-vector Jacobian with `g` into residual row 0 of `j`.
-            pub fn accumulate_contracted(
+            pub fn accumulate_contracted<J: $crate::matrix::MatrixWrite>(
                 &self,
                 _store: &dyn $crate::store::GeometryStore,
-                _p: &$crate::state::State,
-                j: &mut dyn $crate::matrix::JacView,
+                _p: &$crate::vector::Vector,
+                j: &mut J,
                 g: $crate::geom::Vec2,
                 scale: f64,
             ) {

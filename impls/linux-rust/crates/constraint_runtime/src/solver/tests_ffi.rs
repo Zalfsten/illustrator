@@ -5,7 +5,7 @@ use crate::document::Document;
 use crate::geom::Point2;
 use crate::geometry::{EndpointExprs, GeometryRole};
 use crate::geometry_kinds::Segment;
-use crate::state::State;
+use crate::vector::Vector;
 use std::os::raw::c_void;
 
 #[test]
@@ -21,10 +21,10 @@ fn c_calling_pattern_fills_residual() {
     });
     let soft: [crate::assemble::SoftContribution; 0] = [];
     let sys = AssembledSystem::from_document(&doc, &soft);
-    let mut p = doc.state().clone();
+    let mut p = doc.vector().clone();
     let handle = EvalHandle {
         eval: &sys,
-        state: &mut p as *mut State,
+        state: &mut p as *mut Vector,
     };
     let mut r = vec![0.0; sys.n_residuals()];
     let rc = unsafe {

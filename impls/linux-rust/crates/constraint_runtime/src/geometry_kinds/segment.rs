@@ -1,4 +1,4 @@
-//! Line segment: State layout, chart sampling, and formula evaluation.
+//! Line segment: Vector layout, chart sampling, and formula evaluation.
 
 use crate::geom::{Length, Point2, Vec2};
 use crate::geometry::capabilities::{
@@ -6,7 +6,7 @@ use crate::geometry::capabilities::{
 };
 use crate::geometry::chart::chart_atoms;
 use crate::geometry::shell::{geometry_shell_instance, GeometryShell};
-use crate::matrix::JacView;
+use crate::matrix::MatrixWrite;
 
 /// Line-segment instance: document shell plus segment chart formulas.
 ///
@@ -20,7 +20,7 @@ use crate::matrix::JacView;
 ///
 /// Full-chart Jacobian columns are formula-local `0..4` in [`Self::SLOTS`] order
 /// (start.x, start.y, end.x, end.y). Endpoint formulas use local `0..2` (packed
-/// [`Point2`]). Placement into contribution/global space is the [`JacView`]'s job.
+/// [`Point2`]). Placement into contribution/global space is the view's job.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct Segment {
     pub shell: GeometryShell,
@@ -46,9 +46,9 @@ impl Segment {
     }
 
     /// Write \(2 \times 4\) curve-point Jacobian into `j` (SLOTS-local columns).
-    pub(crate) fn accumulate_curve_point_jacobian(
+    pub(crate) fn accumulate_curve_point_jacobian<J: MatrixWrite>(
         f: CurvePointFormula,
-        j: &mut dyn JacView,
+        j: &mut J,
         scale: f64,
     ) {
         match f {
@@ -70,9 +70,9 @@ impl Segment {
     }
 
     /// Write \(2 \times 2\) endpoint identity Jacobian into `j` (Point2-local columns).
-    pub(crate) fn accumulate_endpoint_point_jacobian(
+    pub(crate) fn accumulate_endpoint_point_jacobian<J: MatrixWrite>(
         f: EndpointPointFormula,
-        j: &mut dyn JacView,
+        j: &mut J,
         scale: f64,
     ) {
         match f {
@@ -100,7 +100,11 @@ impl Segment {
     }
 
     /// Write \(2 \times 4\) free-vector Jacobian into `j` (SLOTS-local columns).
-    pub(crate) fn accumulate_vec_jacobian(f: VecFormula, j: &mut dyn JacView, scale: f64) {
+    pub(crate) fn accumulate_vec_jacobian<J: MatrixWrite>(
+        f: VecFormula,
+        j: &mut J,
+        scale: f64,
+    ) {
         match f {
             VecFormula::TangentAt { .. } => {
                 j[(0, 0)] = scale * -1.0;
@@ -119,9 +123,9 @@ impl Segment {
     }
 
     /// Contract free-vector Jacobian with `g` into residual row 0: `ds[i] += scale * g·col_i`.
-    pub(crate) fn accumulate_vec_jacobian_contracted(
+    pub(crate) fn accumulate_vec_jacobian_contracted<J: MatrixWrite>(
         f: VecFormula,
-        j: &mut dyn JacView,
+        j: &mut J,
         g: Vec2,
         scale: f64,
     ) {
@@ -150,10 +154,10 @@ impl Segment {
     }
 
     /// Write \(1 \times 4\) length Jacobian into row 0 of `j` (SLOTS-local columns).
-    pub(crate) fn accumulate_length_jacobian(
+    pub(crate) fn accumulate_length_jacobian<J: MatrixWrite>(
         f: CurveLengthFormula,
         (a, b): (Point2, Point2),
-        j: &mut dyn JacView,
+        j: &mut J,
         scale: f64,
     ) {
         match f {

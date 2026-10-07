@@ -1,4 +1,4 @@
-//! State column maps and chart value access.
+//! Vector column maps and chart value access.
 //!
 //! **Columns of \(p\):** every participant (geometry block or constraint
 //! contribution) answers “which global indices?” as `Vec<usize>` (scatter
@@ -16,16 +16,16 @@
 use std::ops::Range;
 
 use crate::geometry::{Chart, Geometry};
-use crate::state::State;
+use crate::vector::Vector;
 
 /// Layout + column-map authority (stateless namespace).
 ///
 /// Document owns offsets on each shell; Mapper reads them to unpack charts and
-/// to build global index lists. Pass [`State`] per call when values are needed.
+/// to build global index lists. Pass [`Vector`] per call when values are needed.
 pub struct Mapper;
 
 impl Mapper {
-    /// Contiguous State window for slice ops (unpack, structural drain).
+    /// Contiguous Vector window for slice ops (unpack, structural drain).
     ///
     /// Prefer [`geometry_indices`](Self::geometry_indices) when the question is
     /// only which columns are touched.
@@ -38,8 +38,8 @@ impl Mapper {
         Self::indices(Self::chart_param_block(g))
     }
 
-    /// Unpack [`Chart::Init`] from State using the geometry's parameter window.
-    pub fn unpack_chart<C: Chart>(g: &dyn Geometry, p: &State) -> C::Init {
+    /// Unpack [`Chart::Init`] from Vector using the geometry's parameter window.
+    pub fn unpack_chart<C: Chart>(g: &dyn Geometry, p: &Vector) -> C::Init {
         let block = Self::chart_param_block(g);
         debug_assert_eq!(
             block.len(),
@@ -50,7 +50,7 @@ impl Mapper {
         C::unpack(&p.as_slice()[block])
     }
 
-    /// Lift formula-local parameter indices into global State indices.
+    /// Lift formula-local parameter indices into global Vector indices.
     pub fn globalize_indices(
         g: &dyn Geometry,
         local: impl IntoIterator<Item = usize>,
@@ -59,7 +59,7 @@ impl Mapper {
         local.into_iter().map(|i| offset + i).collect()
     }
 
-    /// Collect already-global State indices (sparse or dense).
+    /// Collect already-global Vector indices (sparse or dense).
     pub fn indices(global_indices: impl IntoIterator<Item = usize>) -> Vec<usize> {
         global_indices.into_iter().collect()
     }

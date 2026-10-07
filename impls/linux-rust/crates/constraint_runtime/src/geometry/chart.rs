@@ -1,16 +1,16 @@
-//! Kind-owned chart: State layout (`pack` / `unpack`) and named local slots.
+//! Kind-owned chart: Vector layout (`pack` / `unpack`) and named local slots.
 
 use std::ops::Range;
 
 use crate::geom::{Angle, Length, Point2, Vec2};
 
-/// Packable atom in the global State vector: fixed DOF width and flatten order.
+/// Packable atom in the global parameter vector: fixed DOF width and flatten order.
 ///
 /// Chart `pack` / `unpack` and local parameter indices go through this trait so
 /// component order lives with the layout layer, not re-stated at each kind call site.
 /// Planar atoms use [`Point2::COMP_X`] / [`Point2::COMP_Y`] (same on [`Vec2`]).
 pub trait StateAtom: Sized + Copy {
-    /// Number of contiguous State scalars for one atom.
+    /// Number of contiguous Vector scalars for one atom.
     const DOF_COUNT: usize;
 
     /// Write this atom into `out` (length must be [`Self::DOF_COUNT`]).
@@ -227,7 +227,7 @@ impl ChartSlot {
     }
 }
 
-/// Geometry kind as a chart: packs init into State.
+/// Geometry kind as a chart: packs init into Vector.
 ///
 /// Document identity and shared shell ops live on [`super::Geometry`] (object-safe).
 /// Concrete kinds call [`crate::geometry::shell::geometry_shell_instance`] so they
@@ -239,7 +239,7 @@ pub trait Chart {
     /// Kind-specific construction inputs (e.g. segment endpoints).
     type Init;
 
-    /// Number of contiguous State scalars for one instance of this kind.
+    /// Number of contiguous Vector scalars for one instance of this kind.
     const PARAMETER_COUNT: usize;
 
     /// Contiguous initial parameters (length = [`Self::PARAMETER_COUNT`]).

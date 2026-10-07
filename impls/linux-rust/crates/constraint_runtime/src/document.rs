@@ -1,7 +1,7 @@
-//! Document: discrete sketch graph + committed State \(p\).
+//! Document: discrete sketch graph + committed Vector \(p\).
 //!
 //! Solve/assemble take `&Document` as geometry resolution plus an explicit
-//! State (committed or a working copy). Structure and State stay separable
+//! Vector (committed or a working copy). Structure and Vector stay separable
 //! at call sites even though both live on Document.
 
 use std::collections::HashMap;
@@ -12,7 +12,7 @@ use crate::geometry::{
     Geometry, GeometryId, GeometryKind, GeometryRole, GeometryShell, PointExpr,
 };
 use crate::id::IdGenerator;
-use crate::state::State;
+use crate::vector::Vector;
 use crate::store::GeometryStore;
 
 /// One Congruence edge, indexed under each participating geometry.
@@ -35,7 +35,7 @@ impl IdentificationEdge {
     }
 }
 
-/// Document = discrete sketch (geometries, constraints, incidence) + committed State.
+/// Document = discrete sketch (geometries, constraints, incidence) + committed Vector.
 #[derive(Clone, Debug, Default)]
 pub struct Document {
     /// Geometry store (id → instance).
@@ -49,7 +49,7 @@ pub struct Document {
     ids: IdGenerator<GeometryId>,
     constraint_ids: IdGenerator<ConstraintId>,
     /// Committed continuous parameters \(p\).
-    pub state: State,
+    pub vector: Vector,
 }
 
 impl Document {
@@ -57,16 +57,16 @@ impl Document {
         Self::default()
     }
 
-    pub fn state(&self) -> &State {
-        &self.state
+    pub fn vector(&self) -> &Vector {
+        &self.vector
     }
 
-    pub fn state_mut(&mut self) -> &mut State {
-        &mut self.state
+    pub fn vector_mut(&mut self) -> &mut Vector {
+        &mut self.vector
     }
 
-    pub fn committed_state(&self) -> &State {
-        &self.state
+    pub fn committed_vector(&self) -> &Vector {
+        &self.vector
     }
 
     pub fn geometries(&self) -> &HashMap<GeometryId, Box<dyn Geometry>> {
@@ -107,10 +107,10 @@ impl Document {
         self.geometries.values().map(|g| g.parameter_count()).sum()
     }
 
-    /// Pack chart init → extend State → register a geometry instance.
+    /// Pack chart init → extend Vector → register a geometry instance.
     ///
-    /// Chart pack receives only kind init (no identity). Id and State offset are
-    /// assigned here via [`IdGenerator`] and the current State length.
+    /// Chart pack receives only kind init (no identity). Id and Vector offset are
+    /// assigned here via [`IdGenerator`] and the current Vector length.
     pub fn add_geometry<C: GeometryKind>(
         &mut self,
         role: GeometryRole,
@@ -119,15 +119,15 @@ impl Document {
         let packed = C::pack(init);
         debug_assert_eq!(packed.as_ref().len(), C::PARAMETER_COUNT);
         let id = self.ids.allocate();
-        let param_offset = self.state.len();
-        self.state.extend_from_slice(packed.as_ref());
+        let param_offset = self.vector.len();
+        self.vector.extend_from_slice(packed.as_ref());
         self.push_geometry(C::from(GeometryShell::new(id, role, param_offset)));
-        debug_assert_eq!(self.state.len(), self.parameter_count());
+        debug_assert_eq!(self.vector.len(), self.parameter_count());
         id
     }
 
-    /// Register a geometry whose parameters already live in an external State.
-    /// Prefer [`Document::add_geometry`] so graph and committed State stay matched.
+    /// Register a geometry whose parameters already live in an external Vector.
+    /// Prefer [`Document::add_geometry`] so graph and committed Vector stay matched.
     pub(crate) fn push_geometry(&mut self, g: impl Geometry + 'static) {
         let id = g.id();
         debug_assert!(
@@ -193,7 +193,7 @@ impl Document {
         true
     }
 
-    /// Remove a geometry: compact State, remap offsets, drop orphan constraints.
+    /// Remove a geometry: compact Vector, remap offsets, drop orphan constraints.
     pub fn remove_geometry(&mut self, id: GeometryId) -> bool {
         let Some(removed) = self.geometries.remove(&id) else {
             return false;
@@ -202,8 +202,8 @@ impl Document {
         let block = removed.param_block();
         let (start, removed_len) = (block.start, block.len());
         let end = start + removed_len;
-        assert!(end <= self.state.len());
-        self.state.drain(start..end);
+        assert!(end <= self.vector.len());
+        self.vector.drain(start..end);
 
         for g in self.geometries.values_mut() {
             g.reindex_after_removal(start, removed_len);
@@ -213,21 +213,21 @@ impl Document {
             .retain(|_, e| !e.body().references_geometry(id));
         self.rebuild_incidence();
 
-        debug_assert_eq!(self.state.len(), self.parameter_count());
+        debug_assert_eq!(self.vector.len(), self.parameter_count());
         true
     }
 
     /// Snapshot of committed state for undo / drag.
-    pub fn clone_state(&self) -> State {
-        self.state.clone()
+    pub fn clone_vector(&self) -> Vector {
+        self.vector.clone()
     }
 
-    pub fn restore_state(&mut self, p: &State) {
-        self.state.copy_from(p);
+    pub fn restore_vector(&mut self, p: &Vector) {
+        self.vector.copy_from(p);
     }
 
-    pub fn commit_state(&mut self, p: &State) {
-        self.restore_state(p);
+    pub fn commit_vector(&mut self, p: &Vector) {
+        self.restore_vector(p);
     }
 
     fn link_constraint(&mut self, cid: ConstraintId, geos: &[GeometryId]) {

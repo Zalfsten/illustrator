@@ -5,8 +5,8 @@ use crate::geometry::StateAtom;
 use crate::geometry::{
     Chart, CurveExprs, EndpointExprs, Geometry, GeometryId, GeometryRole, GeometryShell,
 };
-use crate::matrix::DenseJac;
-use crate::state::State;
+use crate::matrix::DenseMatrix;
+use crate::vector::Vector;
 
 fn store_with(g: Segment) -> Document {
     let mut doc = Document::new();
@@ -48,7 +48,7 @@ fn reindex_after_removal_shifts_later_blocks() {
 #[test]
 fn editing_state_vector_changes_endpoints() {
     let store = store_with(segment_geom(0, 0));
-    let mut p = State::from(vec![0.0, 0.0, 1.0, 0.0]);
+    let mut p = Vector::from(vec![0.0, 0.0, 1.0, 0.0]);
     assert_eq!(
         Segment::end_expr(GeometryId(0)).evaluate(&store, &p),
         Point2::new(1.0, 0.0)
@@ -64,7 +64,7 @@ fn editing_state_vector_changes_endpoints() {
 #[test]
 fn length_expr_is_endpoint_euclidean_distance() {
     let store = store_with(segment_geom(0, 0));
-    let p = State::from(vec![0.0, 0.0, 3.0, 4.0]);
+    let p = Vector::from(vec![0.0, 0.0, 3.0, 4.0]);
     let len = Segment::length_expr(GeometryId(0))
         .evaluate(&store, &p)
         .value();
@@ -74,7 +74,7 @@ fn length_expr_is_endpoint_euclidean_distance() {
 #[test]
 fn segment_endpoint_override_matches_on_curve_but_sparser_connectivity() {
     let store = store_with(segment_geom(0, 0));
-    let p = State::from(vec![1.0, 2.0, 5.0, 6.0]);
+    let p = Vector::from(vec![1.0, 2.0, 5.0, 6.0]);
     let id = GeometryId(0);
     let start = Segment::start_expr(id);
     let at0 = Segment::on_curve_expr(id, CurveParam::Normalized(0.0));
@@ -92,7 +92,7 @@ fn segment_endpoint_override_matches_on_curve_but_sparser_connectivity() {
 #[test]
 fn tangent_expr_is_end_minus_start() {
     let store = store_with(segment_geom(0, 0));
-    let p = State::from(vec![0.0, 0.0, 1.0, 0.0]);
+    let p = Vector::from(vec![0.0, 0.0, 1.0, 0.0]);
     let d = Segment::tangent_expr(GeometryId(0), CurveParam::Normalized(0.0)).evaluate(&store, &p);
     assert_eq!(d, Vec2::new(1.0, 0.0));
     assert_eq!(d.cross(Vec2::new(0.0, 1.0)), 1.0);
@@ -102,7 +102,7 @@ fn tangent_expr_is_end_minus_start() {
 #[test]
 fn segment_curve_position_tangent_normal_via_expr() {
     let store = store_with(segment_geom(0, 0));
-    let p = State::from(vec![0.0, 0.0, 2.0, 0.0]);
+    let p = Vector::from(vec![0.0, 0.0, 2.0, 0.0]);
     let mid = Segment::on_curve_expr(GeometryId(0), CurveParam::Normalized(0.5)).evaluate(&store, &p);
     assert_eq!(mid, Point2::new(1.0, 0.0));
     let t = Segment::tangent_expr(GeometryId(0), CurveParam::Normalized(0.0)).evaluate(&store, &p);
@@ -114,7 +114,7 @@ fn segment_curve_position_tangent_normal_via_expr() {
 #[test]
 fn oncurve_uniform_matches_normalized_on_segment() {
     let store = store_with(segment_geom(0, 0));
-    let p = State::from(vec![0.0, 0.0, 4.0, 2.0]);
+    let p = Vector::from(vec![0.0, 0.0, 4.0, 2.0]);
     let u = 0.25;
     let a = Segment::on_curve_expr(GeometryId(0), CurveParam::Normalized(u)).evaluate(&store, &p);
     let b = Segment::on_curve_expr(GeometryId(0), CurveParam::Uniform(u)).evaluate(&store, &p);
@@ -123,12 +123,12 @@ fn oncurve_uniform_matches_normalized_on_segment() {
     let mut buf_n = vec![0.0; 2 * n];
     let mut buf_u = vec![0.0; 2 * n];
     {
-        let mut jn = DenseJac::packed(&mut buf_n, 2, n);
+        let mut jn = DenseMatrix::packed(&mut buf_n, 2, n);
         Segment::on_curve_expr(GeometryId(0), CurveParam::Normalized(u))
             .accumulate_jacobian(&store, &p, &mut jn, 1.0);
     }
     {
-        let mut ju = DenseJac::packed(&mut buf_u, 2, n);
+        let mut ju = DenseMatrix::packed(&mut buf_u, 2, n);
         Segment::on_curve_expr(GeometryId(0), CurveParam::Uniform(u))
             .accumulate_jacobian(&store, &p, &mut ju, 1.0);
     }
@@ -138,7 +138,7 @@ fn oncurve_uniform_matches_normalized_on_segment() {
 #[test]
 fn vec_expr_tangent_and_normal() {
     let store = store_with(segment_geom(0, 0));
-    let p = State::from(vec![1.0, 1.0, 4.0, 5.0]);
+    let p = Vector::from(vec![1.0, 1.0, 4.0, 5.0]);
     let t = Segment::tangent_expr(GeometryId(0), CurveParam::Normalized(0.0)).evaluate(&store, &p);
     let n = Segment::normal_expr(GeometryId(0), CurveParam::Uniform(0.5)).evaluate(&store, &p);
     assert_eq!(t, Vec2::new(3.0, 4.0));

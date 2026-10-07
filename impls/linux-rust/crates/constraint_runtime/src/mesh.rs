@@ -1,4 +1,4 @@
-//! Display Mesh: tessellation of Document + State into drawable edges.
+//! Display Mesh: tessellation of Document + Vector into drawable edges.
 //!
 //! Derived view only — not authoritative for parameters or constraints.
 
@@ -6,7 +6,7 @@ use crate::document::Document;
 use crate::geom::Point2;
 use crate::geometry_kinds::Segment;
 use crate::geometry::{EndpointExprs, GeometryId, GeometryRole, PointExpr};
-use crate::state::State;
+use crate::vector::Vector;
 
 /// Which geometries contribute edges to a Mesh.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -48,7 +48,7 @@ pub struct Mesh {
 }
 
 impl Mesh {
-    pub fn from_document(doc: &Document, p: &State, filter: MeshFilter) -> Self {
+    pub fn from_document(doc: &Document, p: &Vector, filter: MeshFilter) -> Self {
         let mut edges = Vec::with_capacity(doc.geometries().len());
         for g in doc.geometries().values() {
             if !filter.include_construction && g.role() == GeometryRole::Construction {

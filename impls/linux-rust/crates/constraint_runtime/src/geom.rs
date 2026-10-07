@@ -7,14 +7,14 @@
 //! (native formula domain affinely mapped). [`CurveParam::Uniform`] is constant-speed
 //! / arc-length fraction on \([0,1]\). For line segments the two coincide.
 //!
-//! Scalar chart parameters: [`Angle`] (radians) and [`Length`] (signed State DOF).
-//! State packing of all of these lives in [`crate::geometry::StateAtom`].
-//! Formula Jacobians write into [`crate::matrix::JacView`] (see expressions /
+//! Scalar chart parameters: [`Angle`] (radians) and [`Length`] (signed Vector DOF).
+//! Vector packing of all of these lives in [`crate::geometry::StateAtom`].
+//! Formula Jacobians write into [`crate::matrix::MatrixView`] (see expressions /
 //! geometry kinds).
 
 use std::ops::{Add, Mul, Neg, Sub};
 
-/// Oriented angle in radians (State DOF; no wrap at the type level).
+/// Oriented angle in radians (Vector DOF; no wrap at the type level).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Angle(f64);
 
@@ -28,7 +28,7 @@ impl Angle {
     }
 }
 
-/// Length parameter as a signed State DOF (geometric non-negativity is separate).
+/// Length parameter as a signed Vector DOF (geometric non-negativity is separate).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Length(f64);
 

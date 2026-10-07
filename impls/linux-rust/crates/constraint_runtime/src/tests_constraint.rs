@@ -4,10 +4,10 @@ use crate::document::Document;
 use crate::geom::{CurveParam, Point2};
 use crate::geometry_kinds::Segment;
 use crate::geometry::{Chart, CurveExprs, EndpointExprs, GeometryId, GeometryRole, GeometryShell};
-use crate::matrix::{DenseVec, Matrix};
-use crate::state::State;
+use crate::matrix::Matrix;
+use crate::vector::{DenseVec, Vector};
 
-fn two_segs() -> (Document, State) {
+fn two_segs() -> (Document, Vector) {
     let mut doc = Document::new();
     doc.push_geometry(Segment {
         shell: GeometryShell::new(GeometryId(0), GeometryRole::Result, 0),
@@ -20,7 +20,7 @@ fn two_segs() -> (Document, State) {
         ),
     });
     // s0: (0,0)-(1,0), s1: (0,0)-(0,1) perpendicular sharing origin conceptually
-    let p = State::from(vec![0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0]);
+    let p = Vector::from(vec![0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0]);
     (doc, p)
 }
 
@@ -62,7 +62,7 @@ fn jacobian_matches_fd_for_catalog() {
         let mut mat = Matrix::zeros(m, n_global);
         {
             let mut view = mat.as_dense();
-            let mut jac = view.scatter(0, m, &conn);
+            let mut jac = view.scatter_slice(0, m, &conn);
             c.accumulate_jacobian(&doc, &p, &mut jac);
         }
 

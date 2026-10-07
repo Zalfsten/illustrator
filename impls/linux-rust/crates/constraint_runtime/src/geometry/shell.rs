@@ -23,12 +23,12 @@ pub enum GeometryRole {
     Construction,
 }
 
-/// Shared document identity and State-block placement for a geometry instance.
+/// Shared document identity and Vector-block placement for a geometry instance.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct GeometryShell {
     pub id: GeometryId,
     pub role: GeometryRole,
-    /// Start index of this geometry's contiguous parameter block in State.
+    /// Start index of this geometry's contiguous parameter block in Vector.
     pub param_offset: usize,
 }
 

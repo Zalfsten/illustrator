@@ -44,13 +44,13 @@ fn failed_solve_keeps_state() {
         point: Segment::start_expr(s0),
         target: Point2::new(10.0, 10.0),
     });
-    let before = doc.clone_state();
+    let before = doc.clone_vector();
     let soft: [SoftContribution; 0] = [];
     let err = interact
         .solve_commit(&mut doc, &soft, &before)
         .expect_err("must fail");
     assert!(!err.message.is_empty());
-    assert_eq!(doc.state(), &before);
+    assert_eq!(doc.vector(), &before);
 }
 
 #[test]
@@ -72,7 +72,7 @@ fn atomic_drag_undo() {
     });
     let mut interact = InteractiveSolve::new();
     interact.structural_only(&mut doc).unwrap();
-    let before = doc.clone_state();
+    let before = doc.clone_vector();
     let mut drag = DragSession::new();
     let free = Segment::end_expr(s1);
     drag.pointer_down(&doc, free);
@@ -81,5 +81,5 @@ fn atomic_drag_undo() {
     drag.pointer_up(&mut interact, &mut doc, (2.0, 2.0))
         .unwrap();
     assert!(drag.undo(&mut doc));
-    assert_eq!(doc.state(), &before);
+    assert_eq!(doc.vector(), &before);
 }

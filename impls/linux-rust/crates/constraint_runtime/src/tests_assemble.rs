@@ -3,6 +3,8 @@ use crate::constraint_kinds::{Congruence, FixPoint, Orthogonal, Parallel};
 use crate::geom::{CurveParam, Point2};
 use crate::geometry_kinds::Segment;
 use crate::geometry::{CurveExprs, EndpointExprs, GeometryId, GeometryRole};
+use crate::matrix::Matrix;
+use crate::vector::Vector;
 
 #[test]
 fn residual_arity_stacks() {
@@ -46,23 +48,23 @@ fn assembled_jacobian_matches_global_fd() {
 
     let soft: [SoftContribution; 0] = [];
     let sys = AssembledSystem::from_document(&doc, &soft);
-    let p = doc.state().clone();
+    let p = doc.vector().clone();
     let m = sys.n_residuals();
     let n = sys.n_params();
-    let mut j = vec![0.0; m * n];
+    let mut j = Matrix::zeros(m, n);
     sys.jacobian(&p, &mut j);
 
     let eps = 1e-7;
-    let mut r0 = vec![0.0; m];
+    let mut r0 = Vector::zeros(m);
     sys.residual(&p, &mut r0);
     for col in 0..n {
         let mut p2 = p.clone();
         p2[col] += eps;
-        let mut rp = vec![0.0; m];
+        let mut rp = Vector::zeros(m);
         sys.residual(&p2, &mut rp);
         for row in 0..m {
             let fd = (rp[row] - r0[row]) / eps;
-            let an = j[row * n + col];
+            let an = j[(row, col)];
             assert!(
                 (fd - an).abs() < 1e-5,
                 "row={row} col={col} fd={fd} an={an}"
