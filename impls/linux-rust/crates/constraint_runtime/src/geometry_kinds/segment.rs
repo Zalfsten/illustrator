@@ -1,12 +1,12 @@
 //! Line segment: State layout, chart sampling, and formula evaluation.
 
-use crate::geom::{Length, Point2, PointJacobian, ScalarJacobian, Vec2, VecJacobian};
+use crate::geom::{Length, Point2, Vec2};
 use crate::geometry::capabilities::{
     CurveLengthFormula, CurvePointFormula, EndpointPointFormula, VecFormula,
 };
 use crate::geometry::chart::chart_atoms;
 use crate::geometry::shell::{geometry_shell_instance, GeometryShell};
-use crate::geometry::Chart;
+use crate::matrix::JacView;
 
 /// Line-segment instance: document shell plus segment chart formulas.
 ///
@@ -17,6 +17,10 @@ use crate::geometry::Chart;
 /// together with [`Chart`] that yields [`crate::geometry::GeometryKind`] /
 /// [`crate::geometry::Geometry`]. Expression keying comes from
 /// [`register_expr_kinds!`](crate::geometry::expr) (`endpoint:` → sparse start/end).
+///
+/// Full-chart Jacobian columns are formula-local `0..4` in [`Self::SLOTS`] order
+/// (start.x, start.y, end.x, end.y). Endpoint formulas use local `0..2` (packed
+/// [`Point2`]). Placement into contribution/global space is the [`JacView`]'s job.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct Segment {
     pub shell: GeometryShell,
@@ -41,16 +45,19 @@ impl Segment {
         }
     }
 
-    pub(crate) fn eval_curve_point_jacobian(f: CurvePointFormula) -> PointJacobian {
+    /// Write \(2 \times 4\) curve-point Jacobian into `j` (SLOTS-local columns).
+    pub(crate) fn accumulate_curve_point_jacobian(
+        f: CurvePointFormula,
+        j: &mut dyn JacView,
+        scale: f64,
+    ) {
         match f {
             CurvePointFormula::OnCurve { param } => {
-                let mut j = PointJacobian::zeros(Self::PARAMETER_COUNT);
                 let t = param.chart_t();
-                j.set_dx_dy(Self::start.component(Point2::COMP_X), 1.0 - t, 0.0);
-                j.set_dx_dy(Self::start.component(Point2::COMP_Y), 0.0, 1.0 - t);
-                j.set_dx_dy(Self::end.component(Point2::COMP_X), t, 0.0);
-                j.set_dx_dy(Self::end.component(Point2::COMP_Y), 0.0, t);
-                j
+                j[(0, 0)] = scale * (1.0 - t);
+                j[(1, 1)] = scale * (1.0 - t);
+                j[(0, 2)] = scale * t;
+                j[(1, 3)] = scale * t;
             }
         }
     }
@@ -62,10 +69,16 @@ impl Segment {
         }
     }
 
-    pub(crate) fn eval_endpoint_point_jacobian(f: EndpointPointFormula) -> PointJacobian {
+    /// Write \(2 \times 2\) endpoint identity Jacobian into `j` (Point2-local columns).
+    pub(crate) fn accumulate_endpoint_point_jacobian(
+        f: EndpointPointFormula,
+        j: &mut dyn JacView,
+        scale: f64,
+    ) {
         match f {
             EndpointPointFormula::StartPoint | EndpointPointFormula::EndPoint => {
-                PointJacobian::endpoint_identity()
+                j[(0, 0)] = scale;
+                j[(1, 1)] = scale;
             }
         }
     }
@@ -86,24 +99,46 @@ impl Segment {
         }
     }
 
-    pub(crate) fn eval_vec_jacobian(f: VecFormula) -> VecJacobian {
+    /// Write \(2 \times 4\) free-vector Jacobian into `j` (SLOTS-local columns).
+    pub(crate) fn accumulate_vec_jacobian(f: VecFormula, j: &mut dyn JacView, scale: f64) {
         match f {
             VecFormula::TangentAt { .. } => {
-                let mut j = VecJacobian::zeros(Self::PARAMETER_COUNT);
-                j.set_dx_dy(Self::start.component(Point2::COMP_X), -1.0, 0.0);
-                j.set_dx_dy(Self::start.component(Point2::COMP_Y), 0.0, -1.0);
-                j.set_dx_dy(Self::end.component(Point2::COMP_X), 1.0, 0.0);
-                j.set_dx_dy(Self::end.component(Point2::COMP_Y), 0.0, 1.0);
-                j
+                j[(0, 0)] = scale * -1.0;
+                j[(1, 1)] = scale * -1.0;
+                j[(0, 2)] = scale;
+                j[(1, 3)] = scale;
             }
             VecFormula::NormalAt { .. } => {
                 // n = (-vy, vx) of tangent ⇒ rotate each column of J_tan leftward
-                let mut j = VecJacobian::zeros(Self::PARAMETER_COUNT);
-                j.set_dx_dy(Self::start.component(Point2::COMP_X), 0.0, -1.0);
-                j.set_dx_dy(Self::start.component(Point2::COMP_Y), 1.0, 0.0);
-                j.set_dx_dy(Self::end.component(Point2::COMP_X), 0.0, 1.0);
-                j.set_dx_dy(Self::end.component(Point2::COMP_Y), -1.0, 0.0);
-                j
+                j[(1, 0)] = scale * -1.0;
+                j[(0, 1)] = scale;
+                j[(1, 2)] = scale;
+                j[(0, 3)] = scale * -1.0;
+            }
+        }
+    }
+
+    /// Contract free-vector Jacobian with `g` into residual row 0: `ds[i] += scale * g·col_i`.
+    pub(crate) fn accumulate_vec_jacobian_contracted(
+        f: VecFormula,
+        j: &mut dyn JacView,
+        g: Vec2,
+        scale: f64,
+    ) {
+        match f {
+            VecFormula::TangentAt { .. } => {
+                // columns: (-1,0), (0,-1), (1,0), (0,1)
+                j[(0, 0)] += scale * (g.x * -1.0);
+                j[(0, 1)] += scale * (g.y * -1.0);
+                j[(0, 2)] += scale * g.x;
+                j[(0, 3)] += scale * g.y;
+            }
+            VecFormula::NormalAt { .. } => {
+                // columns: (0,-1), (1,0), (0,1), (-1,0)
+                j[(0, 0)] += scale * (g.y * -1.0);
+                j[(0, 1)] += scale * g.x;
+                j[(0, 2)] += scale * g.y;
+                j[(0, 3)] += scale * (g.x * -1.0);
             }
         }
     }
@@ -114,24 +149,25 @@ impl Segment {
         }
     }
 
-    pub(crate) fn eval_length_jacobian(
+    /// Write \(1 \times 4\) length Jacobian into row 0 of `j` (SLOTS-local columns).
+    pub(crate) fn accumulate_length_jacobian(
         f: CurveLengthFormula,
         (a, b): (Point2, Point2),
-    ) -> ScalarJacobian {
+        j: &mut dyn JacView,
+        scale: f64,
+    ) {
         match f {
             CurveLengthFormula::Length => {
-                let mut j = ScalarJacobian::zeros(Self::PARAMETER_COUNT);
                 let d = b - a;
                 let len = d.length();
                 if len > 0.0 {
                     let ux = d.x / len;
                     let uy = d.y / len;
-                    j.set_ds(Self::start.component(Point2::COMP_X), -ux);
-                    j.set_ds(Self::start.component(Point2::COMP_Y), -uy);
-                    j.set_ds(Self::end.component(Point2::COMP_X), ux);
-                    j.set_ds(Self::end.component(Point2::COMP_Y), uy);
+                    j[(0, 0)] = scale * -ux;
+                    j[(0, 1)] = scale * -uy;
+                    j[(0, 2)] = scale * ux;
+                    j[(0, 3)] = scale * uy;
                 }
-                j
             }
         }
     }

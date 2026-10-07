@@ -50,8 +50,9 @@ context: |
   variants on the public expression type (no formula-kind match in the
   constraint path). Internally shared capability formula tags are keyed by
   geometry kind in a closed sum for dispatch. Point and free-vector Jacobians
-  are both 2×n; length Jacobians are 1×n (ScalarJacobian) with formula-local n
-  (sparse vs full geometry block). Typed scalar families stay separate
+  are both 2×n; length Jacobians are 1×n, written into JacView with
+  formula-local columns (sparse vs full geometry block). Typed scalar families
+  stay separate
   (LengthExpr today; AngleExpr when a kind needs angles — no untyped
   ScalarExpr). Parallel/Orthogonal take two opaque vector expressions;
   EqualLength takes two LengthExprs. Geometries construct expressions via
@@ -81,8 +82,7 @@ context: |
   Rust module and unit-test layout (impls/linux-rust):
   constraint_runtime splits geometry concerns as follows:
   - geom: shared affine / scalar DOF types (Point2, Vec2, Angle, Length,
-    CurveParam) and stack PointJacobian / VecJacobian / ScalarJacobian
-    (runtime width, fixed MAX cap)
+    CurveParam); formula Jacobians accumulate into JacView
   - geometry/:
     - shell.rs: GeometryShell, GeometryId, roles, AsShell,
       geometry_shell_instance!
@@ -102,10 +102,14 @@ context: |
     macro at the kind site). Document stores HashMap<GeometryId, Box<dyn Geometry>>;
     add_geometry bound is GeometryKind.
   - constraint.rs: ConstraintKind (per-kind residual arity + evaluate) with
-    object-safe Constraint via blanket (clone_box / as_any); LocalJacobian
-    scatters formula blocks into the global residual×state Jacobian via
-    connectivity (placer cursor; no packed local J_N required). ConstraintId
-    + ConstraintEntry (id + body). No catalog enum for storage.
+    object-safe Constraint via blanket (clone_box / as_any); accumulate_jacobian
+    writes through dyn JacView. ConstraintId + ConstraintEntry (id + body).
+  - matrix.rs: owned Matrix; borrowed DenseJac / DenseVec (contiguous
+    windows — full buffer = packed Dense*); ScatterJac / ScatterVec (local
+    index → connectivity; not CSR); JacView / VecView with Index/IndexMut on
+    concrete types (`m[(i,j)]`, `v[i]`); expressions accumulate_* into dyn
+    JacView. Owned parameter vector is State (as_dense / dense_block /
+    scatter over p)
   - constraint_kinds/: one file per concrete constraint (Congruence,
     Parallel, Orthogonal, FixPoint, EqualLength, …). Document stores
     HashMap<ConstraintId, ConstraintEntry>; add_constraint takes impl

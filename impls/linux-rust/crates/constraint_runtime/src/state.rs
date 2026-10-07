@@ -1,6 +1,11 @@
 //! Global continuous state vector \(p\) for a sketch.
+//!
+//! Owned counterpart to [`crate::matrix::Matrix`]: dense / scatter views over
+//! \(p\) are [`crate::matrix::DenseVec`] / [`crate::matrix::ScatterVec`].
 
 use std::ops::{Deref, DerefMut, Index, IndexMut};
+
+use crate::matrix::{DenseVec, ScatterVec};
 
 /// Contiguous continuous parameters for a sketch (Model E global unknowns).
 ///
@@ -13,6 +18,10 @@ pub struct State(Vec<f64>);
 impl State {
     pub fn new() -> Self {
         Self(Vec::new())
+    }
+
+    pub fn zeros(n: usize) -> Self {
+        Self(vec![0.0; n])
     }
 
     pub fn with_capacity(cap: usize) -> Self {
@@ -29,6 +38,21 @@ impl State {
 
     pub fn as_mut_slice(&mut self) -> &mut [f64] {
         &mut self.0
+    }
+
+    /// Mutable dense view of the whole State.
+    pub fn as_dense(&mut self) -> DenseVec<'_> {
+        DenseVec::packed(&mut self.0)
+    }
+
+    /// Contiguous parameter window `[start, start+len)` (geometry chart block).
+    pub fn dense_block(&mut self, start: usize, len: usize) -> DenseVec<'_> {
+        DenseVec::new(&mut self.0, start, len)
+    }
+
+    /// Non-contiguous DOFs via connectivity (e.g. soft mouse index set).
+    pub fn scatter<'c>(&mut self, conn: &'c [usize]) -> ScatterVec<'_, 'c> {
+        ScatterVec::new(&mut self.0, conn)
     }
 
     pub fn len(&self) -> usize {

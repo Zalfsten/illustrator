@@ -4,6 +4,7 @@ use crate::document::Document;
 use crate::geom::{CurveParam, Point2};
 use crate::geometry_kinds::Segment;
 use crate::geometry::{Chart, CurveExprs, EndpointExprs, GeometryId, GeometryRole, GeometryShell};
+use crate::matrix::{DenseVec, Matrix};
 use crate::state::State;
 
 fn two_segs() -> (Document, State) {
@@ -58,23 +59,30 @@ fn jacobian_matches_fd_for_catalog() {
     for c in &constraints {
         let conn = c.param_connectivity(&doc);
         let m = c.residual_arity();
-        let mut j_an = vec![0.0; m * n_global];
+        let mut mat = Matrix::zeros(m, n_global);
         {
-            let mut jac = LocalJacobian::new(&mut j_an, n_global, 0, m, &conn);
+            let mut view = mat.as_dense();
+            let mut jac = view.scatter(0, m, &conn);
             c.accumulate_jacobian(&doc, &p, &mut jac);
         }
 
         let mut r0 = vec![0.0; m];
-        c.eval_residual(&doc, &p, &mut r0);
+        {
+            let mut out = DenseVec::packed(&mut r0);
+            c.eval_residual(&doc, &p, &mut out);
+        }
 
         for &g in &conn {
             let mut p2 = p.clone();
             p2[g] += eps;
             let mut rp = vec![0.0; m];
-            c.eval_residual(&doc, &p2, &mut rp);
+            {
+                let mut out = DenseVec::packed(&mut rp);
+                c.eval_residual(&doc, &p2, &mut out);
+            }
             for row in 0..m {
                 let fd = (rp[row] - r0[row]) / eps;
-                let an = j_an[row * n_global + g];
+                let an = mat.as_slice()[row * n_global + g];
                 assert!(
                     (fd - an).abs() < 1e-5,
                     "constraint {c:?} row={row} col={g} fd={fd} an={an}"

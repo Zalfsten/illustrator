@@ -1,4 +1,4 @@
-//! Shared planar types: affine points/vectors, curve parameters, formula Jacobians.
+//! Shared planar types: affine points/vectors and curve parameters.
 //!
 //! Affine distinction: [`Vec2`] is a free vector (displacement / direction);
 //! [`Point2`] is a location. Prefer `b - a` over constructing components by hand.
@@ -9,11 +9,8 @@
 //!
 //! Scalar chart parameters: [`Angle`] (radians) and [`Length`] (signed State DOF).
 //! State packing of all of these lives in [`crate::geometry::StateAtom`].
-//!
-//! [`PointJacobian`] / [`VecJacobian`] are stack \(2 \times n\) carriers for analytical
-//! derivatives of point/vector formulas (runtime width \(n\), fixed stack cap).
-//! Concrete kinds and opaque expressions fill/return them; Document/kind IR lives
-//! under [`crate::geometry_kinds`].
+//! Formula Jacobians write into [`crate::matrix::JacView`] (see expressions /
+//! geometry kinds).
 
 use std::ops::{Add, Mul, Neg, Sub};
 
@@ -215,116 +212,6 @@ impl CurveParam {
         match self {
             CurveParam::Normalized(t) | CurveParam::Uniform(t) => t,
         }
-    }
-}
-
-/// Max width (local parameters) of a single point/vector-formula Jacobian.
-/// Chart formulas stay small (segment endpoint: 2, on-curve: 4); raise when a
-/// kind needs more formula-local DOFs. Erased form: runtime \(n\) ≤ this cap.
-pub const MAX_POINT_JACOBIAN_PARAMS: usize = 8;
-
-/// Analytical Jacobian of a point map: \(2 \times n\) stacked as two rows `dx`,
-/// `dy` with \(\texttt{dx}[i]=\partial x/\partial p_i\),
-/// \(\texttt{dy}[i]=\partial y/\partial p_i\). Stored on the stack; `n` is the
-/// formula-local parameter count (same order as the expression's param indices).
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct PointJacobian {
-    dx: [f64; MAX_POINT_JACOBIAN_PARAMS],
-    dy: [f64; MAX_POINT_JACOBIAN_PARAMS],
-    n: usize,
-}
-
-impl PointJacobian {
-    /// Zero \(2 \times n\) Jacobian (`n` must be ≤ [`MAX_POINT_JACOBIAN_PARAMS`]).
-    pub fn zeros(n: usize) -> Self {
-        assert!(
-            n <= MAX_POINT_JACOBIAN_PARAMS,
-            "point Jacobian width {n} exceeds MAX_POINT_JACOBIAN_PARAMS ({MAX_POINT_JACOBIAN_PARAMS})"
-        );
-        Self {
-            dx: [0.0; MAX_POINT_JACOBIAN_PARAMS],
-            dy: [0.0; MAX_POINT_JACOBIAN_PARAMS],
-            n,
-        }
-    }
-
-    /// Identity map for a packed [`Point2`] atom: \(J = I_2\).
-    ///
-    /// Column order matches packed [`Point2`] (`COMP_X`, then `COMP_Y`).
-    pub fn endpoint_identity() -> Self {
-        let mut j = Self::zeros(2);
-        j.dx[Point2::COMP_X] = 1.0;
-        j.dy[Point2::COMP_Y] = 1.0;
-        j
-    }
-
-    pub fn n(&self) -> usize {
-        self.n
-    }
-
-    pub fn dx(&self) -> &[f64] {
-        &self.dx[..self.n]
-    }
-
-    pub fn dy(&self) -> &[f64] {
-        &self.dy[..self.n]
-    }
-
-    /// Set column `i`: \(\partial(x,y)/\partial p_i = (\partial x, \partial y)\).
-    pub(crate) fn set_dx_dy(&mut self, i: usize, dx_i: f64, dy_i: f64) {
-        assert!(i < self.n);
-        self.dx[i] = dx_i;
-        self.dy[i] = dy_i;
-    }
-
-    /// Left-multiply by row gradient `g`: \(\texttt{ds}[i] = g \cdot\) column \(i\).
-    pub fn contract(&self, g: Vec2) -> ScalarJacobian {
-        let mut out = ScalarJacobian::zeros(self.n);
-        for i in 0..self.n {
-            out.set_ds(i, g.x * self.dx[i] + g.y * self.dy[i]);
-        }
-        out
-    }
-}
-
-/// Analytical Jacobian of a free-vector map: same \(2 \times n\) layout as
-/// [`PointJacobian`] (rows \(\partial v_x\), \(\partial v_y\)).
-pub type VecJacobian = PointJacobian;
-
-/// Max width of a scalar-formula Jacobian (same cap as point/vector formulas).
-pub const MAX_SCALAR_JACOBIAN_PARAMS: usize = MAX_POINT_JACOBIAN_PARAMS;
-
-/// Analytical Jacobian of a scalar map: \(1 \times n\) row `ds` with
-/// \(\texttt{ds}[i]=\partial s/\partial p_i\).
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct ScalarJacobian {
-    ds: [f64; MAX_SCALAR_JACOBIAN_PARAMS],
-    n: usize,
-}
-
-impl ScalarJacobian {
-    pub fn zeros(n: usize) -> Self {
-        assert!(
-            n <= MAX_SCALAR_JACOBIAN_PARAMS,
-            "scalar Jacobian width {n} exceeds MAX_SCALAR_JACOBIAN_PARAMS ({MAX_SCALAR_JACOBIAN_PARAMS})"
-        );
-        Self {
-            ds: [0.0; MAX_SCALAR_JACOBIAN_PARAMS],
-            n,
-        }
-    }
-
-    pub fn n(&self) -> usize {
-        self.n
-    }
-
-    pub fn ds(&self) -> &[f64] {
-        &self.ds[..self.n]
-    }
-
-    pub(crate) fn set_ds(&mut self, i: usize, ds_i: f64) {
-        assert!(i < self.n);
-        self.ds[i] = ds_i;
     }
 }
 

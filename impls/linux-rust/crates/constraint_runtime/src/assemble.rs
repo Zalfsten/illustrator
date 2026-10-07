@@ -1,7 +1,7 @@
 //! FEM-style assembly of global residual and Jacobian from local contributions.
 
-use crate::constraint::LocalJacobian;
 use crate::document::Document;
+use crate::matrix::{DenseJac, DenseVec, VecView};
 use crate::solver::SystemEval;
 use crate::state::State;
 use crate::SOLVE_TOL;
@@ -21,12 +21,8 @@ impl SoftContribution {
         1
     }
 
-    fn eval_residual(&self, p: &State, out: &mut [f64]) {
+    fn eval_residual(&self, p: &State, out: &mut dyn VecView) {
         out[0] = self.weight.sqrt() * (p[self.index] - self.target);
-    }
-
-    fn eval_jacobian(&self, _p: &State, out: &mut [f64]) {
-        out[0] = self.weight.sqrt();
     }
 
     fn param_index(&self) -> usize {
@@ -84,15 +80,18 @@ impl SystemEval for AssembledSystem<'_> {
     fn residual(&self, p: &State, r: &mut [f64]) {
         assert_eq!(r.len(), self.n_res);
         r.fill(0.0);
+        let mut r_view = DenseVec::packed(r);
         for (ci, entry) in self.doc.constraints().values().enumerate() {
             let c = entry.body();
             let m = c.residual_arity();
             let row0 = self.structural_row0[ci];
-            c.eval_residual(self.doc, p, &mut r[row0..row0 + m]);
+            let mut out = r_view.dense_block(row0, m);
+            c.eval_residual(self.doc, p, &mut out);
         }
         for (si, s) in self.soft.iter().enumerate() {
             let row = self.soft_row0 + si;
-            s.eval_residual(p, &mut r[row..row + 1]);
+            let mut out = r_view.dense_block(row, 1);
+            s.eval_residual(p, &mut out);
         }
     }
 
@@ -101,21 +100,22 @@ impl SystemEval for AssembledSystem<'_> {
         let m = self.n_res;
         assert_eq!(j.len(), m * n);
         j.fill(0.0);
+        let mut mat = DenseJac::packed(j, m, n);
 
         for (ci, entry) in self.doc.constraints().values().enumerate() {
             let c = entry.body();
             let conn = c.param_connectivity(self.doc);
             let m_local = c.residual_arity();
             let row0 = self.structural_row0[ci];
-            let mut jac = LocalJacobian::new(j, n, row0, m_local, &conn);
+            let mut jac = mat.scatter(row0, m_local, &conn);
             c.accumulate_jacobian(self.doc, p, &mut jac);
         }
 
         for (si, s) in self.soft.iter().enumerate() {
             let row = self.soft_row0 + si;
-            let mut j_local = [0.0];
-            s.eval_jacobian(p, &mut j_local);
-            j[row * n + s.param_index()] += j_local[0];
+            let conn = [s.param_index()];
+            let mut jac = mat.scatter(row, 1, &conn);
+            jac[(0, 0)] = s.weight.sqrt();
         }
     }
 }

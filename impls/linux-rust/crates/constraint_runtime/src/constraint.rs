@@ -8,8 +8,8 @@
 use std::any::Any;
 use std::fmt::Debug;
 
-use crate::geom::{PointJacobian, ScalarJacobian};
 use crate::geometry::GeometryId;
+use crate::matrix::{JacView, VecView};
 use crate::state::State;
 use crate::store::GeometryStore;
 
@@ -64,97 +64,6 @@ impl ConstraintEntry {
     }
 }
 
-/// Scatter view for a contribution Jacobian into a global residual×state matrix.
-///
-/// Writes formula blocks through [`LocalJacobian::placer`] at residual rows
-/// `[row0, row0 + n_rows)` and State columns given by `conn` (local column
-/// order = [`Constraint::param_connectivity`]). Layout is row-major with stride
-/// `n_global`.
-pub struct LocalJacobian<'a> {
-    data: &'a mut [f64],
-    n_global: usize,
-    row0: usize,
-    n_rows: usize,
-    conn: &'a [usize],
-}
-
-impl<'a> LocalJacobian<'a> {
-    /// Scatter into a global residual×state Jacobian (already zeroed by caller).
-    pub fn new(
-        data: &'a mut [f64],
-        n_global: usize,
-        row0: usize,
-        n_rows: usize,
-        conn: &'a [usize],
-    ) -> Self {
-        debug_assert!(n_global > 0);
-        debug_assert_eq!(data.len() % n_global, 0);
-        debug_assert!(row0 + n_rows <= data.len() / n_global);
-        Self {
-            data,
-            n_global,
-            row0,
-            n_rows,
-            conn,
-        }
-    }
-
-    pub fn n_cols(&self) -> usize {
-        self.conn.len()
-    }
-
-    pub fn n_rows(&self) -> usize {
-        self.n_rows
-    }
-
-    /// Sequential placer starting at column 0 (contribution join order).
-    pub fn placer(&mut self) -> LocalJacobianPlacer<'_, 'a> {
-        LocalJacobianPlacer { jac: self, col: 0 }
-    }
-
-    fn place_point(&mut self, col: usize, j: &PointJacobian, scale: f64) {
-        debug_assert_eq!(self.n_rows, 2);
-        debug_assert!(col + j.n() <= self.conn.len());
-        let n = self.n_global;
-        let r0 = self.row0;
-        for i in 0..j.n() {
-            let g = self.conn[col + i];
-            self.data[r0 * n + g] = scale * j.dx()[i];
-            self.data[(r0 + 1) * n + g] = scale * j.dy()[i];
-        }
-    }
-
-    fn place_scalar(&mut self, col: usize, j: &ScalarJacobian, scale: f64) {
-        debug_assert_eq!(self.n_rows, 1);
-        debug_assert!(col + j.n() <= self.conn.len());
-        let n = self.n_global;
-        for i in 0..j.n() {
-            let g = self.conn[col + i];
-            self.data[self.row0 * n + g] = scale * j.ds()[i];
-        }
-    }
-}
-
-/// Places formula Jacobian blocks left-to-right into a [`LocalJacobian`].
-pub struct LocalJacobianPlacer<'p, 'a> {
-    jac: &'p mut LocalJacobian<'a>,
-    col: usize,
-}
-
-impl LocalJacobianPlacer<'_, '_> {
-    /// Place a 2-row point/vector formula block and advance the column cursor.
-    pub fn place_point(&mut self, j: &PointJacobian, scale: f64) {
-        self.jac.place_point(self.col, j, scale);
-        self.col += j.n();
-    }
-
-    /// Place a 1-row scalar formula block and advance the column cursor.
-    pub fn place_scalar(&mut self, j: &ScalarJacobian, scale: f64) {
-        self.jac.place_scalar(self.col, j, scale);
-        self.col += j.n();
-    }
-}
-
 /// Concrete constraint kind ready for Document storage.
 ///
 /// Not object-safe ([`Self::RESIDUAL_ARITY`]). Implement this on each kind;
@@ -168,10 +77,10 @@ pub trait ConstraintKind: Clone + Debug + 'static {
     fn param_connectivity(&self, store: &dyn GeometryStore) -> Vec<usize>;
 
     /// Local residual `r_N` in contribution order (length = [`Self::RESIDUAL_ARITY`]).
-    fn eval_residual(&self, store: &dyn GeometryStore, p: &State, out: &mut [f64]);
+    fn eval_residual(&self, store: &dyn GeometryStore, p: &State, out: &mut dyn VecView);
 
-    /// Scatter this contribution's Jacobian into the global matrix via `j`.
-    fn accumulate_jacobian(&self, store: &dyn GeometryStore, p: &State, j: &mut LocalJacobian<'_>);
+    /// Write this contribution's Jacobian into `j` (dense or scatter local indices).
+    fn accumulate_jacobian(&self, store: &dyn GeometryStore, p: &State, j: &mut dyn JacView);
 
     /// Geometry instances this constraint depends on (incidence / reverse index).
     fn referenced_geometries(&self) -> Vec<GeometryId>;
@@ -193,10 +102,10 @@ pub trait Constraint: Debug {
     fn param_connectivity(&self, store: &dyn GeometryStore) -> Vec<usize>;
 
     /// Local residual `r_N` in contribution order (length = residual_arity).
-    fn eval_residual(&self, store: &dyn GeometryStore, p: &State, out: &mut [f64]);
+    fn eval_residual(&self, store: &dyn GeometryStore, p: &State, out: &mut dyn VecView);
 
-    /// Scatter this contribution's Jacobian into the global matrix via `j`.
-    fn accumulate_jacobian(&self, store: &dyn GeometryStore, p: &State, j: &mut LocalJacobian<'_>);
+    /// Write this contribution's Jacobian into `j` (dense or scatter local indices).
+    fn accumulate_jacobian(&self, store: &dyn GeometryStore, p: &State, j: &mut dyn JacView);
 
     /// Geometry instances this constraint depends on (incidence / reverse index).
     fn referenced_geometries(&self) -> Vec<GeometryId>;
@@ -219,11 +128,11 @@ impl<T: ConstraintKind> Constraint for T {
         ConstraintKind::param_connectivity(self, store)
     }
 
-    fn eval_residual(&self, store: &dyn GeometryStore, p: &State, out: &mut [f64]) {
+    fn eval_residual(&self, store: &dyn GeometryStore, p: &State, out: &mut dyn VecView) {
         ConstraintKind::eval_residual(self, store, p, out)
     }
 
-    fn accumulate_jacobian(&self, store: &dyn GeometryStore, p: &State, j: &mut LocalJacobian<'_>) {
+    fn accumulate_jacobian(&self, store: &dyn GeometryStore, p: &State, j: &mut dyn JacView) {
         ConstraintKind::accumulate_jacobian(self, store, p, j)
     }
 

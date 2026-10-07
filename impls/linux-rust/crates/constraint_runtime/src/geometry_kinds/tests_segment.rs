@@ -5,6 +5,7 @@ use crate::geometry::StateAtom;
 use crate::geometry::{
     Chart, CurveExprs, EndpointExprs, Geometry, GeometryId, GeometryRole, GeometryShell,
 };
+use crate::matrix::DenseJac;
 use crate::state::State;
 
 fn store_with(g: Segment) -> Document {
@@ -118,11 +119,20 @@ fn oncurve_uniform_matches_normalized_on_segment() {
     let a = Segment::on_curve_expr(GeometryId(0), CurveParam::Normalized(u)).evaluate(&store, &p);
     let b = Segment::on_curve_expr(GeometryId(0), CurveParam::Uniform(u)).evaluate(&store, &p);
     assert_eq!(a, b);
-    let jn = Segment::on_curve_expr(GeometryId(0), CurveParam::Normalized(u))
-        .eval_point_jacobian(&store, &p);
-    let ju = Segment::on_curve_expr(GeometryId(0), CurveParam::Uniform(u))
-        .eval_point_jacobian(&store, &p);
-    assert_eq!(jn, ju);
+    let n = Segment::PARAMETER_COUNT;
+    let mut buf_n = vec![0.0; 2 * n];
+    let mut buf_u = vec![0.0; 2 * n];
+    {
+        let mut jn = DenseJac::packed(&mut buf_n, 2, n);
+        Segment::on_curve_expr(GeometryId(0), CurveParam::Normalized(u))
+            .accumulate_jacobian(&store, &p, &mut jn, 1.0);
+    }
+    {
+        let mut ju = DenseJac::packed(&mut buf_u, 2, n);
+        Segment::on_curve_expr(GeometryId(0), CurveParam::Uniform(u))
+            .accumulate_jacobian(&store, &p, &mut ju, 1.0);
+    }
+    assert_eq!(buf_n, buf_u);
 }
 
 #[test]
