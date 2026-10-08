@@ -6,6 +6,7 @@ use crate::geometry::capabilities::{
 };
 use crate::geometry::chart::chart_atoms;
 use crate::geometry::shell::{geometry_shell_instance, GeometryShell};
+use crate::geometry::StateAtom;
 use crate::matrix::MatrixWrite;
 
 /// Line-segment instance: document shell plus segment chart formulas.
@@ -92,6 +93,11 @@ impl Segment {
             EndpointPointFormula::StartPoint => Self::start.indices(),
             EndpointPointFormula::EndPoint => Self::end.indices(),
         }
+    }
+
+    /// DOF count for an endpoint formula (no allocation).
+    pub(crate) fn endpoint_point_param_count(_f: EndpointPointFormula) -> usize {
+        Point2::DOF_COUNT
     }
 
     pub(crate) fn eval_vec(f: VecFormula, (a, b): (Point2, Point2)) -> Vec2 {

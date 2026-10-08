@@ -22,14 +22,18 @@ fn c_calling_pattern_fills_residual() {
     let soft: [crate::assemble::SoftContribution; 0] = [];
     let sys = AssembledSystem::from_document(&doc, &soft);
     let mut p = doc.vector().clone();
-    let handle = EvalHandle {
+    let m = sys.n_residuals();
+    let n = sys.n_params();
+    let mut handle = EvalHandle {
         eval: &sys,
         state: &mut p as *mut Vector,
+        residual_buf: Vector::zeros(m),
+        jacobian_buf: crate::matrix::Matrix::zeros(m, n),
     };
-    let mut r = vec![0.0; sys.n_residuals()];
+    let mut r = vec![0.0; m];
     let rc = unsafe {
         residual_trampoline(
-            &handle as *const _ as *mut c_void,
+            &mut handle as *mut _ as *mut c_void,
             p.len(),
             p.as_ptr(),
             r.len(),

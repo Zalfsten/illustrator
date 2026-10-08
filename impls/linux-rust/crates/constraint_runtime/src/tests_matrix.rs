@@ -77,7 +77,8 @@ fn scatter_block_slice_and_nested_scatter() {
             block.set(0, 1, 2.0);
         }
         let nested = [0usize, 2];
-        let mut inner = s.scatter_slice(0, 1, &nested);
+        let mut composed = Vec::new();
+        let mut inner = s.scatter_slice(0, 1, &nested, &mut composed);
         inner.set(0, 0, 3.0);
         inner.set(0, 1, 4.0);
     }

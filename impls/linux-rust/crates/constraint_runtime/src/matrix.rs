@@ -85,7 +85,7 @@ pub struct DenseMatrix<'a> {
 impl<'a> DenseMatrix<'a> {
     /// Packed standalone dense matrix (row-major, no parent padding).
     pub fn packed(data: &'a mut [f64], nrows: usize, ncols: usize) -> Self {
-        assert_eq!(data.len(), nrows.saturating_mul(ncols));
+        debug_assert_eq!(data.len(), nrows.saturating_mul(ncols));
         Self {
             data,
             stride: ncols,
@@ -116,14 +116,13 @@ impl<'a> DenseMatrix<'a> {
         }
     }
 
-    /// Scatter view: local columns map through `conn` into this window's columns
-    /// (then into the parent buffer via `col0` / `stride`).
-    pub fn scatter_slice(
+    /// Scatter view: local columns map through borrowed `conn` into this window.
+    pub fn scatter_slice<'c>(
         &mut self,
         row0: usize,
         nrows: usize,
-        conn: &[usize],
-    ) -> ScatterMatrix<'_> {
+        conn: &'c [usize],
+    ) -> ScatterMatrix<'_, 'c> {
         debug_assert!(row0 + nrows <= self.nrows);
         debug_assert!(conn.iter().all(|&c| c < self.ncols));
         ScatterMatrix {
@@ -132,7 +131,7 @@ impl<'a> DenseMatrix<'a> {
             row0: self.row0 + row0,
             col0: self.col0,
             nrows,
-            conn: conn.to_vec(),
+            conn,
         }
     }
 
@@ -158,26 +157,28 @@ impl IndexMut<(usize, usize)> for DenseMatrix<'_> {
 
 /// Scatter local \((i,j)\) into parent rows / columns `col0 + conn[j]`.
 ///
-/// `conn` is owned so [`scatter_slice`](Self::scatter_slice) can compose
-/// connectivity without borrowing nested maps.
-pub struct ScatterMatrix<'d> {
+/// `conn` is borrowed (same pattern as [`crate::vector::ScatterVec`]). Column
+/// windows use [`block_slice`](Self::block_slice) (subslice, no alloc). Nested
+/// remapping via [`scatter_slice`](Self::scatter_slice) writes the composed map
+/// into a caller-provided buffer.
+pub struct ScatterMatrix<'d, 'c> {
     data: &'d mut [f64],
     stride: usize,
     row0: usize,
     col0: usize,
     nrows: usize,
-    conn: Vec<usize>,
+    conn: &'c [usize],
 }
 
-impl<'d> ScatterMatrix<'d> {
-    /// Local row/column window (same scatter kind).
+impl<'d, 'c> ScatterMatrix<'d, 'c> {
+    /// Local row/column window (same scatter kind; `conn` subslice).
     pub fn block_slice(
         &mut self,
         row0: usize,
         col0: usize,
         block_rows: usize,
         block_cols: usize,
-    ) -> ScatterMatrix<'_> {
+    ) -> ScatterMatrix<'_, 'c> {
         debug_assert!(row0 + block_rows <= self.nrows);
         debug_assert!(col0 + block_cols <= self.conn.len());
         ScatterMatrix {
@@ -186,28 +187,30 @@ impl<'d> ScatterMatrix<'d> {
             row0: self.row0 + row0,
             col0: self.col0,
             nrows: block_rows,
-            conn: self.conn[col0..col0 + block_cols].to_vec(),
+            conn: &self.conn[col0..col0 + block_cols],
         }
     }
 
-    /// Scatter through this view's local columns: `conn[j]` selects parent-local
-    /// column, then the existing map into the dense parent.
-    pub fn scatter_slice(
+    /// Scatter through this view's local columns into `composed`, then return a
+    /// view over that map. `composed` is cleared and filled with parent columns.
+    pub fn scatter_slice<'o>(
         &mut self,
         row0: usize,
         nrows: usize,
         conn: &[usize],
-    ) -> ScatterMatrix<'_> {
+        composed: &'o mut Vec<usize>,
+    ) -> ScatterMatrix<'_, 'o> {
         debug_assert!(row0 + nrows <= self.nrows);
         debug_assert!(conn.iter().all(|&c| c < self.conn.len()));
-        let composed = conn.iter().map(|&j| self.conn[j]).collect();
+        composed.clear();
+        composed.extend(conn.iter().map(|&j| self.conn[j]));
         ScatterMatrix {
             data: self.data,
             stride: self.stride,
             row0: self.row0 + row0,
             col0: self.col0,
             nrows,
-            conn: composed,
+            conn: composed.as_slice(),
         }
     }
 
@@ -217,14 +220,14 @@ impl<'d> ScatterMatrix<'d> {
     }
 }
 
-impl Index<(usize, usize)> for ScatterMatrix<'_> {
+impl Index<(usize, usize)> for ScatterMatrix<'_, '_> {
     type Output = f64;
     fn index(&self, (i, j): (usize, usize)) -> &f64 {
         &self.data[self.flat(i, j)]
     }
 }
 
-impl IndexMut<(usize, usize)> for ScatterMatrix<'_> {
+impl IndexMut<(usize, usize)> for ScatterMatrix<'_, '_> {
     fn index_mut(&mut self, (i, j): (usize, usize)) -> &mut f64 {
         let idx = self.flat(i, j);
         &mut self.data[idx]
@@ -259,17 +262,14 @@ pub trait MatrixView {
     }
 }
 
-/// Writable matrix buffer: [`MatrixView`] plus `m[(i, k)]` indexing and slices.
+/// Writable matrix buffer: [`MatrixView`] plus `m[(i, k)]` indexing and block slices.
 ///
-/// Concrete backends: [`DenseMatrix`], [`ScatterMatrix`]. `block_slice` stays same-kind;
-/// `scatter_slice` always yields [`ScatterMatrix`].
+/// Concrete backends: [`DenseMatrix`], [`ScatterMatrix`]. `block_slice` stays same-kind.
+/// Scatter views are opened with inherent [`DenseMatrix::scatter_slice`] (borrowed `conn`).
 pub trait MatrixWrite:
     MatrixView + Index<(usize, usize), Output = f64> + IndexMut<(usize, usize), Output = f64>
 {
     type BlockSlice<'a>: MatrixWrite
-    where
-        Self: 'a;
-    type ScatterSlice<'a>: MatrixWrite
     where
         Self: 'a;
 
@@ -280,13 +280,6 @@ pub trait MatrixWrite:
         block_rows: usize,
         block_cols: usize,
     ) -> Self::BlockSlice<'_>;
-
-    fn scatter_slice(
-        &mut self,
-        row0: usize,
-        nrows: usize,
-        conn: &[usize],
-    ) -> Self::ScatterSlice<'_>;
 
     /// Write a dense \(R \times C\) block at `(0,0)`, times `scale`.
     ///
@@ -348,7 +341,7 @@ impl MatrixView for DenseMatrix<'_> {
     }
 }
 
-impl MatrixView for ScatterMatrix<'_> {
+impl MatrixView for ScatterMatrix<'_, '_> {
     fn nrows(&self) -> usize {
         self.nrows
     }
@@ -372,10 +365,6 @@ impl MatrixWrite for DenseMatrix<'_> {
         = DenseMatrix<'a>
     where
         Self: 'a;
-    type ScatterSlice<'a>
-        = ScatterMatrix<'a>
-    where
-        Self: 'a;
 
     fn block_slice(
         &mut self,
@@ -386,24 +375,11 @@ impl MatrixWrite for DenseMatrix<'_> {
     ) -> Self::BlockSlice<'_> {
         DenseMatrix::block_slice(self, row0, col0, block_rows, block_cols)
     }
-
-    fn scatter_slice(
-        &mut self,
-        row0: usize,
-        nrows: usize,
-        conn: &[usize],
-    ) -> Self::ScatterSlice<'_> {
-        DenseMatrix::scatter_slice(self, row0, nrows, conn)
-    }
 }
 
-impl MatrixWrite for ScatterMatrix<'_> {
+impl MatrixWrite for ScatterMatrix<'_, '_> {
     type BlockSlice<'a>
-        = ScatterMatrix<'a>
-    where
-        Self: 'a;
-    type ScatterSlice<'a>
-        = ScatterMatrix<'a>
+        = ScatterMatrix<'a, 'a>
     where
         Self: 'a;
 
@@ -414,16 +390,16 @@ impl MatrixWrite for ScatterMatrix<'_> {
         block_rows: usize,
         block_cols: usize,
     ) -> Self::BlockSlice<'_> {
-        ScatterMatrix::block_slice(self, row0, col0, block_rows, block_cols)
-    }
-
-    fn scatter_slice(
-        &mut self,
-        row0: usize,
-        nrows: usize,
-        conn: &[usize],
-    ) -> Self::ScatterSlice<'_> {
-        ScatterMatrix::scatter_slice(self, row0, nrows, conn)
+        // Reborrow conn for the window; both lifetimes collapse to the `&mut self` loan.
+        let conn = &self.conn[col0..col0 + block_cols];
+        ScatterMatrix {
+            data: self.data,
+            stride: self.stride,
+            row0: self.row0 + row0,
+            col0: self.col0,
+            nrows: block_rows,
+            conn,
+        }
     }
 }
 

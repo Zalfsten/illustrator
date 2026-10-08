@@ -40,7 +40,7 @@ impl ConstraintKind for Parallel {
         // r = va × vb; ∂r/∂va = vb.right_normal(), ∂r/∂vb = va.left_normal()
         let va = self.a.evaluate(store, p);
         let vb = self.b.evaluate(store, p);
-        let na = self.a.param_indices(store).len();
+        let na = self.a.param_count();
         self.a
             .accumulate_contracted(store, p, j, vb.right_normal(), 1.0);
         let mut jb = j.block_slice(0, na, j.nrows(), j.ncols() - na);

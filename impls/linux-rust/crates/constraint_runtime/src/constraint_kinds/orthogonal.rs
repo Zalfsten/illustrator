@@ -40,7 +40,7 @@ impl ConstraintKind for Orthogonal {
         // r = va · vb; ∂r/∂va = vb, ∂r/∂vb = va
         let va = self.a.evaluate(store, p);
         let vb = self.b.evaluate(store, p);
-        let na = self.a.param_indices(store).len();
+        let na = self.a.param_count();
         self.a.accumulate_contracted(store, p, j, vb, 1.0);
         let mut jb = j.block_slice(0, na, j.nrows(), j.ncols() - na);
         self.b.accumulate_contracted(store, p, &mut jb, va, 1.0);

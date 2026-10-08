@@ -57,9 +57,11 @@ impl SolverPort for CeresSolver {
         }
         assert_eq!(p.len(), n);
 
-        let handle = EvalHandle {
+        let mut handle = EvalHandle {
             eval,
             state: p as *mut Vector,
+            residual_buf: Vector::zeros(m),
+            jacobian_buf: crate::matrix::Matrix::zeros(m, n),
         };
         let c_opts = CrCeresOptions {
             function_tolerance: opts.tol,
@@ -71,7 +73,7 @@ impl SolverPort for CeresSolver {
                 n,
                 p.as_mut_ptr(),
                 m,
-                &handle as *const EvalHandle<'_> as *mut c_void,
+                &mut handle as *mut EvalHandle<'_> as *mut c_void,
                 residual_trampoline,
                 jacobian_trampoline,
                 &c_opts,

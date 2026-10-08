@@ -34,23 +34,32 @@ impl SoftContribution {
 ///
 /// Holds `&Document` for the discrete graph; evaluates against an explicit
 /// Vector (committed or working copy) passed to residual/jacobian.
+///
+/// Parameter connectivity is cached at construction — it depends only on the
+/// document graph, not on `p`, so Jacobian assembly does not rebuild index lists.
 pub struct AssembledSystem<'a> {
     pub doc: &'a Document,
     pub soft: &'a [SoftContribution],
     n_res: usize,
     /// Starting residual row for each structural constraint.
     structural_row0: Vec<usize>,
+    /// Cached [`Constraint::param_connectivity`] per structural constraint.
+    structural_conn: Vec<Vec<usize>>,
     soft_row0: usize,
 }
 
 impl<'a> AssembledSystem<'a> {
     pub fn new(doc: &'a Document, soft: &'a [SoftContribution]) -> Self {
         debug_assert_eq!(doc.vector().len(), doc.parameter_count());
-        let mut structural_row0 = Vec::with_capacity(doc.constraints().len());
+        let n_c = doc.constraints().len();
+        let mut structural_row0 = Vec::with_capacity(n_c);
+        let mut structural_conn = Vec::with_capacity(n_c);
         let mut row = 0usize;
         for c in doc.constraints().values() {
+            let body = c.body();
             structural_row0.push(row);
-            row += c.body().residual_arity();
+            row += body.residual_arity();
+            structural_conn.push(body.param_connectivity(doc));
         }
         let soft_row0 = row;
         row += soft
@@ -62,6 +71,7 @@ impl<'a> AssembledSystem<'a> {
             soft,
             n_res: row,
             structural_row0,
+            structural_conn,
             soft_row0,
         }
     }
@@ -106,10 +116,10 @@ impl SystemEval for AssembledSystem<'_> {
 
         for (ci, entry) in self.doc.constraints().values().enumerate() {
             let c = entry.body();
-            let conn = c.param_connectivity(self.doc);
+            let conn = &self.structural_conn[ci];
             let m_local = c.residual_arity();
             let row0 = self.structural_row0[ci];
-            let mut jac = mat.scatter_slice(row0, m_local, &conn);
+            let mut jac = mat.scatter_slice(row0, m_local, conn);
             c.accumulate_jacobian(self.doc, p, &mut jac);
         }
 

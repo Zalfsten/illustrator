@@ -123,6 +123,15 @@ macro_rules! impl_keyed_expr {
                 )
             }
 
+            /// Formula-local DOF count (no allocation).
+            pub fn param_count(&self) -> usize {
+                match &self.formula {
+                    $($Keyed::$var(_f) => {
+                        $crate::geometry::ChartSlot::union_dof(<$kind>::SLOTS)
+                    })+
+                }
+            }
+
             /// Write the formula Jacobian into `j` (formula-local columns), scaled by `scale`.
             pub fn accumulate_jacobian<J: $crate::matrix::MatrixWrite>(
                 &self,
@@ -176,6 +185,15 @@ macro_rules! impl_keyed_expr {
                     store.expect_geometry(self.geometry),
                     local,
                 )
+            }
+
+            /// Formula-local DOF count (no allocation).
+            pub fn param_count(&self) -> usize {
+                match &self.formula {
+                    $($Keyed::$var(_f) => {
+                        $crate::geometry::ChartSlot::union_dof(<$kind>::SLOTS)
+                    })+
+                }
             }
 
             /// Write the formula Jacobian into `j` (formula-local columns), scaled by `scale`.
@@ -314,6 +332,22 @@ macro_rules! register_expr_kinds {
                 )
             }
 
+            /// Formula-local DOF count (no allocation).
+            pub fn param_count(&self) -> usize {
+                match &self.formula {
+                    $(
+                        PointFormulaKeyed::$curve_var(_f) => {
+                            $crate::geometry::ChartSlot::union_dof(<$kind>::SLOTS)
+                        }
+                        $(
+                            PointFormulaKeyed::$endpoint_var(f) => {
+                                <$kind>::endpoint_point_param_count(*f)
+                            }
+                        )?
+                    )+
+                }
+            }
+
             /// Write the \(2 \times n\) point Jacobian into `j` (formula-local columns).
             pub fn accumulate_jacobian<J: $crate::matrix::MatrixWrite>(
                 &self,
@@ -358,7 +392,8 @@ macro_rules! register_expr_kinds {
                 g: $crate::geom::Vec2,
                 scale: f64,
             ) {
-                let n = self.param_indices(store).len();
+                let n = self.param_count();
+                debug_assert!(j.ncols() >= n);
                 debug_assert!(
                     n <= $crate::geometry::expr::MAX_FORMULA_LOCAL_DOF,
                     "vector formula local DOF count {n} exceeds MAX_FORMULA_LOCAL_DOF"

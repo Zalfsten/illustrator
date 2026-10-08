@@ -36,7 +36,7 @@ impl ConstraintKind for EqualLength {
         j: &mut J,
     ) {
         // r = ℓ_a - ℓ_b ⇒ ∂r/∂a = Ja, ∂r/∂b = -Jb
-        let na = self.a.param_indices(store).len();
+        let na = self.a.param_count();
         self.a.accumulate_jacobian(store, p, j, 1.0);
         let mut jb = j.block_slice(0, na, j.nrows(), j.ncols() - na);
         self.b.accumulate_jacobian(store, p, &mut jb, -1.0);

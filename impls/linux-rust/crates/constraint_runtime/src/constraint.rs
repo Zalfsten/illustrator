@@ -125,7 +125,7 @@ pub trait Constraint: Debug {
         &self,
         store: &dyn GeometryStore,
         p: &Vector,
-        j: &mut ScatterMatrix<'_>,
+        j: &mut ScatterMatrix<'_, '_>,
     );
 
     /// Geometry instances this constraint depends on (incidence / reverse index).
@@ -157,7 +157,7 @@ impl<T: ConstraintKind> Constraint for T {
         &self,
         store: &dyn GeometryStore,
         p: &Vector,
-        j: &mut ScatterMatrix<'_>,
+        j: &mut ScatterMatrix<'_, '_>,
     ) {
         ConstraintKind::accumulate_jacobian(self, store, p, j)
     }

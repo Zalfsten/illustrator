@@ -107,7 +107,8 @@ context: |
     object-safe Constraint via blanket (clone_box / as_any); eval_residual
     generic over VecWrite (R); accumulate_jacobian generic over MatrixWrite.
     ConstraintId + ConstraintEntry (id + body).
-  - matrix.rs: owned Matrix; borrowed DenseMatrix / ScatterMatrix;
+  - matrix.rs: owned Matrix; borrowed DenseMatrix / ScatterMatrix (conn borrowed);
+
     MatrixView / MatrixWrite (block_slice / scatter_slice). Assemble uses
     ScatterMatrix so kinds monomorphize.
   - vector.rs: owned Vector (p and r); borrowed DenseVec / ScatterVec;

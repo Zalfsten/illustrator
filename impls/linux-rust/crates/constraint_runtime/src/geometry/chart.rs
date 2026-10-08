@@ -225,6 +225,11 @@ impl ChartSlot {
         }
         out
     }
+
+    /// Total DOF covered by `slots` (no allocation).
+    pub fn union_dof(slots: &[ChartSlot]) -> usize {
+        slots.iter().map(|s| s.dof).sum()
+    }
 }
 
 /// Geometry kind as a chart: packs init into Vector.
