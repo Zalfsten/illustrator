@@ -54,10 +54,14 @@ impl Segment {
         match f {
             CurvePointFormula::OnCurve { param } => {
                 let t = param.chart_t();
-                j[(0, 0)] = scale * (1.0 - t);
-                j[(1, 1)] = scale * (1.0 - t);
-                j[(0, 2)] = scale * t;
-                j[(1, 3)] = scale * t;
+                // (1-t)I | t I
+                j.set_scaled(
+                    scale,
+                    [
+                        [1.0 - t, 0.0, t, 0.0],
+                        [0.0, 1.0 - t, 0.0, t],
+                    ],
+                );
             }
         }
     }
@@ -77,8 +81,7 @@ impl Segment {
     ) {
         match f {
             EndpointPointFormula::StartPoint | EndpointPointFormula::EndPoint => {
-                j[(0, 0)] = scale;
-                j[(1, 1)] = scale;
+                j.set_scaled(scale, [[1.0, 0.0], [0.0, 1.0]]);
             }
         }
     }
@@ -107,17 +110,18 @@ impl Segment {
     ) {
         match f {
             VecFormula::TangentAt { .. } => {
-                j[(0, 0)] = scale * -1.0;
-                j[(1, 1)] = scale * -1.0;
-                j[(0, 2)] = scale;
-                j[(1, 3)] = scale;
+                // ∂(B-A)/∂(A,B) = -I | I
+                j.set_scaled(
+                    scale,
+                    [[-1.0, 0.0, 1.0, 0.0], [0.0, -1.0, 0.0, 1.0]],
+                );
             }
             VecFormula::NormalAt { .. } => {
-                // n = (-vy, vx) of tangent ⇒ rotate each column of J_tan leftward
-                j[(1, 0)] = scale * -1.0;
-                j[(0, 1)] = scale;
-                j[(1, 2)] = scale;
-                j[(0, 3)] = scale * -1.0;
+                // n = (-vy, vx) of tangent ⇒ left-rotate each J_tan column
+                j.set_scaled(
+                    scale,
+                    [[0.0, 1.0, 0.0, -1.0], [-1.0, 0.0, 1.0, 0.0]],
+                );
             }
         }
     }
@@ -142,10 +146,7 @@ impl Segment {
                 if len > 0.0 {
                     let ux = d.x / len;
                     let uy = d.y / len;
-                    j[(0, 0)] = scale * -ux;
-                    j[(0, 1)] = scale * -uy;
-                    j[(0, 2)] = scale * ux;
-                    j[(0, 3)] = scale * uy;
+                    j.set_scaled(scale, [[-ux, -uy, ux, uy]]);
                 }
             }
         }

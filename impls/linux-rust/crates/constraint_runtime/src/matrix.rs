@@ -287,6 +287,26 @@ pub trait MatrixWrite:
         nrows: usize,
         conn: &[usize],
     ) -> Self::ScatterSlice<'_>;
+
+    /// Write a dense \(R \times C\) block at `(0,0)`, times `scale`.
+    ///
+    /// `vals` is row-major: `vals[i][k]` → `j[(i, k)]`. The view may be larger
+    /// than \(R \times C\) (e.g. left half of a joined contribution). Const
+    /// generics monomorphize to direct stores — no heap, no dynamic dispatch.
+    #[inline]
+    fn set_scaled<const R: usize, const C: usize>(
+        &mut self,
+        scale: f64,
+        vals: [[f64; C]; R],
+    ) {
+        debug_assert!(self.nrows() >= R);
+        debug_assert!(self.ncols() >= C);
+        for (i, row) in vals.into_iter().enumerate() {
+            for (k, v) in row.into_iter().enumerate() {
+                self[(i, k)] = scale * v;
+            }
+        }
+    }
 }
 
 impl MatrixView for DenseMatrix<'_> {
