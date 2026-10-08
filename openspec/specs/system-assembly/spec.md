@@ -24,7 +24,7 @@ The system SHALL form the global Jacobian \(J(p) = \partial r / \partial p\) by 
 
 \(J[M_N^{\mathrm{row}}(i), M_N^{\mathrm{col}}(j)] \mathrel{+}= (J_N)_{ij}\) (up to residual-row indexing conventions).
 
-Implementations MAY materialize a dense packed \(J_N\) buffer before scattering, or MAY write formula Jacobian blocks directly into the global matrix through a connectivity scatter view. When a contribution concatenates several formula blocks, implementations MAY place successive column windows with same-kind matrix block slices (dense→dense, scatter→scatter). The observable contract is the assembled global \(J\).
+Implementations MAY materialize a dense packed \(J_N\) buffer before scattering, or MAY write formula Jacobian blocks directly into the global matrix through a connectivity scatter view that borrows the contribution’s connectivity list (no requirement to clone that list per evaluation). When a contribution concatenates several formula blocks, implementations MAY place successive column windows with same-kind matrix block slices (dense→dense, scatter→scatter). Formula Jacobians MAY be written as dense row-major blocks into the contribution window, optionally multiplied by a contribution scale (for example \(\pm 1\) for difference residuals). The observable contract is the assembled global \(J\).
 
 #### Scenario: Local derivative lands at mapped global indices
 
@@ -34,13 +34,22 @@ Implementations MAY materialize a dense packed \(J_N\) buffer before scattering,
 
 ### Requirement: Assembly is re-evaluated at the current state
 
-Because the system is nonlinear, residual and Jacobian assembly SHALL be performed at the current \(p\) whenever the solver requests an evaluation. The system SHALL NOT treat a previously assembled Jacobian as valid for a different \(p\) unless an explicit caching contract says otherwise.
+Because the system is nonlinear, residual and Jacobian **values** SHALL be recomputed at the current \(p\) whenever the solver requests an evaluation. The system SHALL NOT treat a previously assembled residual or Jacobian matrix as valid for a different \(p\) unless an explicit caching contract says otherwise.
+
+Parameter **connectivity** (local→global column maps for contributions) depends on the Document graph, not on \(p\). An assembled system view for a fixed Document MAY cache those connectivity lists for the lifetime of that view and reuse them on every Jacobian evaluation. Caching connectivity SHALL NOT substitute for re-evaluating residual/Jacobian entries at the requested \(p\).
 
 #### Scenario: Solver iteration triggers fresh assembly
 
 - **WHEN** the solver requests residual or Jacobian evaluation at a new \(p\)
-- **THEN** assembly computes contributions using that \(p\)
+- **THEN** assembly computes contribution values using that \(p\)
 - **AND** the returned residual/Jacobian correspond to that state
+
+#### Scenario: Connectivity may be cached for a fixed Document
+
+- **WHEN** an assembled system is built for a Document and soft-term list
+- **AND** the solver requests Jacobian evaluation more than once without structural Document edits
+- **THEN** assembly MAY reuse the contribution connectivity maps computed at build time
+- **AND** Jacobian numeric entries are still filled from the current \(p\)
 
 ### Requirement: Contribution Jacobian columns follow connectivity order
 

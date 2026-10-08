@@ -94,34 +94,40 @@ context: |
     - capabilities.rs: CurveExprs / EndpointExprs; shared formula tags;
       CurveFormulaKey / EndpointFormulaKey with blankets (factories)
     - expr.rs: opaque PointExpr / VecExpr / LengthExpr; register_expr_kinds!
-      (keyed enums, evaluate / param_indices / jacobian dispatch, and
-      CurveFormulaKey / EndpointFormulaKey impls for listed kinds)
+      (keyed enums, evaluate / param_indices / param_count / jacobian
+      dispatch, VecExpr::accumulate_contracted from the 2×n Jacobian via
+      stack scratch, and CurveFormulaKey / EndpointFormulaKey for listed kinds)
   - id.rs: IdGenerator<Id> (shared by geometry + constraint namespaces)
   - geometry_kinds/: one file per concrete kind. Per kind: shell +
-    chart_atoms!; eval_* + accumulate_*_jacobian per formula family;
-    optional sparse endpoint_point_param_indices (other families default
-    connectivity to all chart SLOTS); one register_expr_kinds! entry (no
-    second keying macro at the kind site). Document stores
+    chart_atoms!; eval_* + accumulate_*_jacobian per formula family
+    (formula Jacobians via MatrixWrite::set_scaled); optional sparse
+    endpoint_point_param_indices / endpoint_point_param_count (other
+    families default connectivity to all chart SLOTS); one
+    register_expr_kinds! entry. Document stores
     HashMap<GeometryId, Box<dyn Geometry>>; add_geometry bound is GeometryKind.
   - constraint.rs: ConstraintKind (per-kind residual arity + evaluate) with
     object-safe Constraint via blanket (clone_box / as_any); eval_residual
     generic over VecWrite (R); accumulate_jacobian generic over MatrixWrite.
-    ConstraintId + ConstraintEntry (id + body).
-  - matrix.rs: owned Matrix; borrowed DenseMatrix / ScatterMatrix (conn borrowed);
-
-    MatrixView / MatrixWrite (block_slice / scatter_slice). Assemble uses
-    ScatterMatrix so kinds monomorphize.
+    ConstraintId + ConstraintEntry (id + body). Difference residuals
+    (Congruence, EqualLength) pass contribution scale ±1; joined operands
+    use MatrixWrite::block_slice column windows.
+  - matrix.rs: owned Matrix; borrowed DenseMatrix / ScatterMatrix (conn
+    borrowed like ScatterVec); MatrixView / MatrixWrite (block_slice,
+    set_scaled). Scatter opens via inherent DenseMatrix::scatter_slice
+    (not on MatrixWrite — conn lifetime). Nested scatter remaps into a
+    caller buffer. Assemble monomorphizes kinds against ScatterMatrix.
   - vector.rs: owned Vector (p and r); borrowed DenseVec / ScatterVec;
     VecView / VecWrite (as_dense / block_slice / scatter_slice)
   - constraint_kinds/: one file per concrete constraint (Congruence,
     Parallel, Orthogonal, FixPoint, EqualLength, …). Document stores
     HashMap<ConstraintId, ConstraintEntry>; add_constraint takes impl
     ConstraintKind → ConstraintId.
-  - assemble: AssembledSystem(&'a Document, soft); SoftContribution is
-    session-only (parameter index + target + weight); soft-vs-hard strength
-    is in SoftTerms / SoftContribution.weight (sqrt(w) in residual), not a
-    separate structural rescale in assembly. SystemEval fills Vector r and
-    Matrix J.
+  - assemble: AssembledSystem(&'a Document, soft); caches structural
+    param_connectivity at construction (graph-only; not p-dependent).
+    SoftContribution is session-only (parameter index + target + weight);
+    soft-vs-hard strength is in SoftTerms / SoftContribution.weight
+    (sqrt(w) in residual), not a separate structural rescale in assembly.
+    SystemEval fills Vector r and Matrix J.
   - interact: SoftTerms (mouse/stay weights); soft_for_drag builds
     SoftContribution list; InteractiveSolve commits working Vector
   - store: GeometryStore port (id → &dyn Geometry); implemented by Document
@@ -139,7 +145,10 @@ context: |
     incidence/identification indexes. Assemble/Mesh/Interact take &Document
     plus an explicit Vector (working or committed).
   - solver: SystemEval::residual(p, &mut Vector) /
-    jacobian(p, &mut Matrix); FFI trampolines may copy to/from C buffers
+    jacobian(p, &mut Matrix). Owned LM reuses r/J/linear-algebra scratch
+    across iterations. FFI EvalHandle holds residual/jacobian scratch
+    reused across trampoline callbacks; results copy into Ceres output
+    pointers.
   Prefer sibling files once a module has unit tests: src/<module>.rs for
   production code and src/tests_<module>.rs for that module's unit tests,
   declared with `#[cfg(test)] #[path = "tests_<module>.rs"] mod tests_<module>;`

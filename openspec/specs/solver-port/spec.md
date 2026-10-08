@@ -41,6 +41,8 @@ The solver port SHALL support configuration of common nonlinear-solve controls, 
 
 The evaluation interface used by the solver port SHALL accept the current parameter State \(p\) and fill a first-class residual buffer \(r\) and a first-class dense Jacobian buffer \(J\) (row-major \(m \times n\) layout, or an equivalent agreed packing). \(r\) and \(p\) SHALL be distinct buffers: residual length is the assembled residual arity, not the parameter count. Implementations MAY expose the same contract at a C ABI as opaque user data plus raw fill pointers; adapters MAY copy between foreign buffers and the first-class buffers.
 
+Owned backends and FFI adapters MAY allocate residual, Jacobian, and algorithm scratch once per solve (or per attached evaluation handle) and reuse those buffers across iterations or callbacks within that solve. Reuse SHALL NOT change observable residuals/Jacobians at a given \(p\).
+
 #### Scenario: Residual and Jacobian buffer kinds
 
 - **WHEN** the solver requests a residual evaluation at \(p\)
@@ -48,6 +50,12 @@ The evaluation interface used by the solver port SHALL accept the current parame
 - **AND** that buffer is not the parameter State \(p\)
 - **WHEN** the solver requests a Jacobian evaluation at \(p\)
 - **THEN** assembly writes into a dense \(m \times n\) Jacobian buffer (or equivalent)
+
+#### Scenario: Scratch reuse within one solve
+
+- **WHEN** a nonlinear solve performs multiple residual or Jacobian evaluations
+- **THEN** the backend or FFI adapter MAY refill previously allocated evaluation buffers instead of allocating new ones each call
+- **AND** each evaluation still reflects the \(p\) supplied for that call
 
 ### Requirement: FFI-friendly evaluation contract
 

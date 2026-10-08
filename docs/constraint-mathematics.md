@@ -212,11 +212,13 @@ Each contribution also exposes derivatives equivalent to a contribution
 Jacobian $J_N = \partial r_N / \partial p_{\mathrm{loc}}$ whose columns follow
 that contribution's connectivity order. Assembly may pack $J_N$ then scatter,
 or write formula Jacobian blocks straight into global $J$ via connectivity
-(linux-rust: assembly opens a `ScatterMatrix` over global \(J\) via
-connectivity; expressions `accumulate_jacobian` / `accumulate_contracted`
-write formula-local columns into `MatrixWrite`; successive operand blocks
-are placed with same-kind `block_slice`. Solver eval fills owned `Vector` \(r\)
-and `Matrix` \(J\).)
+(linux-rust: `AssembledSystem` caches structural connectivity at construction;
+Jacobian assembly opens a `ScatterMatrix` that borrows that list; formulas
+write via `MatrixWrite::set_scaled` / `accumulate_jacobian` /
+`accumulate_contracted` (stack scratch for \(g^\top J_v\)); successive operand
+blocks use same-kind `block_slice`. Difference residuals pass scale \(\pm 1\).
+Solver eval fills owned `Vector` \(r\) and `Matrix` \(J\); LM/FFI reuse
+evaluation scratch within a solve.)
 
 ## Assembly (FEM-style)
 
