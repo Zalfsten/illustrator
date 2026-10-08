@@ -122,31 +122,6 @@ impl Segment {
         }
     }
 
-    /// Contract free-vector Jacobian with `g` into residual row 0: `ds[i] += scale * g·col_i`.
-    pub(crate) fn accumulate_vec_jacobian_contracted<J: MatrixWrite>(
-        f: VecFormula,
-        j: &mut J,
-        g: Vec2,
-        scale: f64,
-    ) {
-        match f {
-            VecFormula::TangentAt { .. } => {
-                // columns: (-1,0), (0,-1), (1,0), (0,1)
-                j[(0, 0)] += scale * (g.x * -1.0);
-                j[(0, 1)] += scale * (g.y * -1.0);
-                j[(0, 2)] += scale * g.x;
-                j[(0, 3)] += scale * g.y;
-            }
-            VecFormula::NormalAt { .. } => {
-                // columns: (0,-1), (1,0), (0,1), (-1,0)
-                j[(0, 0)] += scale * (g.y * -1.0);
-                j[(0, 1)] += scale * g.x;
-                j[(0, 2)] += scale * g.y;
-                j[(0, 3)] += scale * (g.x * -1.0);
-            }
-        }
-    }
-
     pub(crate) fn eval_length(f: CurveLengthFormula, (a, b): (Point2, Point2)) -> Length {
         match f {
             CurveLengthFormula::Length => Length::new((b - a).length()),

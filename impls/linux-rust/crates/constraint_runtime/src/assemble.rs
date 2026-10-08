@@ -1,7 +1,7 @@
 //! FEM-style assembly of global residual and Jacobian from local contributions.
 
 use crate::document::Document;
-use crate::matrix::{DenseMatrix, Matrix};
+use crate::matrix::Matrix;
 use crate::solver::SystemEval;
 use crate::vector::{VecWrite, Vector};
 use crate::SOLVE_TOL;
@@ -53,7 +53,10 @@ impl<'a> AssembledSystem<'a> {
             row += c.body().residual_arity();
         }
         let soft_row0 = row;
-        row += soft.iter().map(SoftContribution::residual_arity).sum::<usize>();
+        row += soft
+            .iter()
+            .map(SoftContribution::residual_arity)
+            .sum::<usize>();
         Self {
             doc,
             soft,

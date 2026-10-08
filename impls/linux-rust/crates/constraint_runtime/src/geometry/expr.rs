@@ -6,8 +6,8 @@
 //! Local→global index lifts use [`crate::mapper::Mapper`].
 //!
 //! Jacobians write directly into a [`crate::matrix::MatrixView`] via
-//! `accumulate_jacobian` / `accumulate_contracted` (no stack carriers on the
-//! constraint path).
+//! `accumulate_jacobian`. [`VecExpr::accumulate_contracted`] is derived
+//! generically (\(g^\top J_v\)) for scalar residuals such as Parallel/Orthogonal.
 //!
 //! **Adding a kind:** implement `eval_*` + `accumulate_*_jacobian` per formula
 //! family (connectivity defaults to all [`SLOTS`](super::chart::ChartSlot);
@@ -17,6 +17,12 @@
 //! [`EndpointFormulaKey`](super::capabilities::EndpointFormulaKey)).
 
 use super::shell::GeometryId;
+
+/// Upper bound on formula-local parameter count for expression Jacobians.
+///
+/// Used for stack scratch in [`VecExpr::accumulate_contracted`]. Raise when a
+/// kind's vector formula depends on more DOFs than this.
+pub const MAX_FORMULA_LOCAL_DOF: usize = 8;
 
 /// Opaque point expression: map from Vector parameters to a [`crate::geom::Point2`].
 ///
@@ -339,21 +345,30 @@ macro_rules! register_expr_kinds {
         }
 
         impl VecExpr {
-            /// Contract the free-vector Jacobian with `g` into residual row 0 of `j`.
+            /// Contract the free-vector Jacobian with `g` into residual row 0 of `j`:
+            /// `j[0,i] += scale * g · col_i(J_v)`.
+            ///
+            /// Derived from [`Self::accumulate_jacobian`] — kinds only implement the
+            /// \(2 \times n\) vector Jacobian.
             pub fn accumulate_contracted<J: $crate::matrix::MatrixWrite>(
                 &self,
-                _store: &dyn $crate::store::GeometryStore,
-                _p: &$crate::vector::Vector,
+                store: &dyn $crate::store::GeometryStore,
+                p: &$crate::vector::Vector,
                 j: &mut J,
                 g: $crate::geom::Vec2,
                 scale: f64,
             ) {
-                match &self.formula {
-                    $(
-                        VecFormulaKeyed::$vec_var(f) => {
-                            <$kind>::accumulate_vec_jacobian_contracted(*f, j, g, scale)
-                        }
-                    )+
+                let n = self.param_indices(store).len();
+                debug_assert!(
+                    n <= $crate::geometry::expr::MAX_FORMULA_LOCAL_DOF,
+                    "vector formula local DOF count {n} exceeds MAX_FORMULA_LOCAL_DOF"
+                );
+                let mut buf = [0.0; 2 * $crate::geometry::expr::MAX_FORMULA_LOCAL_DOF];
+                let mut jv =
+                    $crate::matrix::DenseMatrix::packed(&mut buf[..2 * n], 2, n);
+                self.accumulate_jacobian(store, p, &mut jv, 1.0);
+                for col in 0..n {
+                    j[(0, col)] += scale * (g.x * jv[(0, col)] + g.y * jv[(1, col)]);
                 }
             }
         }
