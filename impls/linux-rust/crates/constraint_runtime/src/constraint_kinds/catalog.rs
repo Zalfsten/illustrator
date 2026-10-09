@@ -3,9 +3,9 @@
 use super::{Congruence, EqualLength, FixPoint, Orthogonal, Parallel};
 use crate::constraint::ConstraintKind;
 use crate::geometry::GeometryId;
-use crate::matrix::MatrixWrite;
+use crate::matrix::MatrixAccess;
 use crate::store::GeometryStore;
-use crate::vector::{VecWrite, Vector};
+use crate::vector::{VecAccess, Vector};
 
 /// Build [`ConstraintInst`] + `From` + dispatch from the closed kind list.
 macro_rules! constraint_catalog {
@@ -45,7 +45,7 @@ macro_rules! constraint_catalog {
                 }
             }
 
-            pub fn eval_residual<S: GeometryStore + ?Sized, R: VecWrite>(
+            pub fn eval_residual<S: GeometryStore + ?Sized, R: VecAccess>(
                 &self,
                 store: &S,
                 p: &Vector,
@@ -56,7 +56,7 @@ macro_rules! constraint_catalog {
                 }
             }
 
-            pub fn accumulate_jacobian<S: GeometryStore + ?Sized, J: MatrixWrite>(
+            pub fn accumulate_jacobian<S: GeometryStore + ?Sized, J: MatrixAccess>(
                 &self,
                 store: &S,
                 p: &Vector,

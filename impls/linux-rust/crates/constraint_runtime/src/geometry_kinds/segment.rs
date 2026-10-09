@@ -7,7 +7,7 @@ use crate::geometry::capabilities::{
 use crate::geometry::chart::chart_atoms;
 use crate::geometry::shell::{geometry_shell_instance, GeometryShell};
 use crate::geometry::StateAtom;
-use crate::matrix::MatrixWrite;
+use crate::matrix::MatrixAccess;
 
 /// Line-segment instance: document shell plus segment chart formulas.
 ///
@@ -47,7 +47,7 @@ impl Segment {
     }
 
     /// Write \(2 \times 4\) curve-point Jacobian into `j` (SLOTS-local columns).
-    pub(crate) fn accumulate_curve_point_jacobian<J: MatrixWrite>(
+    pub(crate) fn accumulate_curve_point_jacobian<J: MatrixAccess>(
         f: CurvePointFormula,
         j: &mut J,
         scale: f64,
@@ -75,7 +75,7 @@ impl Segment {
     }
 
     /// Write \(2 \times 2\) endpoint identity Jacobian into `j` (Point2-local columns).
-    pub(crate) fn accumulate_endpoint_point_jacobian<J: MatrixWrite>(
+    pub(crate) fn accumulate_endpoint_point_jacobian<J: MatrixAccess>(
         f: EndpointPointFormula,
         j: &mut J,
         scale: f64,
@@ -109,7 +109,7 @@ impl Segment {
     }
 
     /// Write \(2 \times 4\) free-vector Jacobian into `j` (SLOTS-local columns).
-    pub(crate) fn accumulate_vec_jacobian<J: MatrixWrite>(
+    pub(crate) fn accumulate_vec_jacobian<J: MatrixAccess>(
         f: VecFormula,
         j: &mut J,
         scale: f64,
@@ -139,7 +139,7 @@ impl Segment {
     }
 
     /// Write \(1 \times 4\) length Jacobian into row 0 of `j` (SLOTS-local columns).
-    pub(crate) fn accumulate_length_jacobian<J: MatrixWrite>(
+    pub(crate) fn accumulate_length_jacobian<J: MatrixAccess>(
         f: CurveLengthFormula,
         (a, b): (Point2, Point2),
         j: &mut J,

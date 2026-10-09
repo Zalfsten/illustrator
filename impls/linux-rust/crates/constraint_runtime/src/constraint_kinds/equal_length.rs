@@ -3,8 +3,8 @@
 use crate::constraint::ConstraintKind;
 use crate::geometry::{GeometryId, LengthExpr};
 use crate::mapper::Mapper;
-use crate::matrix::MatrixWrite;
-use crate::vector::{VecWrite, Vector};
+use crate::matrix::MatrixAccess;
+use crate::vector::{VecAccess, Vector};
 use crate::store::GeometryStore;
 
 #[derive(Clone, Debug, PartialEq)]
@@ -20,7 +20,7 @@ impl ConstraintKind for EqualLength {
         Mapper::join_indices([self.a.param_indices(store), self.b.param_indices(store)])
     }
 
-    fn eval_residual<S: GeometryStore + ?Sized, R: VecWrite>(
+    fn eval_residual<S: GeometryStore + ?Sized, R: VecAccess>(
         &self,
         store: &S,
         p: &Vector,
@@ -29,7 +29,7 @@ impl ConstraintKind for EqualLength {
         out[0] = self.a.evaluate(store, p).value() - self.b.evaluate(store, p).value();
     }
 
-    fn accumulate_jacobian<S: GeometryStore + ?Sized, J: MatrixWrite>(
+    fn accumulate_jacobian<S: GeometryStore + ?Sized, J: MatrixAccess>(
         &self,
         store: &S,
         p: &Vector,

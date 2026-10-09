@@ -7,8 +7,8 @@
 use std::fmt::Debug;
 
 use crate::geometry::GeometryId;
-use crate::matrix::MatrixWrite;
-use crate::vector::{VecWrite, Vector};
+use crate::matrix::MatrixAccess;
+use crate::vector::{VecAccess, Vector};
 use crate::store::GeometryStore;
 
 /// Deduplicate geometry ids while preserving first-seen order.
@@ -65,7 +65,7 @@ pub trait ConstraintKind: Clone + Debug + 'static {
     fn param_connectivity<S: GeometryStore + ?Sized>(&self, store: &S) -> Vec<usize>;
 
     /// Local residual `r_N` in contribution order (length = [`Self::RESIDUAL_ARITY`]).
-    fn eval_residual<S: GeometryStore + ?Sized, R: VecWrite>(
+    fn eval_residual<S: GeometryStore + ?Sized, R: VecAccess>(
         &self,
         store: &S,
         p: &Vector,
@@ -73,7 +73,7 @@ pub trait ConstraintKind: Clone + Debug + 'static {
     );
 
     /// Write this contribution's Jacobian into `j` (dense or scatter local indices).
-    fn accumulate_jacobian<S: GeometryStore + ?Sized, J: MatrixWrite>(
+    fn accumulate_jacobian<S: GeometryStore + ?Sized, J: MatrixAccess>(
         &self,
         store: &S,
         p: &Vector,

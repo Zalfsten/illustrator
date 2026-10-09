@@ -3,8 +3,8 @@
 use crate::constraint::ConstraintKind;
 use crate::geometry::{GeometryId, VecExpr};
 use crate::mapper::Mapper;
-use crate::matrix::MatrixWrite;
-use crate::vector::{VecWrite, Vector};
+use crate::matrix::MatrixAccess;
+use crate::vector::{VecAccess, Vector};
 use crate::store::GeometryStore;
 
 #[derive(Clone, Debug, PartialEq)]
@@ -20,7 +20,7 @@ impl ConstraintKind for Orthogonal {
         Mapper::join_indices([self.a.param_indices(store), self.b.param_indices(store)])
     }
 
-    fn eval_residual<S: GeometryStore + ?Sized, R: VecWrite>(
+    fn eval_residual<S: GeometryStore + ?Sized, R: VecAccess>(
         &self,
         store: &S,
         p: &Vector,
@@ -31,7 +31,7 @@ impl ConstraintKind for Orthogonal {
         out[0] = va.dot(vb);
     }
 
-    fn accumulate_jacobian<S: GeometryStore + ?Sized, J: MatrixWrite>(
+    fn accumulate_jacobian<S: GeometryStore + ?Sized, J: MatrixAccess>(
         &self,
         store: &S,
         p: &Vector,

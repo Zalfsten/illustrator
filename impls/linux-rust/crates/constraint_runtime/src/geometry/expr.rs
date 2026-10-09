@@ -136,7 +136,7 @@ macro_rules! impl_keyed_expr {
             }
 
             /// Write the formula Jacobian into `j` (formula-local columns), scaled by `scale`.
-            pub fn accumulate_jacobian<S: $crate::store::GeometryStore + ?Sized, J: $crate::matrix::MatrixWrite>(
+            pub fn accumulate_jacobian<S: $crate::store::GeometryStore + ?Sized, J: $crate::matrix::MatrixAccess>(
                 &self,
                 _store: &S,
                 _p: &$crate::vector::Vector,
@@ -203,7 +203,7 @@ macro_rules! impl_keyed_expr {
             }
 
             /// Write the formula Jacobian into `j` (formula-local columns), scaled by `scale`.
-            pub fn accumulate_jacobian<S: $crate::store::GeometryStore + ?Sized, J: $crate::matrix::MatrixWrite>(
+            pub fn accumulate_jacobian<S: $crate::store::GeometryStore + ?Sized, J: $crate::matrix::MatrixAccess>(
                 &self,
                 store: &S,
                 p: &$crate::vector::Vector,
@@ -364,7 +364,7 @@ macro_rules! register_expr_kinds {
             }
 
             /// Write the \(2 \times n\) point Jacobian into `j` (formula-local columns).
-            pub fn accumulate_jacobian<S: $crate::store::GeometryStore + ?Sized, J: $crate::matrix::MatrixWrite>(
+            pub fn accumulate_jacobian<S: $crate::store::GeometryStore + ?Sized, J: $crate::matrix::MatrixAccess>(
                 &self,
                 _store: &S,
                 _p: &$crate::vector::Vector,
@@ -399,7 +399,7 @@ macro_rules! register_expr_kinds {
             ///
             /// Derived from [`Self::accumulate_jacobian`] — kinds only implement the
             /// \(2 \times n\) vector Jacobian.
-            pub fn accumulate_contracted<S: $crate::store::GeometryStore + ?Sized, J: $crate::matrix::MatrixWrite>(
+            pub fn accumulate_contracted<S: $crate::store::GeometryStore + ?Sized, J: $crate::matrix::MatrixAccess>(
                 &self,
                 store: &S,
                 p: &$crate::vector::Vector,

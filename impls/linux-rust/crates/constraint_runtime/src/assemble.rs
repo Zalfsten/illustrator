@@ -3,7 +3,7 @@
 use crate::document::Document;
 use crate::matrix::Matrix;
 use crate::solver::SystemEval;
-use crate::vector::{VecWrite, Vector};
+use crate::vector::{VecAccess, Vector};
 use crate::SOLVE_TOL;
 
 /// Soft residual: sqrt(w) * (p[index] - target); local J is scalar sqrt(w).
@@ -21,7 +21,7 @@ impl SoftContribution {
         1
     }
 
-    fn eval_residual<R: VecWrite>(&self, p: &Vector, out: &mut R) {
+    fn eval_residual<R: VecAccess>(&self, p: &Vector, out: &mut R) {
         out[0] = self.weight.sqrt() * (p[self.index] - self.target);
     }
 

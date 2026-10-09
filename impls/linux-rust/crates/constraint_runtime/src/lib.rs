@@ -34,10 +34,10 @@ pub use geometry_kinds::{GeometryInst, InGeometryCatalog, Segment};
 pub use id::IdGenerator;
 pub use interact::{DragSession, InteractiveSolve, SoftTerms, SolveError};
 pub use mapper::Mapper;
-pub use matrix::{DenseMatrix, MatrixWrite, Matrix, MatrixView, ScatterMatrix};
+pub use matrix::{DenseMatrix, MatrixAccess, Matrix, MatrixView, ScatterMatrix};
 pub use mesh::{Mesh, MeshEdge, MeshFilter};
 pub use solver::{ffi, LmSolver, SolveOutcome, SolverOptions, SolverPort, StubSolver, SystemEval};
 pub use store::GeometryStore;
-pub use vector::{DenseVec, ScatterVec, VecWrite, VecView, Vector};
+pub use vector::{DenseVec, ScatterVec, VecAccess, VecView, Vector};
 
 pub const SOLVE_TOL: f64 = 1e-6;

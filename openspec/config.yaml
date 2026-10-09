@@ -46,7 +46,7 @@ context: |
   Point / vector / length expressions (opaque, Model B):
   A point, free-vector, or length expression is an opaque handle to a
   geometry-kind-owned formula that maps parameter State \(p\) to a Point2, Vec2,
-  or Length (plus connectivity / MatrixWrite). Do not expose formula-kind
+  or Length (plus connectivity / MatrixAccess). Do not expose formula-kind
   variants on the public expression type (no formula-kind match in the
   constraint path). Internally shared capability formula tags are keyed by
   geometry kind in a closed sum for dispatch. Point and free-vector Jacobians
@@ -103,15 +103,15 @@ context: |
     accumulate_*_jacobian (set_scaled); optional sparse endpoint param
     helpers; register_expr_kinds! entry. Document:
     HashMap<GeometryId, GeometryInst>; add_geometry: GeometryKind + Into<GeometryInst>.
-  - constraint.rs: ConstraintKind (generic over GeometryStore / VecWrite /
-    MatrixWrite). ConstraintId + ConstraintEntry (ConstraintInst body).
+  - constraint.rs: ConstraintKind (generic over GeometryStore / VecAccess /
+    MatrixAccess). ConstraintId + ConstraintEntry (ConstraintInst body).
   - constraint_kinds/: per-kind files + ConstraintInst catalog enum;
     add_constraint: Into<ConstraintInst>.
   - matrix.rs: owned Matrix; borrowed DenseMatrix / ScatterMatrix (conn
-    borrowed); MatrixView / MatrixWrite (block_slice, set_scaled). Scatter
+    borrowed); MatrixView / MatrixAccess (block_slice, set_scaled). Scatter
     via inherent DenseMatrix::scatter_slice.
   - vector.rs: owned Vector (p and r); borrowed DenseVec / ScatterVec;
-    VecView / VecWrite (as_dense / block_slice / scatter_slice)
+    VecView / VecAccess (as_dense / block_slice / scatter_slice)
   - assemble: AssembledSystem(&'a Document, soft); caches structural
     param_connectivity at construction (graph-only; not p-dependent).
     SoftContribution is session-only (parameter index + target + weight);

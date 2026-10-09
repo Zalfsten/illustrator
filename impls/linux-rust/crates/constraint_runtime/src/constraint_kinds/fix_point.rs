@@ -3,8 +3,8 @@
 use crate::constraint::ConstraintKind;
 use crate::geom::Point2;
 use crate::geometry::{GeometryId, PointExpr};
-use crate::matrix::MatrixWrite;
-use crate::vector::{VecWrite, Vector};
+use crate::matrix::MatrixAccess;
+use crate::vector::{VecAccess, Vector};
 use crate::store::GeometryStore;
 
 #[derive(Clone, Debug, PartialEq)]
@@ -20,7 +20,7 @@ impl ConstraintKind for FixPoint {
         self.point.param_indices(store)
     }
 
-    fn eval_residual<S: GeometryStore + ?Sized, R: VecWrite>(
+    fn eval_residual<S: GeometryStore + ?Sized, R: VecAccess>(
         &self,
         store: &S,
         p: &Vector,
@@ -31,7 +31,7 @@ impl ConstraintKind for FixPoint {
         out[1] = q.y - self.target.y;
     }
 
-    fn accumulate_jacobian<S: GeometryStore + ?Sized, J: MatrixWrite>(
+    fn accumulate_jacobian<S: GeometryStore + ?Sized, J: MatrixAccess>(
         &self,
         store: &S,
         p: &Vector,

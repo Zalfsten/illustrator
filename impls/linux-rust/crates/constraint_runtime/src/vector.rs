@@ -2,7 +2,7 @@
 //!
 //! [`Vector`] owns a contiguous `f64` buffer (parameter state \(p\), residual
 //! \(r\), …). Borrowed windows are [`DenseVec`] (contiguous) or [`ScatterVec`]
-//! (local index → connectivity). Shared semantics: [`VecView`] / [`VecWrite`].
+//! (local index → connectivity). Shared semantics: [`VecView`] / [`VecAccess`].
 //!
 //! For matrices see [`crate::matrix`].
 
@@ -263,7 +263,7 @@ impl IndexMut<usize> for ScatterVec<'_, '_> {
 
 /// Vector semantics on a dense local index space.
 ///
-/// Used via generics (`V: VecView` / [`VecWrite`]) so accesses monomorphize.
+/// Used via generics (`V: VecView` / [`VecAccess`]) so accesses monomorphize.
 pub trait VecView {
     fn len(&self) -> usize;
     fn cell(&self, i: usize) -> &f64;
@@ -286,10 +286,10 @@ pub trait VecView {
 
 /// Writable vector buffer: [`VecView`] plus `v[i]` indexing (e.g. residual path).
 ///
-/// Concrete backends: [`DenseVec`], [`ScatterVec`]. Parallel to [`crate::matrix::MatrixWrite`]
+/// Concrete backends: [`DenseVec`], [`ScatterVec`]. Parallel to [`crate::matrix::MatrixAccess`]
 /// on the matrix side — not the parameter vector [`Vector`].
-pub trait VecWrite: VecView + Index<usize, Output = f64> + IndexMut<usize, Output = f64> {}
-impl<T> VecWrite for T where T: VecView + Index<usize, Output = f64> + IndexMut<usize, Output = f64> {}
+pub trait VecAccess: VecView + Index<usize, Output = f64> + IndexMut<usize, Output = f64> {}
+impl<T> VecAccess for T where T: VecView + Index<usize, Output = f64> + IndexMut<usize, Output = f64> {}
 
 impl VecView for DenseVec<'_> {
     fn len(&self) -> usize {

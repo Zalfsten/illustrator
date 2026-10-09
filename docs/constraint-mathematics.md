@@ -50,7 +50,7 @@ Behavioral contracts live in OpenSpec capabilities (`geometry-ir`, `state-vector
 
 **Why:** Call sites should see “a point/vector map”, not `Endpoint | OnCurve | …`. A small fixed catalog stays data-driven (`PartialEq`, `Copy`, easy Debug/serde) without exposing variants. True openness (trait objects / closures) was tried and rejected for this codebase in favor of this facade — see approaches below.
 
-**Consequences (linux-rust):** Per-kind private formula **structs** under `geometry_kinds/<kind>.rs`, catalogued by a private enum; outer kind sum and opaque `PointExpr` / `VecExpr` / `LengthExpr` in `geometry/expr.rs`. Formula Jacobians write into `MatrixWrite` (`accumulate_jacobian` / `accumulate_contracted`). Kind instances implement `Chart` + `AsShell` via `geometry_shell_instance!` and `GeometryKind`. Document stores closed catalogs `GeometryInst` / `ConstraintInst` (no `dyn`) in `HashMap`s by id. Shared affine types in `geom`; owned `Vector` / `Matrix` in `vector.rs` / `matrix.rs`; `GeometryStore` resolves to `&GeometryInst`, then `InGeometryCatalog` + `Mapper` unpack. Constraints never match on formula kinds.
+**Consequences (linux-rust):** Per-kind private formula **structs** under `geometry_kinds/<kind>.rs`, catalogued by a private enum; outer kind sum and opaque `PointExpr` / `VecExpr` / `LengthExpr` in `geometry/expr.rs`. Formula Jacobians write into `MatrixAccess` (`accumulate_jacobian` / `accumulate_contracted`). Kind instances implement `Chart` + `AsShell` via `geometry_shell_instance!` and `GeometryKind`. Document stores closed catalogs `GeometryInst` / `ConstraintInst` (no `dyn`) in `HashMap`s by id. Shared affine types in `geom`; owned `Vector` / `Matrix` in `vector.rs` / `matrix.rs`; `GeometryStore` resolves to `&GeometryInst`, then `InGeometryCatalog` + `Mapper` unpack. Constraints never match on formula kinds.
 
 ### Approaches considered
 
@@ -214,7 +214,7 @@ that contribution's connectivity order. Assembly may pack $J_N$ then scatter,
 or write formula Jacobian blocks straight into global $J$ via connectivity
 (linux-rust: `AssembledSystem` caches structural connectivity at construction;
 Jacobian assembly opens a `ScatterMatrix` that borrows that list; formulas
-write via `MatrixWrite::set_scaled` / `accumulate_jacobian` /
+write via `MatrixAccess::set_scaled` / `accumulate_jacobian` /
 `accumulate_contracted` (stack scratch for \(g^\top J_v\)); successive operand
 blocks use same-kind `block_slice`. Difference residuals pass scale \(\pm 1\).
 Solver eval fills owned `Vector` \(r\) and `Matrix` \(J\); LM/FFI reuse

@@ -2,7 +2,7 @@
 //!
 //! [`Matrix`] owns matrix storage. Borrowed windows are [`DenseMatrix`]
 //! (contiguous) or [`ScatterMatrix`] (local column index → connectivity; not CSR).
-//! Shared semantics: [`MatrixView`] / [`MatrixWrite`].
+//! Shared semantics: [`MatrixView`] / [`MatrixAccess`].
 //!
 //! For the parameter / residual vector see [`crate::vector`].
 
@@ -236,7 +236,7 @@ impl IndexMut<(usize, usize)> for ScatterMatrix<'_, '_> {
 
 /// Matrix semantics on a dense local \((i, j)\) index space.
 ///
-/// Used via generics (`J: MatrixView` / [`MatrixWrite`]) so accesses monomorphize.
+/// Used via generics (`J: MatrixView` / [`MatrixAccess`]) so accesses monomorphize.
 /// Primitives are [`cell`](Self::cell) / [`cell_mut`](Self::cell_mut); concrete
 /// types also implement [`Index`] / [`IndexMut`] for `j[(i, k)]`.
 pub trait MatrixView {
@@ -266,10 +266,10 @@ pub trait MatrixView {
 ///
 /// Concrete backends: [`DenseMatrix`], [`ScatterMatrix`]. `block_slice` stays same-kind.
 /// Scatter views are opened with inherent [`DenseMatrix::scatter_slice`] (borrowed `conn`).
-pub trait MatrixWrite:
+pub trait MatrixAccess:
     MatrixView + Index<(usize, usize), Output = f64> + IndexMut<(usize, usize), Output = f64>
 {
-    type BlockSlice<'a>: MatrixWrite
+    type BlockSlice<'a>: MatrixAccess
     where
         Self: 'a;
 
@@ -360,7 +360,7 @@ impl MatrixView for ScatterMatrix<'_, '_> {
     }
 }
 
-impl MatrixWrite for DenseMatrix<'_> {
+impl MatrixAccess for DenseMatrix<'_> {
     type BlockSlice<'a>
         = DenseMatrix<'a>
     where
@@ -377,7 +377,7 @@ impl MatrixWrite for DenseMatrix<'_> {
     }
 }
 
-impl MatrixWrite for ScatterMatrix<'_, '_> {
+impl MatrixAccess for ScatterMatrix<'_, '_> {
     type BlockSlice<'a>
         = ScatterMatrix<'a, 'a>
     where
