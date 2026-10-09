@@ -6,14 +6,13 @@
 
 use std::collections::HashMap;
 
-use crate::constraint::{Constraint, ConstraintEntry, ConstraintId, ConstraintKind};
-use crate::constraint_kinds::Congruence;
-use crate::geometry::{
-    Geometry, GeometryId, GeometryKind, GeometryRole, GeometryShell, PointExpr,
-};
+use crate::constraint::{ConstraintEntry, ConstraintId};
+use crate::constraint_kinds::ConstraintInst;
+use crate::geometry::{GeometryId, GeometryKind, GeometryRole, GeometryShell, PointExpr};
+use crate::geometry_kinds::GeometryInst;
 use crate::id::IdGenerator;
-use crate::vector::Vector;
 use crate::store::GeometryStore;
+use crate::vector::Vector;
 
 /// One Congruence edge, indexed under each participating geometry.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -38,8 +37,8 @@ impl IdentificationEdge {
 /// Document = discrete sketch (geometries, constraints, incidence) + committed Vector.
 #[derive(Clone, Debug, Default)]
 pub struct Document {
-    /// Geometry store (id → instance).
-    geometries: HashMap<GeometryId, Box<dyn Geometry>>,
+    /// Geometry store (id → catalog instance).
+    geometries: HashMap<GeometryId, GeometryInst>,
     /// Constraint store (id → entry).
     constraints: HashMap<ConstraintId, ConstraintEntry>,
     /// `GeometryId` → constraints that reference it (incidence).
@@ -69,19 +68,19 @@ impl Document {
         &self.vector
     }
 
-    pub fn geometries(&self) -> &HashMap<GeometryId, Box<dyn Geometry>> {
+    pub fn geometries(&self) -> &HashMap<GeometryId, GeometryInst> {
         &self.geometries
     }
 
-    pub fn geometry(&self, id: GeometryId) -> Option<&dyn Geometry> {
-        self.geometries.get(&id).map(|g| g.as_ref())
+    pub fn geometry(&self, id: GeometryId) -> Option<&GeometryInst> {
+        self.geometries.get(&id)
     }
 
     pub fn constraints(&self) -> &HashMap<ConstraintId, ConstraintEntry> {
         &self.constraints
     }
 
-    pub fn constraint(&self, id: ConstraintId) -> Option<&dyn Constraint> {
+    pub fn constraint(&self, id: ConstraintId) -> Option<&ConstraintInst> {
         self.constraints.get(&id).map(|e| e.body())
     }
 
@@ -111,11 +110,10 @@ impl Document {
     ///
     /// Chart pack receives only kind init (no identity). Id and Vector offset are
     /// assigned here via [`IdGenerator`] and the current Vector length.
-    pub fn add_geometry<C: GeometryKind>(
-        &mut self,
-        role: GeometryRole,
-        init: C::Init,
-    ) -> GeometryId {
+    pub fn add_geometry<C>(&mut self, role: GeometryRole, init: C::Init) -> GeometryId
+    where
+        C: GeometryKind + Into<GeometryInst>,
+    {
         let packed = C::pack(init);
         debug_assert_eq!(packed.as_ref().len(), C::PARAMETER_COUNT);
         let id = self.ids.allocate();
@@ -128,14 +126,15 @@ impl Document {
 
     /// Register a geometry whose parameters already live in an external Vector.
     /// Prefer [`Document::add_geometry`] so graph and committed Vector stay matched.
-    pub(crate) fn push_geometry(&mut self, g: impl Geometry + 'static) {
+    pub(crate) fn push_geometry(&mut self, g: impl Into<GeometryInst>) {
+        let g = g.into();
         let id = g.id();
         debug_assert!(
             !self.geometries.contains_key(&id),
             "duplicate geometry id {id:?}"
         );
         self.ids.observe(id);
-        self.geometries.insert(id, Box::new(g));
+        self.geometries.insert(id, g);
     }
 
     /// Set geometry role (result vs construction). Returns false if id missing.
@@ -147,31 +146,19 @@ impl Document {
         true
     }
 
-    pub fn add_constraint(&mut self, c: impl ConstraintKind) -> ConstraintId {
-        let geos = c.referenced_geometries();
+    pub fn add_constraint(&mut self, c: impl Into<ConstraintInst>) -> ConstraintId {
+        let body = c.into();
+        let geos = body.referenced_geometries();
         let id = self.constraint_ids.allocate();
         debug_assert!(
             !self.constraints.contains_key(&id),
             "duplicate constraint id {id:?}"
         );
-        self.constraints.insert(
-            id,
-            ConstraintEntry {
-                id,
-                body: Box::new(c),
-            },
-        );
-        self.link_constraint(id, &geos);
-        if let Some(g) = self
-            .constraints
-            .get(&id)
-            .unwrap()
-            .body()
-            .as_any()
-            .downcast_ref::<Congruence>()
-        {
+        if let Some(g) = body.as_congruence() {
             self.link_identification(id, g.a, g.b);
         }
+        self.constraints.insert(id, ConstraintEntry { id, body });
+        self.link_constraint(id, &geos);
         id
     }
 
@@ -181,11 +168,7 @@ impl Document {
             return false;
         };
         let geos = entry.body().referenced_geometries();
-        let congruence = entry
-            .body()
-            .as_any()
-            .downcast_ref::<Congruence>()
-            .map(|g| (g.a, g.b));
+        let congruence = entry.body().as_congruence().map(|g| (g.a, g.b));
         self.unlink_constraint(id, &geos);
         if let Some((a, b)) = congruence {
             self.unlink_identification(id, a, b);
@@ -296,7 +279,7 @@ impl Document {
                     .or_default()
                     .push(e.id);
             }
-            if let Some(g) = e.body().as_any().downcast_ref::<Congruence>() {
+            if let Some(g) = e.body().as_congruence() {
                 let edge = IdentificationEdge {
                     constraint: e.id,
                     a: g.a,
@@ -320,8 +303,8 @@ impl Document {
 }
 
 impl GeometryStore for Document {
-    fn geometry(&self, id: GeometryId) -> Option<&dyn Geometry> {
-        self.geometries.get(&id).map(|g| g.as_ref())
+    fn geometry(&self, id: GeometryId) -> Option<&GeometryInst> {
+        self.geometries.get(&id)
     }
 }
 

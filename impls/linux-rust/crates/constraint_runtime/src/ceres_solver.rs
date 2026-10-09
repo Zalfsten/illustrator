@@ -42,9 +42,9 @@ extern "C" {
 pub struct CeresSolver;
 
 impl SolverPort for CeresSolver {
-    fn solve(
+    fn solve<E: SystemEval>(
         &mut self,
-        eval: &dyn SystemEval,
+        eval: &E,
         p: &mut Vector,
         opts: &SolverOptions,
     ) -> SolveOutcome {
@@ -58,7 +58,7 @@ impl SolverPort for CeresSolver {
         assert_eq!(p.len(), n);
 
         let mut handle = EvalHandle {
-            eval,
+            eval: eval as &dyn SystemEval,
             state: p as *mut Vector,
             residual_buf: Vector::zeros(m),
             jacobian_buf: crate::matrix::Matrix::zeros(m, n),

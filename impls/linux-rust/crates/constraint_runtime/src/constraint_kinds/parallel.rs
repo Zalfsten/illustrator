@@ -16,13 +16,13 @@ pub struct Parallel {
 impl ConstraintKind for Parallel {
     const RESIDUAL_ARITY: usize = 1;
 
-    fn param_connectivity(&self, store: &dyn GeometryStore) -> Vec<usize> {
+    fn param_connectivity<S: GeometryStore + ?Sized>(&self, store: &S) -> Vec<usize> {
         Mapper::join_indices([self.a.param_indices(store), self.b.param_indices(store)])
     }
 
-    fn eval_residual<R: VecWrite>(
+    fn eval_residual<S: GeometryStore + ?Sized, R: VecWrite>(
         &self,
-        store: &dyn GeometryStore,
+        store: &S,
         p: &Vector,
         out: &mut R,
     ) {
@@ -31,9 +31,9 @@ impl ConstraintKind for Parallel {
         out[0] = va.cross(vb);
     }
 
-    fn accumulate_jacobian<J: MatrixWrite>(
+    fn accumulate_jacobian<S: GeometryStore + ?Sized, J: MatrixWrite>(
         &self,
-        store: &dyn GeometryStore,
+        store: &S,
         p: &Vector,
         j: &mut J,
     ) {

@@ -11,5 +11,5 @@ pub mod shell;
 pub use capabilities::{CurveExprs, EndpointExprs};
 pub use chart::{Chart, ChartSlot, StateAtom};
 pub use expr::{LengthExpr, PointExpr, VecExpr, MAX_FORMULA_LOCAL_DOF};
-pub use geometry::{Geometry, GeometryKind};
+pub use geometry::GeometryKind;
 pub use shell::{AsShell, GeometryId, GeometryRole, GeometryShell};

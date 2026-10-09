@@ -1,5 +1,4 @@
-use super::*;
-use crate::constraint_kinds::{Congruence, EqualLength, FixPoint, Orthogonal, Parallel};
+use crate::constraint_kinds::{Congruence, ConstraintInst, EqualLength, FixPoint, Orthogonal, Parallel};
 use crate::document::Document;
 use crate::geom::{CurveParam, Point2};
 use crate::geometry_kinds::Segment;
@@ -27,31 +26,37 @@ fn two_segs() -> (Document, Vector) {
 #[test]
 fn jacobian_matches_fd_for_catalog() {
     let (doc, p) = two_segs();
-    let constraints: [Box<dyn Constraint>; 6] = [
-        Box::new(Congruence {
+    let constraints: [ConstraintInst; 6] = [
+        Congruence {
             a: Segment::start_expr(GeometryId(0)),
             b: Segment::start_expr(GeometryId(1)),
-        }),
-        Box::new(Parallel {
+        }
+        .into(),
+        Parallel {
             a: Segment::tangent_expr(GeometryId(0), CurveParam::Normalized(0.0)),
             b: Segment::tangent_expr(GeometryId(1), CurveParam::Normalized(0.0)),
-        }),
-        Box::new(Orthogonal {
+        }
+        .into(),
+        Orthogonal {
             a: Segment::tangent_expr(GeometryId(0), CurveParam::Normalized(0.0)),
             b: Segment::tangent_expr(GeometryId(1), CurveParam::Normalized(0.0)),
-        }),
-        Box::new(FixPoint {
+        }
+        .into(),
+        FixPoint {
             point: Segment::start_expr(GeometryId(0)),
             target: Point2::new(0.0, 0.0),
-        }),
-        Box::new(Congruence {
+        }
+        .into(),
+        Congruence {
             a: Segment::on_curve_expr(GeometryId(0), CurveParam::Uniform(0.5)),
             b: Segment::start_expr(GeometryId(1)),
-        }),
-        Box::new(EqualLength {
+        }
+        .into(),
+        EqualLength {
             a: Segment::length_expr(GeometryId(0)),
             b: Segment::length_expr(GeometryId(1)),
-        }),
+        }
+        .into(),
     ];
 
     let eps = 1e-7;
@@ -80,12 +85,12 @@ fn jacobian_matches_fd_for_catalog() {
                 let mut out = DenseVec::packed(&mut rp);
                 c.eval_residual(&doc, &p2, &mut out);
             }
-            for row in 0..m {
-                let fd = (rp[row] - r0[row]) / eps;
-                let an = mat.as_slice()[row * n_global + g];
+            for i in 0..m {
+                let fd = (rp[i] - r0[i]) / eps;
+                let analytic = mat[(i, g)];
                 assert!(
-                    (fd - an).abs() < 1e-5,
-                    "constraint {c:?} row={row} col={g} fd={fd} an={an}"
+                    (analytic - fd).abs() < 1e-5,
+                    "constraint {c:?} col {g} row {i}: analytic={analytic} fd={fd}"
                 );
             }
         }

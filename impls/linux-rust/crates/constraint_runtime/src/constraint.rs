@@ -1,20 +1,14 @@
-//! Object-safe structural constraints (no catalog enum).
+//! Structural constraints: kind trait + document entry (closed catalog).
 //!
 //! Concrete kinds live under [`crate::constraint_kinds`] and implement
-//! [`ConstraintKind`]; [`Constraint`] follows via blanket (like
-//! [`crate::geometry::GeometryKind`] / [`crate::geometry::Geometry`]).
-//! Document stores [`ConstraintEntry`] (`ConstraintId` + `Box<dyn Constraint>`).
-//!
-//! Kind methods are generic over [`MatrixWrite`] / [`VecWrite`] so assembly into
-//! concrete [`ScatterMatrix`] / [`DenseVec`] monomorphizes. The object-safe
-//! [`Constraint`] facade takes those concrete view types (the assemble path).
+//! [`ConstraintKind`]. Document stores [`ConstraintEntry`] with
+//! [`crate::constraint_kinds::ConstraintInst`] (no `dyn`).
 
-use std::any::Any;
 use std::fmt::Debug;
 
 use crate::geometry::GeometryId;
-use crate::matrix::{MatrixWrite, ScatterMatrix};
-use crate::vector::{DenseVec, VecWrite, Vector};
+use crate::matrix::MatrixWrite;
+use crate::vector::{VecWrite, Vector};
 use crate::store::GeometryStore;
 
 /// Deduplicate geometry ids while preserving first-seen order.
@@ -46,51 +40,42 @@ impl From<ConstraintId> for usize {
     }
 }
 
-/// Document-held constraint: stable id plus kind payload.
-#[derive(Debug)]
+/// Document-held constraint: stable id plus catalog payload.
+#[derive(Clone, Debug)]
 pub struct ConstraintEntry {
     pub id: ConstraintId,
-    pub body: Box<dyn Constraint>,
-}
-
-impl Clone for ConstraintEntry {
-    fn clone(&self) -> Self {
-        Self {
-            id: self.id,
-            body: self.body.clone_box(),
-        }
-    }
+    pub body: crate::constraint_kinds::ConstraintInst,
 }
 
 impl ConstraintEntry {
-    pub fn body(&self) -> &dyn Constraint {
-        self.body.as_ref()
+    pub fn body(&self) -> &crate::constraint_kinds::ConstraintInst {
+        &self.body
     }
 }
 
 /// Concrete constraint kind ready for Document storage.
 ///
-/// Not object-safe ([`Self::RESIDUAL_ARITY`], generic residual/Jacobian).
-/// Implement this on each kind; [`Constraint`] follows via the blanket below.
+/// Implement this on each kind; convert into
+/// [`crate::constraint_kinds::ConstraintInst`] via [`From`].
 pub trait ConstraintKind: Clone + Debug + 'static {
     /// Residual row count for this contribution.
     const RESIDUAL_ARITY: usize;
 
     /// Global Vector columns involved in this contribution (assembly scatter map).
-    fn param_connectivity(&self, store: &dyn GeometryStore) -> Vec<usize>;
+    fn param_connectivity<S: GeometryStore + ?Sized>(&self, store: &S) -> Vec<usize>;
 
     /// Local residual `r_N` in contribution order (length = [`Self::RESIDUAL_ARITY`]).
-    fn eval_residual<R: VecWrite>(
+    fn eval_residual<S: GeometryStore + ?Sized, R: VecWrite>(
         &self,
-        store: &dyn GeometryStore,
+        store: &S,
         p: &Vector,
         out: &mut R,
     );
 
     /// Write this contribution's Jacobian into `j` (dense or scatter local indices).
-    fn accumulate_jacobian<J: MatrixWrite>(
+    fn accumulate_jacobian<S: GeometryStore + ?Sized, J: MatrixWrite>(
         &self,
-        store: &dyn GeometryStore,
+        store: &S,
         p: &Vector,
         j: &mut J,
     );
@@ -101,81 +86,6 @@ pub trait ConstraintKind: Clone + Debug + 'static {
     /// True if this constraint references geometry `id` (orphan drop on remove).
     fn references_geometry(&self, id: GeometryId) -> bool {
         self.referenced_geometries().contains(&id)
-    }
-}
-
-/// Document-held structural constraint (object-safe).
-///
-/// Residual / Jacobian take the concrete assemble views so the kind generics
-/// monomorphize for [`DenseVec`] / [`ScatterMatrix`].
-///
-/// Supplied automatically for every [`ConstraintKind`].
-pub trait Constraint: Debug {
-    /// Object-safe accessor for the kind's [`ConstraintKind::RESIDUAL_ARITY`].
-    fn residual_arity(&self) -> usize;
-
-    /// Global Vector columns involved in this contribution (assembly scatter map).
-    fn param_connectivity(&self, store: &dyn GeometryStore) -> Vec<usize>;
-
-    /// Local residual `r_N` in contribution order (length = residual_arity).
-    fn eval_residual(&self, store: &dyn GeometryStore, p: &Vector, out: &mut DenseVec<'_>);
-
-    /// Write this contribution's Jacobian into a scatter window.
-    fn accumulate_jacobian(
-        &self,
-        store: &dyn GeometryStore,
-        p: &Vector,
-        j: &mut ScatterMatrix<'_, '_>,
-    );
-
-    /// Geometry instances this constraint depends on (incidence / reverse index).
-    fn referenced_geometries(&self) -> Vec<GeometryId>;
-
-    /// True if this constraint references geometry `id` (orphan drop on remove).
-    fn references_geometry(&self, id: GeometryId) -> bool;
-
-    fn clone_box(&self) -> Box<dyn Constraint>;
-
-    /// Downcast escape hatch for kind-specific queries (e.g. [`crate::Congruence`]).
-    fn as_any(&self) -> &dyn Any;
-}
-
-impl<T: ConstraintKind> Constraint for T {
-    fn residual_arity(&self) -> usize {
-        T::RESIDUAL_ARITY
-    }
-
-    fn param_connectivity(&self, store: &dyn GeometryStore) -> Vec<usize> {
-        ConstraintKind::param_connectivity(self, store)
-    }
-
-    fn eval_residual(&self, store: &dyn GeometryStore, p: &Vector, out: &mut DenseVec<'_>) {
-        ConstraintKind::eval_residual(self, store, p, out)
-    }
-
-    fn accumulate_jacobian(
-        &self,
-        store: &dyn GeometryStore,
-        p: &Vector,
-        j: &mut ScatterMatrix<'_, '_>,
-    ) {
-        ConstraintKind::accumulate_jacobian(self, store, p, j)
-    }
-
-    fn referenced_geometries(&self) -> Vec<GeometryId> {
-        ConstraintKind::referenced_geometries(self)
-    }
-
-    fn references_geometry(&self, id: GeometryId) -> bool {
-        ConstraintKind::references_geometry(self, id)
-    }
-
-    fn clone_box(&self) -> Box<dyn Constraint> {
-        Box::new(self.clone())
-    }
-
-    fn as_any(&self) -> &dyn Any {
-        self
     }
 }
 

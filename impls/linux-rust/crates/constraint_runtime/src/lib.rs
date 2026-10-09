@@ -20,15 +20,17 @@ pub mod vector;
 
 pub use assemble::{structural_residual_norm, AssembledSystem, SoftContribution};
 pub use ceres_solver::CeresSolver;
-pub use constraint::{Constraint, ConstraintEntry, ConstraintId, ConstraintKind};
-pub use constraint_kinds::{Congruence, EqualLength, FixPoint, Orthogonal, Parallel};
+pub use constraint::{ConstraintEntry, ConstraintId, ConstraintKind};
+pub use constraint_kinds::{
+    Congruence, ConstraintInst, EqualLength, FixPoint, Orthogonal, Parallel,
+};
 pub use document::Document;
 pub use geom::{Angle, CurveParam, Length, Point2, Vec2};
 pub use geometry::{
-    AsShell, Chart, ChartSlot, CurveExprs, EndpointExprs, Geometry, GeometryId, GeometryKind,
-    GeometryRole, GeometryShell, LengthExpr, PointExpr, StateAtom, VecExpr,
+    AsShell, Chart, ChartSlot, CurveExprs, EndpointExprs, GeometryId, GeometryKind, GeometryRole,
+    GeometryShell, LengthExpr, PointExpr, StateAtom, VecExpr,
 };
-pub use geometry_kinds::Segment;
+pub use geometry_kinds::{GeometryInst, InGeometryCatalog, Segment};
 pub use id::IdGenerator;
 pub use interact::{DragSession, InteractiveSolve, SoftTerms, SolveError};
 pub use mapper::Mapper;

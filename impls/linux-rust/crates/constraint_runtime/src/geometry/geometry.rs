@@ -1,4 +1,6 @@
-//! Object-safe document geometry: shared shell ops without a kind sum.
+//! Geometry kind marker (no object-safe sum type).
+//!
+//! Document stores the closed catalog [`crate::geometry_kinds::GeometryInst`].
 
 use std::fmt::Debug;
 use std::ops::Range;
@@ -8,22 +10,10 @@ use super::shell::{AsShell, GeometryId, GeometryRole, GeometryShell};
 
 /// Concrete geometry kind ready for Document storage and structural add.
 ///
-/// Not object-safe ([`Chart`] has associated types; [`From`] constructs instances).
-/// Implement [`Chart`] and invoke [`geometry_shell_instance!`] — this marker and
-/// [`Geometry`] follow via blankets.
-pub trait GeometryKind: Chart + AsShell + From<GeometryShell> + Clone + Debug + 'static {}
-
-impl<T> GeometryKind for T where T: Chart + AsShell + From<GeometryShell> + Clone + Debug + 'static {}
-
-/// Document-held geometry instance (object-safe).
-///
-/// Extends [`AsShell`] for identity / Vector-block fields. Supplied automatically
-/// for every [`GeometryKind`] so Document can store `Box<dyn Geometry>` without
-/// a kind enum.
-pub trait Geometry: AsShell + Debug {
-    fn parameter_count(&self) -> usize;
-    fn clone_box(&self) -> Box<dyn Geometry>;
-
+/// Implement [`Chart`] and invoke [`geometry_shell_instance!`] — this marker
+/// follows via the blanket. Conversion into the document catalog is
+/// [`Into<crate::geometry_kinds::GeometryInst>`].
+pub trait GeometryKind: Chart + AsShell + From<GeometryShell> + Clone + Debug + 'static {
     fn id(&self) -> GeometryId {
         self.shell().id
     }
@@ -38,7 +28,7 @@ pub trait Geometry: AsShell + Debug {
 
     fn param_block(&self) -> Range<usize> {
         let o = self.shell().param_offset;
-        o..o + self.parameter_count()
+        o..o + Self::PARAMETER_COUNT
     }
 
     /// After a contiguous block was removed from Vector, shift this instance if
@@ -50,18 +40,4 @@ pub trait Geometry: AsShell + Debug {
     }
 }
 
-impl<T: GeometryKind> Geometry for T {
-    fn parameter_count(&self) -> usize {
-        T::PARAMETER_COUNT
-    }
-
-    fn clone_box(&self) -> Box<dyn Geometry> {
-        Box::new(self.clone())
-    }
-}
-
-impl Clone for Box<dyn Geometry> {
-    fn clone(&self) -> Self {
-        self.clone_box()
-    }
-}
+impl<T> GeometryKind for T where T: Chart + AsShell + From<GeometryShell> + Clone + Debug + 'static {}

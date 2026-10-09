@@ -3,7 +3,7 @@ use crate::document::Document;
 use crate::geom::{CurveParam, Point2, Vec2};
 use crate::geometry::StateAtom;
 use crate::geometry::{
-    Chart, CurveExprs, EndpointExprs, Geometry, GeometryId, GeometryRole, GeometryShell,
+    Chart, CurveExprs, EndpointExprs, GeometryId, GeometryKind, GeometryRole, GeometryShell,
 };
 use crate::matrix::DenseMatrix;
 use crate::vector::Vector;

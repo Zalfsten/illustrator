@@ -36,9 +36,9 @@ pub trait SystemEval {
 }
 
 pub trait SolverPort {
-    fn solve(
+    fn solve<E: SystemEval>(
         &mut self,
-        eval: &dyn SystemEval,
+        eval: &E,
         p: &mut Vector,
         opts: &SolverOptions,
     ) -> SolveOutcome;
@@ -50,9 +50,9 @@ pub struct StubSolver {
 }
 
 impl SolverPort for StubSolver {
-    fn solve(
+    fn solve<E: SystemEval>(
         &mut self,
-        eval: &dyn SystemEval,
+        eval: &E,
         p: &mut Vector,
         opts: &SolverOptions,
     ) -> SolveOutcome {
@@ -75,9 +75,9 @@ impl SolverPort for StubSolver {
 pub struct LmSolver;
 
 impl SolverPort for LmSolver {
-    fn solve(
+    fn solve<E: SystemEval>(
         &mut self,
-        eval: &dyn SystemEval,
+        eval: &E,
         p: &mut Vector,
         opts: &SolverOptions,
     ) -> SolveOutcome {

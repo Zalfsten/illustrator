@@ -11,11 +11,12 @@
 //! [`chart_param_block`](Mapper::chart_param_block) `Range` for slice access;
 //! that is layout sugar, not a second answer to the column question.
 //!
-//! [`GeometryStore`] resolves identity; this type reads `param_offset` / width.
+//! [`crate::store::GeometryStore`] resolves identity; this type reads
+//! `param_offset` / width from [`AsShell`] / [`Chart`].
 
 use std::ops::Range;
 
-use crate::geometry::{Chart, Geometry};
+use crate::geometry::{AsShell, Chart};
 use crate::vector::Vector;
 
 /// Layout + column-map authority (stateless namespace).
@@ -29,30 +30,31 @@ impl Mapper {
     ///
     /// Prefer [`geometry_indices`](Self::geometry_indices) when the question is
     /// only which columns are touched.
-    pub fn chart_param_block(g: &dyn Geometry) -> Range<usize> {
-        g.param_block()
+    pub fn chart_param_block<C: Chart + AsShell>(g: &C) -> Range<usize> {
+        let o = g.shell().param_offset;
+        o..o + C::PARAMETER_COUNT
     }
 
     /// All global columns owned by geometry `g` (dense block as index list).
-    pub fn geometry_indices(g: &dyn Geometry) -> Vec<usize> {
+    pub fn geometry_indices<C: Chart + AsShell>(g: &C) -> Vec<usize> {
         Self::indices(Self::chart_param_block(g))
     }
 
     /// Unpack [`Chart::Init`] from Vector using the geometry's parameter window.
-    pub fn unpack_chart<C: Chart>(g: &dyn Geometry, p: &Vector) -> C::Init {
+    pub fn unpack_chart<C: Chart + AsShell>(g: &C, p: &Vector) -> C::Init {
         let block = Self::chart_param_block(g);
         debug_assert_eq!(
             block.len(),
             C::PARAMETER_COUNT,
             "geometry {:?} block width does not match chart",
-            g.id()
+            g.shell().id
         );
         C::unpack(&p.as_slice()[block])
     }
 
     /// Lift formula-local parameter indices into global Vector indices.
     pub fn globalize_indices(
-        g: &dyn Geometry,
+        g: &impl AsShell,
         local: impl IntoIterator<Item = usize>,
     ) -> Vec<usize> {
         let offset = g.shell().param_offset;
@@ -66,7 +68,7 @@ impl Mapper {
 
     /// Lift local chart indices through `g`'s offset into global indices.
     pub fn local_indices(
-        g: &dyn Geometry,
+        g: &impl AsShell,
         local: impl IntoIterator<Item = usize>,
     ) -> Vec<usize> {
         Self::globalize_indices(g, local)

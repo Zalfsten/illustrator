@@ -90,25 +90,28 @@ macro_rules! impl_keyed_expr {
         $($var:ident => $kind:ty),+ $(,)?
     ) => {
         impl $Expr {
-            pub fn evaluate(
+            pub fn evaluate<S: $crate::store::GeometryStore + ?Sized>(
                 &self,
-                store: &dyn $crate::store::GeometryStore,
+                store: &S,
                 p: &$crate::vector::Vector,
             ) -> $Value {
                 let g = store.expect_geometry(self.geometry);
                 match &self.formula {
                     $(
                         $Keyed::$var(f) => {
-                            let chart = $crate::mapper::Mapper::unpack_chart::<$kind>(g, p);
+                            let chart = $crate::mapper::Mapper::unpack_chart(
+                                <$kind as $crate::geometry_kinds::InGeometryCatalog>::as_catalog_ref(g),
+                                p,
+                            );
                             <$kind>::$eval(*f, chart)
                         }
                     )+
                 }
             }
 
-            pub fn param_indices(
+            pub fn param_indices<S: $crate::store::GeometryStore + ?Sized>(
                 &self,
-                store: &dyn $crate::store::GeometryStore,
+                store: &S,
             ) -> Vec<usize> {
                 let local = match &self.formula {
                     $(
@@ -133,9 +136,9 @@ macro_rules! impl_keyed_expr {
             }
 
             /// Write the formula Jacobian into `j` (formula-local columns), scaled by `scale`.
-            pub fn accumulate_jacobian<J: $crate::matrix::MatrixWrite>(
+            pub fn accumulate_jacobian<S: $crate::store::GeometryStore + ?Sized, J: $crate::matrix::MatrixWrite>(
                 &self,
-                _store: &dyn $crate::store::GeometryStore,
+                _store: &S,
                 _p: &$crate::vector::Vector,
                 j: &mut J,
                 scale: f64,
@@ -154,25 +157,28 @@ macro_rules! impl_keyed_expr {
         $($var:ident => $kind:ty),+ $(,)?
     ) => {
         impl $Expr {
-            pub fn evaluate(
+            pub fn evaluate<S: $crate::store::GeometryStore + ?Sized>(
                 &self,
-                store: &dyn $crate::store::GeometryStore,
+                store: &S,
                 p: &$crate::vector::Vector,
             ) -> $Value {
                 let g = store.expect_geometry(self.geometry);
                 match &self.formula {
                     $(
                         $Keyed::$var(f) => {
-                            let chart = $crate::mapper::Mapper::unpack_chart::<$kind>(g, p);
+                            let chart = $crate::mapper::Mapper::unpack_chart(
+                                <$kind as $crate::geometry_kinds::InGeometryCatalog>::as_catalog_ref(g),
+                                p,
+                            );
                             <$kind>::$eval(*f, chart)
                         }
                     )+
                 }
             }
 
-            pub fn param_indices(
+            pub fn param_indices<S: $crate::store::GeometryStore + ?Sized>(
                 &self,
-                store: &dyn $crate::store::GeometryStore,
+                store: &S,
             ) -> Vec<usize> {
                 let local = match &self.formula {
                     $(
@@ -197,9 +203,9 @@ macro_rules! impl_keyed_expr {
             }
 
             /// Write the formula Jacobian into `j` (formula-local columns), scaled by `scale`.
-            pub fn accumulate_jacobian<J: $crate::matrix::MatrixWrite>(
+            pub fn accumulate_jacobian<S: $crate::store::GeometryStore + ?Sized, J: $crate::matrix::MatrixWrite>(
                 &self,
-                store: &dyn $crate::store::GeometryStore,
+                store: &S,
                 p: &$crate::vector::Vector,
                 j: &mut J,
                 scale: f64,
@@ -208,7 +214,10 @@ macro_rules! impl_keyed_expr {
                 match &self.formula {
                     $(
                         $Keyed::$var(f) => {
-                            let chart = $crate::mapper::Mapper::unpack_chart::<$kind>(g, p);
+                            let chart = $crate::mapper::Mapper::unpack_chart(
+                                <$kind as $crate::geometry_kinds::InGeometryCatalog>::as_catalog_ref(g),
+                                p,
+                            );
                             <$kind>::$accumulate(*f, chart, j, scale)
                         }
                     )+
@@ -288,21 +297,27 @@ macro_rules! register_expr_kinds {
 
         // PointExprs span two catalogs (curve + optional endpoint).
         impl PointExpr {
-            pub fn evaluate(
+            pub fn evaluate<S: $crate::store::GeometryStore + ?Sized>(
                 &self,
-                store: &dyn $crate::store::GeometryStore,
+                store: &S,
                 p: &$crate::vector::Vector,
             ) -> $crate::geom::Point2 {
                 let g = store.expect_geometry(self.geometry);
                 match &self.formula {
                     $(
                         PointFormulaKeyed::$curve_var(f) => {
-                            let chart = $crate::mapper::Mapper::unpack_chart::<$kind>(g, p);
+                            let chart = $crate::mapper::Mapper::unpack_chart(
+                                <$kind as $crate::geometry_kinds::InGeometryCatalog>::as_catalog_ref(g),
+                                p,
+                            );
                             <$kind>::eval_curve_point(*f, chart)
                         }
                         $(
                             PointFormulaKeyed::$endpoint_var(f) => {
-                                let chart = $crate::mapper::Mapper::unpack_chart::<$kind>(g, p);
+                                let chart = $crate::mapper::Mapper::unpack_chart(
+                                <$kind as $crate::geometry_kinds::InGeometryCatalog>::as_catalog_ref(g),
+                                p,
+                            );
                                 <$kind>::eval_endpoint_point(*f, chart)
                             }
                         )?
@@ -310,9 +325,9 @@ macro_rules! register_expr_kinds {
                 }
             }
 
-            pub fn param_indices(
+            pub fn param_indices<S: $crate::store::GeometryStore + ?Sized>(
                 &self,
-                store: &dyn $crate::store::GeometryStore,
+                store: &S,
             ) -> Vec<usize> {
                 let local = match &self.formula {
                     $(
@@ -349,9 +364,9 @@ macro_rules! register_expr_kinds {
             }
 
             /// Write the \(2 \times n\) point Jacobian into `j` (formula-local columns).
-            pub fn accumulate_jacobian<J: $crate::matrix::MatrixWrite>(
+            pub fn accumulate_jacobian<S: $crate::store::GeometryStore + ?Sized, J: $crate::matrix::MatrixWrite>(
                 &self,
-                _store: &dyn $crate::store::GeometryStore,
+                _store: &S,
                 _p: &$crate::vector::Vector,
                 j: &mut J,
                 scale: f64,
@@ -384,9 +399,9 @@ macro_rules! register_expr_kinds {
             ///
             /// Derived from [`Self::accumulate_jacobian`] — kinds only implement the
             /// \(2 \times n\) vector Jacobian.
-            pub fn accumulate_contracted<J: $crate::matrix::MatrixWrite>(
+            pub fn accumulate_contracted<S: $crate::store::GeometryStore + ?Sized, J: $crate::matrix::MatrixWrite>(
                 &self,
-                store: &dyn $crate::store::GeometryStore,
+                store: &S,
                 p: &$crate::vector::Vector,
                 j: &mut J,
                 g: $crate::geom::Vec2,

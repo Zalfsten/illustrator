@@ -16,13 +16,13 @@ pub struct FixPoint {
 impl ConstraintKind for FixPoint {
     const RESIDUAL_ARITY: usize = 2;
 
-    fn param_connectivity(&self, store: &dyn GeometryStore) -> Vec<usize> {
+    fn param_connectivity<S: GeometryStore + ?Sized>(&self, store: &S) -> Vec<usize> {
         self.point.param_indices(store)
     }
 
-    fn eval_residual<R: VecWrite>(
+    fn eval_residual<S: GeometryStore + ?Sized, R: VecWrite>(
         &self,
-        store: &dyn GeometryStore,
+        store: &S,
         p: &Vector,
         out: &mut R,
     ) {
@@ -31,9 +31,9 @@ impl ConstraintKind for FixPoint {
         out[1] = q.y - self.target.y;
     }
 
-    fn accumulate_jacobian<J: MatrixWrite>(
+    fn accumulate_jacobian<S: GeometryStore + ?Sized, J: MatrixWrite>(
         &self,
-        store: &dyn GeometryStore,
+        store: &S,
         p: &Vector,
         j: &mut J,
     ) {
