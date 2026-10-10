@@ -1,7 +1,8 @@
 //! Point-point coincidence (two residual rows).
 
 use crate::constraint::ConstraintKind;
-use crate::geometry::{GeometryId, PointExpr};
+use crate::expr::PointExpr;
+use crate::geometry::GeometryId;
 use crate::mapper::Mapper;
 use crate::matrix::MatrixAccess;
 use crate::vector::{VecAccess, Vector};

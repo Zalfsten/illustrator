@@ -3,8 +3,10 @@ use crate::document::Document;
 use crate::geom::{CurveParam, Point2, Vec2};
 use crate::geometry::StateAtom;
 use crate::geometry::{
-    Chart, CurveExprs, EndpointExprs, GeometryId, GeometryKind, GeometryRole, GeometryShell,
+    Chart, CurveExprs, EndpointExprs, GeometryId, GeometryRole, GeometryShell,
 };
+use crate::geometry_kinds::GeometryInst;
+use crate::mapper::Mapper;
 use crate::matrix::DenseMatrix;
 use crate::vector::Vector;
 
@@ -32,13 +34,16 @@ fn segment_layout_and_param_block() {
         &[0.0, 0.0, 1.0, 0.0]
     );
     assert_eq!(Segment::unpack(&[0.0, 0.0, 1.0, 0.0]), init);
-    assert_eq!(segment_geom(0, offset).param_block(), 0..4);
+    assert_eq!(
+        Mapper::chart_param_block(&segment_geom(0, offset)),
+        0..4
+    );
     assert_eq!(Segment::param_block_at(2), 2..6);
 }
 
 #[test]
 fn reindex_after_removal_shifts_later_blocks() {
-    let mut g = segment_geom(1, 4);
+    let mut g = GeometryInst::from(segment_geom(1, 4));
     g.reindex_after_removal(0, 4);
     assert_eq!(g.param_block().start, 0);
     g.reindex_after_removal(0, 4);

@@ -1,7 +1,8 @@
 //! Parallel free vectors (one residual: 2D cross).
 
 use crate::constraint::ConstraintKind;
-use crate::geometry::{GeometryId, VecExpr};
+use crate::expr::VecExpr;
+use crate::geometry::GeometryId;
 use crate::mapper::Mapper;
 use crate::matrix::MatrixAccess;
 use crate::vector::{VecAccess, Vector};

@@ -6,6 +6,7 @@ pub mod ceres_solver;
 pub mod constraint;
 pub mod constraint_kinds;
 pub mod document;
+pub mod expr;
 pub mod geom;
 pub mod geometry;
 pub mod geometry_kinds;
@@ -25,10 +26,11 @@ pub use constraint_kinds::{
     Congruence, ConstraintInst, EqualLength, FixPoint, Orthogonal, Parallel,
 };
 pub use document::Document;
+pub use expr::{LengthExpr, PointExpr, VecExpr, MAX_FORMULA_LOCAL_DOF};
 pub use geom::{Angle, CurveParam, Length, Point2, Vec2};
 pub use geometry::{
     AsShell, Chart, ChartSlot, CurveExprs, EndpointExprs, GeometryId, GeometryKind, GeometryRole,
-    GeometryShell, LengthExpr, PointExpr, StateAtom, VecExpr,
+    GeometryShell, StateAtom,
 };
 pub use geometry_kinds::{GeometryInst, InGeometryCatalog, Segment};
 pub use id::IdGenerator;

@@ -1,7 +1,8 @@
 //! Equal length expressions (one residual).
 
 use crate::constraint::ConstraintKind;
-use crate::geometry::{GeometryId, LengthExpr};
+use crate::expr::LengthExpr;
+use crate::geometry::GeometryId;
 use crate::mapper::Mapper;
 use crate::matrix::MatrixAccess;
 use crate::vector::{VecAccess, Vector};

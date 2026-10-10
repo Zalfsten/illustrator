@@ -101,7 +101,7 @@ Each structural constraint in Document SHALL have a stable constraint identity, 
 
 ### Requirement: Geometry–constraint incidence is queryable
 
-Document SHALL answer which structural constraints reference a given geometry identity. Each structural constraint SHALL report the set of geometry identities it depends on. Removing a geometry SHALL remove every structural constraint that referenced that identity (orphan drop), consistent with geometry-ir structural-edit rules. Incidence answers SHALL remain consistent after add/remove of geometries and constraints.
+Document SHALL answer which structural constraints reference a given geometry identity. Each structural constraint SHALL report the **deduplicated** set of geometry identities it depends on (each identity at most once; when several of its expressions name the same geometry, that identity appears once). Removing a geometry SHALL remove every structural constraint that referenced that identity (orphan drop), consistent with geometry-ir structural-edit rules. Incidence answers SHALL remain consistent after add/remove of geometries and constraints.
 
 #### Scenario: Constraints on a geometry are listed after join
 
@@ -109,6 +109,13 @@ Document SHALL answer which structural constraints reference a given geometry id
 - **AND** incidence for A is queried
 - **THEN** that Congruence identity appears among the constraints on A
 - **AND** incidence for B likewise includes that Congruence identity
+
+#### Scenario: Same geometry twice still yields one incidence entry
+
+- **WHEN** a structural constraint relates two expressions that resolve to the same geometry identity
+- **AND** the geometries referenced by that constraint are reported
+- **THEN** that identity appears once in the reported set
+- **AND** incidence for that geometry lists the constraint once
 
 #### Scenario: Orphan constraints disappear with their geometry
 

@@ -1,7 +1,8 @@
 //! Orthogonal free vectors (one residual: dot product).
 
 use crate::constraint::ConstraintKind;
-use crate::geometry::{GeometryId, VecExpr};
+use crate::expr::VecExpr;
+use crate::geometry::GeometryId;
 use crate::mapper::Mapper;
 use crate::matrix::MatrixAccess;
 use crate::vector::{VecAccess, Vector};

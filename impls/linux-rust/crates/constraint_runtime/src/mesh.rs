@@ -5,7 +5,8 @@
 use crate::document::Document;
 use crate::geom::Point2;
 use crate::geometry_kinds::Segment;
-use crate::geometry::{EndpointExprs, GeometryId, GeometryRole, PointExpr};
+use crate::expr::PointExpr;
+use crate::geometry::{EndpointExprs, GeometryId, GeometryRole};
 use crate::vector::Vector;
 
 /// Which geometries contribute edges to a Mesh.

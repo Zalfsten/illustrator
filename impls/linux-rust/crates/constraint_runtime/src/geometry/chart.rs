@@ -1,7 +1,11 @@
 //! Kind-owned chart: Vector layout (`pack` / `unpack`) and named local slots.
+//!
+//! [`GeometryKind`] is the Document add bound: [`Chart`] plus shell identity.
 
+use std::fmt::Debug;
 use std::ops::Range;
 
+use super::shell::{AsShell, GeometryShell};
 use crate::geom::{Angle, Length, Point2, Vec2};
 
 /// Packable atom in the global parameter vector: fixed DOF width and flatten order.
@@ -234,9 +238,9 @@ impl ChartSlot {
 
 /// Geometry kind as a chart: packs init into Vector.
 ///
-/// Document identity and shared shell ops live on [`super::Geometry`] (object-safe).
-/// Concrete kinds call [`crate::geometry::shell::geometry_shell_instance`] so they
-/// satisfy [`super::GeometryKind`] (and thus the [`super::Geometry`] blanket).
+/// Concrete kinds call [`geometry_shell_instance!`](crate::geometry::shell::geometry_shell_instance)
+/// so they satisfy [`GeometryKind`]. Document identity / reindex after storage
+/// live on [`crate::geometry_kinds::GeometryInst`].
 ///
 /// Prefer [`chart_atoms!`] to declare named [`StateAtom`] slots and derive
 /// [`PARAMETER_COUNT`] / `pack` / `unpack`.
@@ -258,6 +262,16 @@ pub trait Chart {
         offset..offset + Self::PARAMETER_COUNT
     }
 }
+
+/// Concrete geometry kind ready for Document storage and structural add.
+///
+/// Implement [`Chart`] and invoke [`geometry_shell_instance!`] — this marker
+/// follows via the blanket. Conversion into the document catalog is
+/// [`Into<crate::geometry_kinds::GeometryInst>`]. Shared shell ops after
+/// storage go through [`GeometryInst`](crate::geometry_kinds::GeometryInst).
+pub trait GeometryKind: Chart + AsShell + From<GeometryShell> + Clone + Debug + 'static {}
+
+impl<T> GeometryKind for T where T: Chart + AsShell + From<GeometryShell> + Clone + Debug + 'static {}
 
 /// Declare named chart atoms; derive slots, [`SLOTS`](ChartSlot), and [`Chart`] pack/unpack.
 ///

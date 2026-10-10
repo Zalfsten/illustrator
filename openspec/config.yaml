@@ -85,27 +85,29 @@ context: |
   constraint_runtime splits geometry concerns as follows:
   - geom: shared affine / scalar DOF types (Point2, Vec2, Angle, Length,
     CurveParam); formula Jacobians accumulate into MatrixView
+  - expr.rs: opaque PointExpr / VecExpr / LengthExpr;
+    VecExpr::accumulate_contracted (stack scratch, gᵀJᵥ)
   - geometry/:
     - shell.rs: GeometryShell, GeometryId, roles, AsShell,
       geometry_shell_instance!
-    - geometry.rs: GeometryKind marker (shell/param-block helpers; no dyn)
-    - chart.rs: StateAtom, ChartSlot, PackAtoms, Chart, chart_atoms!
-      (named slots + pack/unpack from Init tuples)
+    - chart.rs: StateAtom, ChartSlot, PackAtoms, Chart, GeometryKind
+      (marker: Chart + AsShell + From), chart_atoms! (named slots +
+      pack/unpack from Init tuples)
     - capabilities.rs: CurveExprs / EndpointExprs; shared formula tags;
       CurveFormulaKey / EndpointFormulaKey with blankets (factories)
-    - expr.rs: opaque PointExpr / VecExpr / LengthExpr; register_expr_kinds!
-      (keyed enums, evaluate / param_indices / param_count / jacobian
-      dispatch, VecExpr::accumulate_contracted from the 2×n Jacobian via
-      stack scratch, and CurveFormulaKey / EndpointFormulaKey for listed kinds)
+    - expr.rs: register_expr_kinds! (kind-keyed formula enums, evaluate /
+      param_indices / param_count / jacobian dispatch, CurveFormulaKey /
+      EndpointFormulaKey for listed kinds)
   - id.rs: IdGenerator<Id> (shared by geometry + constraint namespaces)
-  - geometry_kinds/: GeometryInst closed catalog enum (Segment today) +
-    InGeometryCatalog; per kind file: shell + chart_atoms!; eval_* +
-    accumulate_*_jacobian (set_scaled); optional sparse endpoint param
-    helpers; register_expr_kinds! entry. Document:
-    HashMap<GeometryId, GeometryInst>; add_geometry: GeometryKind + Into<GeometryInst>.
+  - geometry_kinds/: catalog.rs (GeometryInst + InGeometryCatalog);
+    per kind file: shell + chart_atoms!; eval_* + accumulate_*_jacobian
+    (set_scaled); optional sparse endpoint param helpers;
+    register_expr_kinds! entry. Document: HashMap<GeometryId, GeometryInst>;
+    add_geometry: GeometryKind + Into<GeometryInst>.
   - constraint.rs: ConstraintKind (generic over GeometryStore / VecAccess /
-    MatrixAccess). ConstraintId + ConstraintEntry (ConstraintInst body).
-  - constraint_kinds/: per-kind files + ConstraintInst catalog enum;
+    MatrixAccess); referenced_geometries is a deduplicated GeometryId list.
+    ConstraintId + ConstraintEntry (ConstraintInst body).
+  - constraint_kinds/: catalog.rs (ConstraintInst) + per-kind files;
     add_constraint: Into<ConstraintInst>.
   - matrix.rs: owned Matrix; borrowed DenseMatrix / ScatterMatrix (conn
     borrowed); MatrixView / MatrixAccess (block_slice, set_scaled). Scatter

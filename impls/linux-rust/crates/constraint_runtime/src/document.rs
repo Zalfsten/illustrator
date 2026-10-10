@@ -8,7 +8,8 @@ use std::collections::HashMap;
 
 use crate::constraint::{ConstraintEntry, ConstraintId};
 use crate::constraint_kinds::ConstraintInst;
-use crate::geometry::{GeometryId, GeometryKind, GeometryRole, GeometryShell, PointExpr};
+use crate::expr::PointExpr;
+use crate::geometry::{GeometryId, GeometryKind, GeometryRole, GeometryShell};
 use crate::geometry_kinds::GeometryInst;
 use crate::id::IdGenerator;
 use crate::store::GeometryStore;

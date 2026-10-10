@@ -2,7 +2,8 @@
 
 use crate::constraint::ConstraintKind;
 use crate::geom::Point2;
-use crate::geometry::{GeometryId, PointExpr};
+use crate::expr::PointExpr;
+use crate::geometry::GeometryId;
 use crate::matrix::MatrixAccess;
 use crate::vector::{VecAccess, Vector};
 use crate::store::GeometryStore;

@@ -7,12 +7,11 @@
 //! kinds MAY override via [`EndpointFormulaKey`] (installed by
 //! [`register_expr_kinds!`](super::expr) when `endpoint:` is set).
 //! Closed curves implement [`CurveExprs`] only (via [`CurveFormulaKey`] from the
-//! same registry). Factories are kind-associated (not object-safe on
-//! [`super::Geometry`]).
+//! same registry). Factories are kind-associated (not on the document catalog).
 
 use super::expr::{LengthFormulaKeyed, PointFormulaKeyed, VecFormulaKeyed};
 use super::shell::GeometryId;
-use super::{LengthExpr, PointExpr, VecExpr};
+use crate::expr::{LengthExpr, PointExpr, VecExpr};
 use crate::geom::CurveParam;
 
 /// Curve chart expression factories (position / frame / length along the chart).

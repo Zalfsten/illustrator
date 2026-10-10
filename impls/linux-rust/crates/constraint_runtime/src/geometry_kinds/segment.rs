@@ -15,9 +15,9 @@ use crate::matrix::MatrixAccess;
 /// Layout: [`Point2`] atoms [`Self::start`] / [`Self::end`] via [`chart_atoms!`];
 /// pack / unpack / [`Self::SLOTS`] follow from that.
 /// Shell fields via [`crate::geometry::AsShell`] (from [`geometry_shell_instance!`]);
-/// together with [`Chart`] that yields [`crate::geometry::GeometryKind`] /
-/// [`crate::geometry::Geometry`]. Expression keying comes from
-/// [`register_expr_kinds!`](crate::geometry::expr) (`endpoint:` → sparse start/end).
+/// together with [`Chart`] that yields [`crate::geometry::GeometryKind`].
+/// Expression keying comes from [`register_expr_kinds!`](crate::geometry::expr)
+/// (`endpoint:` → sparse start/end).
 ///
 /// Full-chart Jacobian columns are formula-local `0..4` in [`Self::SLOTS`] order
 /// (start.x, start.y, end.x, end.y). Endpoint formulas use local `0..2` (packed
