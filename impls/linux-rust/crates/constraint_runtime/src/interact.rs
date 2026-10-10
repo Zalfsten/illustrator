@@ -1,9 +1,10 @@
 //! Interactive solve: soft drag, stay-near-previous, commit/fail, atomic drag.
 
-use crate::assemble::{AssembledSystem, SoftContribution};
+use crate::assemble::{AssembledSystem, SoftContribution, SoftPointFollow};
 use crate::ceres_solver::CeresSolver;
 use crate::document::Document;
 use crate::expr::PointExpr;
+use crate::geom::Point2;
 use crate::solver::{SolverOptions, SolverPort, SystemEval};
 use crate::vector::Vector;
 
@@ -47,17 +48,22 @@ impl Default for SoftTerms {
     }
 }
 
+struct SoftDrag {
+    params: Vec<SoftContribution>,
+    points: Vec<SoftPointFollow>,
+}
+
 fn soft_for_drag(
     doc: &Document,
     prev: &Vector,
     dragged: &PointExpr,
     mouse: (f64, f64),
     weights: &SoftTerms,
-) -> Vec<SoftContribution> {
+) -> SoftDrag {
     // Indices pulled by the mouse must not also get stay-near — otherwise stay
     // fights the pointer and traps the drag in the previous nullspace (e.g. only
     // vertical motion on an axis-aligned right angle).
-    let mut mouse_exprs = vec![dragged.clone()];
+    let mut mouse_exprs = vec![*dragged];
     mouse_exprs.extend(doc.points_identified_with(dragged));
     let mut mouse_indices = std::collections::BTreeSet::new();
     for expr in &mouse_exprs {
@@ -66,35 +72,25 @@ fn soft_for_drag(
         }
     }
 
-    let mut soft = Vec::new();
+    let mut params = Vec::new();
     for (i, &v) in prev.iter().enumerate() {
         if mouse_indices.contains(&i) {
             continue;
         }
-        soft.push(SoftContribution {
+        params.push(SoftContribution {
             index: i,
             target: v,
             weight: weights.stay_weight,
         });
     }
-    for expr in &mouse_exprs {
-        let ix = expr.param_indices(doc);
-        // Soft mouse targets the expression's coordinate slots. Endpoint exprs
-        // expose (x,y) as two indices; OnCurve is not a drag target in the UI yet.
-        if ix.len() >= 2 {
-            soft.push(SoftContribution {
-                index: ix[0],
-                target: mouse.0,
-                weight: weights.mouse_weight,
-            });
-            soft.push(SoftContribution {
-                index: ix[1],
-                target: mouse.1,
-                weight: weights.mouse_weight,
-            });
-        }
-    }
-    soft
+    // Follow the opaque point map (not formula-local slots 0/1 — those are only
+    // world xy for segment-style endpoint atoms, not for arc endpoints).
+    let points = vec![SoftPointFollow {
+        point: *dragged,
+        target: Point2::new(mouse.0, mouse.1),
+        weight: weights.mouse_weight,
+    }];
+    SoftDrag { params, points }
 }
 
 pub struct InteractiveSolve<S: SolverPort = CeresSolver> {
@@ -139,10 +135,20 @@ impl<S: SolverPort> InteractiveSolve<S> {
         soft: &[SoftContribution],
         fallback: &Vector,
     ) -> Result<(), SolveError> {
+        self.solve_commit_soft(doc, soft, &[], fallback)
+    }
+
+    pub fn solve_commit_soft(
+        &mut self,
+        doc: &mut Document,
+        soft: &[SoftContribution],
+        soft_points: &[SoftPointFollow],
+        fallback: &Vector,
+    ) -> Result<(), SolveError> {
         let mut working = doc.clone_vector();
 
         // Phase 1: soft + hard (when soft is empty, this is structural-only).
-        let sys = AssembledSystem::from_document(doc, soft);
+        let sys = AssembledSystem::with_soft(doc, soft, soft_points);
         let _ = self.solver.solve(&sys, &mut working, &self.opts);
 
         if self.structural_ok(doc, &working) {
@@ -151,7 +157,7 @@ impl<S: SolverPort> InteractiveSolve<S> {
         }
 
         // Phase 2: polish onto the constraint manifold from the soft attempt.
-        if !soft.is_empty() {
+        if !soft.is_empty() || !soft_points.is_empty() {
             let soft0: [SoftContribution; 0] = [];
             let sys0 = AssembledSystem::new(doc, &soft0);
             let _ = self.solver.solve(&sys0, &mut working, &self.opts);
@@ -210,7 +216,7 @@ impl DragSession {
         };
         let soft = soft_for_drag(doc, &self.snapshot, point, mouse, &interact.soft_weights);
         let fallback = doc.clone_vector();
-        interact.solve_commit(doc, &soft, &fallback)
+        interact.solve_commit_soft(doc, &soft.params, &soft.points, &fallback)
     }
 
     pub fn pointer_up<S: SolverPort>(
@@ -224,7 +230,7 @@ impl DragSession {
         };
         let soft = soft_for_drag(doc, &self.snapshot, point, mouse, &interact.soft_weights);
         let fallback = self.snapshot.clone();
-        let result = interact.solve_commit(doc, &soft, &fallback);
+        let result = interact.solve_commit_soft(doc, &soft.params, &soft.points, &fallback);
         self.active = None;
         match result {
             Ok(()) => {

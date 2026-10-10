@@ -508,4 +508,12 @@ impl crate::geometry_kinds::Arc {
             TurnAngleFormulaKeyed::Arc(crate::geometry::capabilities::TurnAngleFormula::Sweep),
         )
     }
+
+    /// Signed radius Length chart atom.
+    pub fn radius_expr(id: crate::geometry::GeometryId) -> crate::expr::LengthExpr {
+        crate::expr::LengthExpr::new(
+            id,
+            LengthFormulaKeyed::Arc(crate::geometry::capabilities::CurveLengthFormula::Radius),
+        )
+    }
 }

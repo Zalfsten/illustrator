@@ -53,10 +53,13 @@ pub(crate) enum VecFormula {
     NormalAt { param: CurveParam },
 }
 
-/// Shared length-formula tags for curve length capabilities.
+/// Shared length-formula tags for curve / chart length capabilities.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum CurveLengthFormula {
+    /// Total curve arc length (`length_expr`).
     Length,
+    /// Signed radius Length chart atom (circular arc).
+    Radius,
 }
 
 /// Shared heading-angle formula tags (kinds that expose absolute orientation).

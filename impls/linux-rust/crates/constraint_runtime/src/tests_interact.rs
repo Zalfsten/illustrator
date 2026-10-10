@@ -1,7 +1,7 @@
 use super::*;
-use crate::constraint_kinds::{Congruence, FixPoint, Orthogonal};
-use crate::geom::{CurveParam, Point2};
-use crate::geometry_kinds::Segment;
+use crate::constraint_kinds::{Congruence, EqualLength, FixPoint, Orthogonal, Parallel};
+use crate::geom::{CurveParam, HeadingAngle, Length, Point2, TurnAngle};
+use crate::geometry_kinds::{Arc, Segment};
 use crate::geometry::{CurveExprs, EndpointExprs, GeometryRole};
 use crate::solver::StubSolver;
 
@@ -82,4 +82,93 @@ fn atomic_drag_undo() {
         .unwrap();
     assert!(drag.undo(&mut doc));
     assert_eq!(doc.vector(), &before);
+}
+
+#[test]
+fn drag_arc_endpoint_keeps_fillet_radius() {
+    const R: f64 = 0.5;
+    let mut doc = Document::new();
+    let s0 = doc.add_geometry::<Segment>(
+        GeometryRole::Result,
+        (Point2::new(0.0, 0.0), Point2::new(2.0 - R, 0.0)),
+    );
+    let fillet = doc.add_geometry::<Arc>(
+        GeometryRole::Result,
+        (
+            Point2::new(2.0 - R, R),
+            Length::new(R),
+            HeadingAngle::new(-std::f64::consts::FRAC_PI_2),
+            TurnAngle::new(std::f64::consts::FRAC_PI_2),
+        ),
+    );
+    let s1 = doc.add_geometry::<Segment>(
+        GeometryRole::Result,
+        (Point2::new(2.0, R), Point2::new(2.0, 2.0)),
+    );
+    doc.add_constraint(Congruence {
+        a: Segment::end_expr(s0),
+        b: Arc::start_expr(fillet),
+    });
+    doc.add_constraint(Congruence {
+        a: Arc::end_expr(fillet),
+        b: Segment::start_expr(s1),
+    });
+    doc.add_constraint(Parallel {
+        a: Segment::tangent_expr(s0, CurveParam::Normalized(0.0)),
+        b: Arc::tangent_expr(fillet, CurveParam::Normalized(0.0)),
+    });
+    doc.add_constraint(Parallel {
+        a: Segment::tangent_expr(s1, CurveParam::Normalized(0.0)),
+        b: Arc::tangent_expr(fillet, CurveParam::Normalized(1.0)),
+    });
+    doc.add_constraint(Orthogonal {
+        a: Segment::tangent_expr(s0, CurveParam::Normalized(0.0)),
+        b: Segment::tangent_expr(s1, CurveParam::Normalized(0.0)),
+    });
+    doc.add_constraint(FixPoint {
+        point: Segment::start_expr(s0),
+        target: Point2::new(0.0, 0.0),
+    });
+    let arc_len = R * std::f64::consts::FRAC_PI_2;
+    let length_gauge = doc.add_geometry::<Segment>(
+        GeometryRole::Construction,
+        (Point2::new(-1.0, -1.0), Point2::new(-1.0 + arc_len, -1.0)),
+    );
+    doc.add_constraint(FixPoint {
+        point: Segment::start_expr(length_gauge),
+        target: Point2::new(-1.0, -1.0),
+    });
+    doc.add_constraint(FixPoint {
+        point: Segment::end_expr(length_gauge),
+        target: Point2::new(-1.0 + arc_len, -1.0),
+    });
+    doc.add_constraint(EqualLength {
+        a: Arc::length_expr(fillet),
+        b: Segment::length_expr(length_gauge),
+    });
+    let mut interact = InteractiveSolve::new();
+    interact.structural_only(&mut doc).unwrap();
+
+    let mut drag = DragSession::new();
+    // Drag the arc start join slightly along the horizontal leg.
+    drag.pointer_down(&doc, Arc::start_expr(fillet));
+    drag.pointer_move(&mut interact, &mut doc, (1.3, 0.0))
+        .unwrap();
+    drag.pointer_up(&mut interact, &mut doc, (1.3, 0.0))
+        .unwrap();
+
+    let len = Arc::length_expr(fillet)
+        .evaluate(&doc, doc.vector())
+        .value();
+    assert!(
+        (len - arc_len).abs() < 1e-3,
+        "arc length not fixed: L={len}"
+    );
+    let start = Arc::start_expr(fillet).evaluate(&doc, doc.vector());
+    let end = Arc::end_expr(fillet).evaluate(&doc, doc.vector());
+    let join_dist = (start.x - end.x).hypot(start.y - end.y);
+    assert!(
+        join_dist > 0.3,
+        "arc endpoints merged into a corner (dist={join_dist})"
+    );
 }

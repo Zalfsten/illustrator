@@ -263,6 +263,7 @@ impl Arc {
             CurveLengthFormula::Length => {
                 Length::new(radius.value().abs() * sweep.radians().abs())
             }
+            CurveLengthFormula::Radius => radius,
         }
     }
 
@@ -288,6 +289,9 @@ impl Arc {
                     0.0
                 };
                 j.set_scaled(scale, [[0.0, 0.0, d_r, 0.0, d_s]]);
+            }
+            CurveLengthFormula::Radius => {
+                j.set_scaled(scale, [[0.0, 0.0, 1.0, 0.0, 0.0]]);
             }
         }
     }

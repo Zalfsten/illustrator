@@ -1,9 +1,9 @@
 //! Application shell: Document, Interact, tools, and Canvas painting.
 
 use constraint_runtime::{
-    Arc, Congruence, CurveExprs, CurveParam, Document, DragSession, EndpointExprs, FixPoint,
-    GeometryId, GeometryRole, HeadingAngle, InteractiveSolve, Length, Mesh, MeshFilter, Orthogonal,
-    Parallel, Point2, PointExpr, Segment, SolveError, TurnAngle,
+    Arc, Congruence, CurveExprs, CurveParam, Document, DragSession, EndpointExprs, EqualLength,
+    FixPoint, GeometryId, GeometryRole, HeadingAngle, InteractiveSolve, Length, Mesh, MeshFilter,
+    Orthogonal, Parallel, Point2, PointExpr, Segment, SolveError, TurnAngle,
 };
 use eframe::egui::{self, Color32, Pos2, Rect, Sense, Stroke};
 
@@ -85,6 +85,10 @@ impl App {
             (Point2::new(0.0, 0.0), Point2::new(2.0, 2.0)),
         );
         assert!(doc.set_geometry_role(helper, GeometryRole::Construction));
+        // Pin arc length (construction gauge). Prevents Δθ→0 collapse of start/end
+        // even when radius can still vary under drag.
+        let arc_len = R * std::f64::consts::FRAC_PI_2;
+        let length_gauge = add_fixed_length_gauge(&mut doc, Point2::new(-1.0, -1.0), arc_len);
         doc.add_constraint(Congruence {
             a: Segment::end_expr(s0),
             b: Arc::start_expr(fillet),
@@ -108,6 +112,10 @@ impl App {
         doc.add_constraint(FixPoint {
             point: Segment::start_expr(s0),
             target: Point2::new(0.0, 0.0),
+        });
+        doc.add_constraint(EqualLength {
+            a: Arc::length_expr(fillet),
+            b: Segment::length_expr(length_gauge),
         });
 
         let mut interact = InteractiveSolve::new();
@@ -269,6 +277,22 @@ impl App {
             Tool::Select => {}
         }
     }
+}
+
+/// Construction segment of fixed length `len` starting at `origin` (axis +x).
+fn add_fixed_length_gauge(doc: &mut Document, origin: Point2, len: f64) -> GeometryId {
+    let end = Point2::new(origin.x + len, origin.y);
+    let id = doc.add_geometry::<Segment>(GeometryRole::Result, (origin, end));
+    assert!(doc.set_geometry_role(id, GeometryRole::Construction));
+    doc.add_constraint(FixPoint {
+        point: Segment::start_expr(id),
+        target: origin,
+    });
+    doc.add_constraint(FixPoint {
+        point: Segment::end_expr(id),
+        target: end,
+    });
+    id
 }
 
 fn logical_points_for(doc: &Document, filter: MeshFilter) -> Vec<PointExpr> {

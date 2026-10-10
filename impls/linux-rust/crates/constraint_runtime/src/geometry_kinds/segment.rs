@@ -138,6 +138,9 @@ impl Segment {
     pub(crate) fn eval_length(f: CurveLengthFormula, (a, b): (Point2, Point2)) -> Length {
         match f {
             CurveLengthFormula::Length => Length::new((b - a).length()),
+            CurveLengthFormula::Radius => {
+                unreachable!("segment chart has no radius length atom")
+            }
         }
     }
 
@@ -157,6 +160,9 @@ impl Segment {
                     let uy = d.y / len;
                     j.set_scaled(scale, [[-ux, -uy, ux, uy]]);
                 }
+            }
+            CurveLengthFormula::Radius => {
+                unreachable!("segment chart has no radius length atom")
             }
         }
     }

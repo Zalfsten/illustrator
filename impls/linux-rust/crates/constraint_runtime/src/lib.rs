@@ -19,7 +19,9 @@ pub mod solver;
 pub mod store;
 pub mod vector;
 
-pub use assemble::{structural_residual_norm, AssembledSystem, SoftContribution};
+pub use assemble::{
+    structural_residual_norm, AssembledSystem, SoftContribution, SoftPointFollow,
+};
 pub use ceres_solver::CeresSolver;
 pub use constraint::{ConstraintEntry, ConstraintId, ConstraintKind};
 pub use constraint_kinds::{
