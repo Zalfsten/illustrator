@@ -115,9 +115,10 @@ context: |
     (center Point2, signed Length radius, HeadingAngle start, TurnAngle
     sweep). Document: HashMap<GeometryId, GeometryInst>;
     add_geometry: GeometryKind + Into<GeometryInst>.
-  - mesh.rs: Display Mesh from Document+State; Segment → one edge; Arc →
-    polyline chords (angular step π/8, clamp 2..64 samples); endpoint hits
-    use geometric start/end expressions only.
+  - mesh.rs: Display Mesh from Document+State; open curves tessellated via
+    on_curve + adaptive subdivision until tangent turn per interval ≤
+    MAX_CHORD_TURN (π/8), max 64 samples; endpoint hits use geometric
+    start/end expressions only.
   - constraint.rs: ConstraintKind (generic over GeometryStore / VecAccess /
     MatrixAccess); referenced_geometries is a deduplicated GeometryId list.
     ConstraintId + ConstraintEntry (ConstraintInst body).

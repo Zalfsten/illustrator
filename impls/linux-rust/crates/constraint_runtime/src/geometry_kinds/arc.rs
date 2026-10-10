@@ -362,12 +362,6 @@ impl Arc {
         }
     }
 
-    /// Chord count for Mesh polyline: \(n=\mathrm{clamp}(\lceil|\Delta\theta|/(\pi/8)\rceil,2,64)\).
-    pub fn mesh_sample_count(sweep: TurnAngle) -> usize {
-        const STEP: f64 = std::f64::consts::PI / 8.0;
-        let n = (sweep.radians().abs() / STEP).ceil() as usize;
-        n.clamp(2, 64)
-    }
 }
 
 #[cfg(test)]

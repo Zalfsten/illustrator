@@ -198,13 +198,3 @@ fn endpoint_start_sparser_than_full_chart() {
     assert_eq!(at0.param_indices(&store), vec![0, 1, 2, 3, 4]);
     assert_eq!(start.param_count(), 4);
 }
-
-#[test]
-fn mesh_sample_count_clamped() {
-    assert_eq!(Arc::mesh_sample_count(TurnAngle::new(0.0)), 2);
-    assert_eq!(
-        Arc::mesh_sample_count(TurnAngle::new(std::f64::consts::FRAC_PI_2)),
-        4
-    );
-    assert_eq!(Arc::mesh_sample_count(TurnAngle::new(100.0)), 64);
-}

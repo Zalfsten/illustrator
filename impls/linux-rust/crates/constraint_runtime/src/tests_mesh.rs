@@ -112,6 +112,31 @@ fn arc_tessellates_to_multiple_edges() {
 }
 
 #[test]
+fn zero_curvature_is_one_edge_high_curvature_is_denser() {
+    let mut doc = Document::new();
+    let seg = doc.add_geometry::<Segment>(
+        GeometryRole::Result,
+        (Point2::new(0.0, 0.0), Point2::new(1.0, 0.0)),
+    );
+    let tight = doc.add_geometry::<Arc>(
+        GeometryRole::Result,
+        (
+            Point2::new(0.0, 0.0),
+            Length::new(0.25),
+            HeadingAngle::new(0.0),
+            TurnAngle::new(std::f64::consts::PI),
+        ),
+    );
+    let mesh = Mesh::from_document(&doc, doc.vector(), MeshFilter::RESULT_ONLY);
+    assert_eq!(
+        mesh.edges.iter().filter(|e| e.geometry == seg).count(),
+        1
+    );
+    let n_tight = mesh.edges.iter().filter(|e| e.geometry == tight).count();
+    assert!(n_tight >= 4, "semicircle should subdivide, got {n_tight}");
+}
+
+#[test]
 fn segment_and_arc_mesh_side_by_side() {
     let mut doc = Document::new();
     let seg = doc.add_geometry::<Segment>(

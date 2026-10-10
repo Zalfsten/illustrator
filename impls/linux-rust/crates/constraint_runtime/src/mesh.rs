@@ -1,13 +1,25 @@
 //! Display Mesh: tessellation of Document + Vector into drawable edges.
 //!
 //! Derived view only — not authoritative for parameters or constraints.
+//! Open curves are sampled via [`CurveExprs::on_curve_expr`]; subdivision stops
+//! when the unsigned turn between endpoint tangents of each parameter interval
+//! is at most [`MAX_CHORD_TURN`].
 
 use crate::document::Document;
 use crate::expr::PointExpr;
-use crate::geom::{CurveParam, Point2};
+use crate::geom::{CurveParam, Point2, Vec2};
 use crate::geometry::{CurveExprs, EndpointExprs, GeometryId, GeometryRole};
 use crate::geometry_kinds::{Arc, GeometryInst, Segment};
 use crate::vector::Vector;
+
+/// Max unsigned turn (radians) between tangents at the ends of one chord interval.
+///
+/// Larger curvature (faster tangent change) yields denser samples. Line segments
+/// have zero turn and become a single edge.
+pub const MAX_CHORD_TURN: f64 = std::f64::consts::PI / 8.0;
+
+/// Hard cap on polyline vertices per geometry (including endpoints).
+const MAX_MESH_SAMPLES: usize = 64;
 
 /// Which geometries contribute edges to a Mesh.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -62,45 +74,10 @@ impl Mesh {
             let role = g.role();
             match g {
                 GeometryInst::Segment(_) => {
-                    let a = Segment::start_expr(id).evaluate(doc, p);
-                    let b = Segment::end_expr(id).evaluate(doc, p);
-                    edges.push(MeshEdge {
-                        geometry: id,
-                        role,
-                        a,
-                        b,
-                    });
-                    endpoints.push((Segment::start_expr(id), a));
-                    endpoints.push((Segment::end_expr(id), b));
+                    append_open_curve_mesh::<Segment>(doc, p, id, role, &mut edges, &mut endpoints);
                 }
                 GeometryInst::Arc(_) => {
-                    let start_expr = Arc::start_expr(id);
-                    let end_expr = Arc::end_expr(id);
-                    let start_pt = start_expr.evaluate(doc, p);
-                    let end_pt = end_expr.evaluate(doc, p);
-                    let chart = crate::mapper::Mapper::unpack_chart(
-                        <Arc as crate::geometry_kinds::InGeometryCatalog>::as_catalog_ref(g),
-                        p,
-                    );
-                    let n = Arc::mesh_sample_count(chart.3);
-                    let mut prev = start_pt;
-                    for i in 1..n {
-                        let t = i as f64 / (n - 1) as f64;
-                        let pt = if i + 1 == n {
-                            end_pt
-                        } else {
-                            Arc::on_curve_expr(id, CurveParam::Normalized(t)).evaluate(doc, p)
-                        };
-                        edges.push(MeshEdge {
-                            geometry: id,
-                            role,
-                            a: prev,
-                            b: pt,
-                        });
-                        prev = pt;
-                    }
-                    endpoints.push((start_expr, start_pt));
-                    endpoints.push((end_expr, end_pt));
+                    append_open_curve_mesh::<Arc>(doc, p, id, role, &mut edges, &mut endpoints);
                 }
             }
         }
@@ -139,6 +116,88 @@ impl Mesh {
         }
         best
     }
+}
+
+fn append_open_curve_mesh<C: CurveExprs + EndpointExprs>(
+    doc: &Document,
+    p: &Vector,
+    id: GeometryId,
+    role: GeometryRole,
+    edges: &mut Vec<MeshEdge>,
+    endpoints: &mut Vec<(PointExpr, Point2)>,
+) {
+    let start_expr = C::start_expr(id);
+    let end_expr = C::end_expr(id);
+    let start_pt = start_expr.evaluate(doc, p);
+    let end_pt = end_expr.evaluate(doc, p);
+
+    let ts = sample_normalized_params::<C>(doc, p, id);
+    let mut prev = start_pt;
+    for (i, &t) in ts.iter().enumerate().skip(1) {
+        let pt = if i + 1 == ts.len() {
+            end_pt
+        } else {
+            C::on_curve_expr(id, CurveParam::Normalized(t)).evaluate(doc, p)
+        };
+        edges.push(MeshEdge {
+            geometry: id,
+            role,
+            a: prev,
+            b: pt,
+        });
+        prev = pt;
+    }
+    endpoints.push((start_expr, start_pt));
+    endpoints.push((end_expr, end_pt));
+}
+
+/// Normalized \(t\) samples in \([0,1]\), inclusive, ordered.
+fn sample_normalized_params<C: CurveExprs>(
+    doc: &Document,
+    p: &Vector,
+    id: GeometryId,
+) -> Vec<f64> {
+    let mut ts = vec![0.0, 1.0];
+    refine_interval::<C>(doc, p, id, 0.0, 1.0, &mut ts);
+    ts.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    ts.dedup_by(|a, b| (*a - *b).abs() < 1e-15);
+    ts
+}
+
+fn refine_interval<C: CurveExprs>(
+    doc: &Document,
+    p: &Vector,
+    id: GeometryId,
+    t0: f64,
+    t1: f64,
+    ts: &mut Vec<f64>,
+) {
+    if ts.len() >= MAX_MESH_SAMPLES {
+        return;
+    }
+    let ta = C::tangent_expr(id, CurveParam::Normalized(t0)).evaluate(doc, p);
+    let tb = C::tangent_expr(id, CurveParam::Normalized(t1)).evaluate(doc, p);
+    if unsigned_turn(ta, tb) <= MAX_CHORD_TURN {
+        return;
+    }
+    let mid = 0.5 * (t0 + t1);
+    if (mid - t0).abs() < 1e-15 || (t1 - mid).abs() < 1e-15 {
+        return;
+    }
+    ts.push(mid);
+    refine_interval::<C>(doc, p, id, t0, mid, ts);
+    refine_interval::<C>(doc, p, id, mid, t1, ts);
+}
+
+/// Unsigned angle between free vectors in \([0,\pi]\); zero if either is degenerate.
+fn unsigned_turn(a: Vec2, b: Vec2) -> f64 {
+    let la = a.length();
+    let lb = b.length();
+    if la < 1e-15 || lb < 1e-15 {
+        return 0.0;
+    }
+    let c = (a.dot(b) / (la * lb)).clamp(-1.0, 1.0);
+    c.acos()
 }
 
 fn distance_point_to_segment(q: Point2, a: Point2, b: Point2) -> f64 {

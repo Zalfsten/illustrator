@@ -41,7 +41,7 @@ pub use id::IdGenerator;
 pub use interact::{DragSession, InteractiveSolve, SoftTerms, SolveError};
 pub use mapper::Mapper;
 pub use matrix::{DenseMatrix, MatrixAccess, Matrix, MatrixView, ScatterMatrix};
-pub use mesh::{Mesh, MeshEdge, MeshFilter};
+pub use mesh::{Mesh, MeshEdge, MeshFilter, MAX_CHORD_TURN};
 pub use solver::{ffi, LmSolver, SolveOutcome, SolverOptions, SolverPort, StubSolver, SystemEval};
 pub use store::GeometryStore;
 pub use vector::{DenseVec, ScatterVec, VecAccess, VecView, Vector};
