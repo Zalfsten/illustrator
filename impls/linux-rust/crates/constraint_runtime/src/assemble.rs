@@ -1,7 +1,7 @@
 //! FEM-style assembly of global residual and Jacobian from local contributions.
 
 use crate::document::Document;
-use crate::expr::PointExpr;
+use crate::expr::{LengthExpr, PointExpr};
 use crate::geom::Point2;
 use crate::matrix::Matrix;
 use crate::solver::SystemEval;
@@ -49,6 +49,23 @@ impl SoftPointFollow {
     }
 }
 
+/// Soft one-sided floor on a length expression: \(\sqrt{w}\,\max(0,\ell_{\min}-L)\).
+///
+/// Used during Interact to resist curve collapse without changing structural
+/// Parallel / Orthogonal geometry. Inactive when \(L \ge \ell_{\min}\).
+#[derive(Clone, Debug)]
+pub struct SoftLengthFloor {
+    pub length: LengthExpr,
+    pub min_length: f64,
+    pub weight: f64,
+}
+
+impl SoftLengthFloor {
+    fn residual_arity(&self) -> usize {
+        1
+    }
+}
+
 /// Assembled structural (+ optional soft) system implementing [`SystemEval`].
 ///
 /// Holds `&Document` for the discrete graph; evaluates against an explicit
@@ -60,6 +77,7 @@ pub struct AssembledSystem<'a> {
     pub doc: &'a Document,
     pub soft: &'a [SoftContribution],
     pub soft_points: &'a [SoftPointFollow],
+    pub soft_lengths: &'a [SoftLengthFloor],
     n_res: usize,
     /// Starting residual row for each structural constraint.
     structural_row0: Vec<usize>,
@@ -68,17 +86,20 @@ pub struct AssembledSystem<'a> {
     soft_row0: usize,
     soft_point_row0: Vec<usize>,
     soft_point_conn: Vec<Vec<usize>>,
+    soft_length_row0: Vec<usize>,
+    soft_length_conn: Vec<Vec<usize>>,
 }
 
 impl<'a> AssembledSystem<'a> {
     pub fn new(doc: &'a Document, soft: &'a [SoftContribution]) -> Self {
-        Self::with_soft(doc, soft, &[])
+        Self::with_soft(doc, soft, &[], &[])
     }
 
     pub fn with_soft(
         doc: &'a Document,
         soft: &'a [SoftContribution],
         soft_points: &'a [SoftPointFollow],
+        soft_lengths: &'a [SoftLengthFloor],
     ) -> Self {
         debug_assert_eq!(doc.vector().len(), doc.parameter_count());
         let n_c = doc.constraints().len();
@@ -103,16 +124,26 @@ impl<'a> AssembledSystem<'a> {
             row += sp.residual_arity();
             soft_point_conn.push(sp.point.param_indices(doc));
         }
+        let mut soft_length_row0 = Vec::with_capacity(soft_lengths.len());
+        let mut soft_length_conn = Vec::with_capacity(soft_lengths.len());
+        for sl in soft_lengths {
+            soft_length_row0.push(row);
+            row += sl.residual_arity();
+            soft_length_conn.push(sl.length.param_indices(doc));
+        }
         Self {
             doc,
             soft,
             soft_points,
+            soft_lengths,
             n_res: row,
             structural_row0,
             structural_conn,
             soft_row0,
             soft_point_row0,
             soft_point_conn,
+            soft_length_row0,
+            soft_length_conn,
         }
     }
 
@@ -154,6 +185,13 @@ impl SystemEval for AssembledSystem<'_> {
             out[0] = s * (pt.x - sp.target.x);
             out[1] = s * (pt.y - sp.target.y);
         }
+        for (si, sl) in self.soft_lengths.iter().enumerate() {
+            let row0 = self.soft_length_row0[si];
+            let mut out = r_view.block_slice(row0, 1);
+            let len = sl.length.evaluate(self.doc, p).value();
+            let deficit = (sl.min_length - len).max(0.0);
+            out[0] = sl.weight.sqrt() * deficit;
+        }
     }
 
     fn jacobian(&self, p: &Vector, j: &mut Matrix) {
@@ -184,6 +222,18 @@ impl SystemEval for AssembledSystem<'_> {
             let mut jac = mat.scatter_slice(row0, 2, conn);
             sp.point
                 .accumulate_jacobian(self.doc, p, &mut jac, sp.weight.sqrt());
+        }
+
+        for (si, sl) in self.soft_lengths.iter().enumerate() {
+            let row0 = self.soft_length_row0[si];
+            let conn = &self.soft_length_conn[si];
+            let len = sl.length.evaluate(self.doc, p).value();
+            if len < sl.min_length {
+                let mut jac = mat.scatter_slice(row0, 1, conn);
+                // r = √w (ℓ_min − L) ⇒ ∂r/∂p = −√w ∂L/∂p
+                sl.length
+                    .accumulate_jacobian(self.doc, p, &mut jac, -sl.weight.sqrt());
+            }
         }
     }
 }

@@ -40,7 +40,7 @@ Behavioral contracts live in OpenSpec capabilities (`geometry-ir`, `state-vector
 | **Local Jacobian** | Derivatives of a local residual contribution w.r.t. the local parameters that contribution depends on. |
 | **Connectivity** $M_N$ | Explicit map from local parameter indices of contribution $N$ to global indices in $p$. Used to scatter local residuals/Jacobians into global arrays. |
 | **Assembly** | Building the global residual $r(p)$ and Jacobian $J(p)=\partial r/\partial p$ by evaluating each contribution and scattering via connectivity. |
-| **Soft contribution** | Transient residual used only during Interact (e.g. mouse follow, stay-near-previous). Not stored as a structural constraint in Document. Weighted relative to structural residuals via soft-term weights (not a separate global hard-row rescale). |
+| **Soft contribution** | Transient residual used only during Interact (e.g. mouse follow, stay-near-previous, soft curve-length floor). Not stored as a structural constraint in Document. Weighted relative to structural residuals via soft-term weights (not a separate global hard-row rescale). |
 | **Mesh** | View-layer tessellation of Document evaluated at a State \(p\) into drawable edges (tagged with geometry identity and role) in **world coordinates**. Derived only — not authoritative for parameters or constraints. Used for Canvas paint (via Viewport) and optional WYSIWYG hit-testing. Built with a **MeshFilter** that may omit construction geometries. Open curves are sampled via on-curve evaluation with adaptive subdivision until the tangent turn per parameter interval is at most a global max chord turn (linux-rust: `MAX_CHORD_TURN`); higher curvature ⇒ denser chords. Endpoint hit-testing uses geometric start/end only, not intermediate polyline vertices. |
 | **GeometryRole** | Document flag on each geometry: **Result** (published figure) or **Construction** (helper). Construction remains in State and constraints; role alone does not remove parameters. |
 | **Presentation mode** | App/UI session choice: result-only vs include-construction. Selects the MeshFilter for paint, Mesh hits, and logical handles so invisible construction is not pickable. |
@@ -266,12 +266,14 @@ $$
 
 where $r_{\mathrm{soft}}$ may include:
 
-- mouse-follow toward a pointer (weighted),
-- stay-near-previous toward the last consistent State.
+- mouse-follow toward a pointer (weighted; via an opaque point expression),
+- stay-near-previous toward the last consistent State,
+- a one-sided soft length floor per curve, $\sqrt{w}\,\max(0,\ell_{\min}-L)$,
+  with $\ell_{\min}=f\,L_0$ and $L_0$ the curve length at drag start (scale-invariant fraction $f$, not a fixed absolute length).
 
 Soft terms are session-only (not stored in Document). Their strength relative
 to unweighted structural residuals is carried by soft weights (linux-rust:
-`SoftTerms` → `SoftContribution.weight`, residual scale $\sqrt{w}$), not by
+`SoftTerms` → per-term `.weight`, residual scale $\sqrt{w}$), not by
 rescaling structural rows in assembly.
 
 Structural parts are **hard** for commit: a successful commit requires

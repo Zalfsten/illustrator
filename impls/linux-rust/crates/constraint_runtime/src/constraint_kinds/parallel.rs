@@ -5,8 +5,8 @@ use crate::expr::VecExpr;
 use crate::geometry::GeometryId;
 use crate::mapper::Mapper;
 use crate::matrix::MatrixAccess;
-use crate::vector::{VecAccess, Vector};
 use crate::store::GeometryStore;
+use crate::vector::{VecAccess, Vector};
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Parallel {

@@ -70,7 +70,7 @@ Each structural contribution’s Jacobian columns SHALL follow the same order as
 
 ### Requirement: Soft interaction terms assemble the same way
 
-Temporary soft terms used during interaction (for example mouse-follow or stay-near-previous) SHALL, when active, contribute residual and Jacobian blocks that are assembled with the same connectivity/scatter rules, without becoming persistent document constraints. Soft residual scale relative to unweighted structural residuals SHALL be carried by the soft terms’ own weights (or equivalent per-term strength), not by a separate mandatory global rescale of structural rows during assembly.
+Temporary soft terms used during interaction (for example mouse-follow, stay-near-previous, or soft curve-length floor) SHALL, when active, contribute residual and Jacobian blocks that are assembled with the same connectivity/scatter rules, without becoming persistent document constraints. Soft residual scale relative to unweighted structural residuals SHALL be carried by the soft terms’ own weights (or equivalent per-term strength), not by a separate mandatory global rescale of structural rows during assembly. A soft length-floor contribution SHALL use the length expression’s parameter connectivity and SHALL contribute a one-sided residual that is zero when the evaluated length is at or above its session floor.
 
 #### Scenario: Soft term adds rows without persisting constraints
 
@@ -80,6 +80,13 @@ Temporary soft terms used during interaction (for example mouse-follow or stay-n
 
 #### Scenario: Soft strength is in the soft weights
 
-- **WHEN** soft mouse-follow and stay-near-previous terms are assembled with structural residuals
+- **WHEN** soft mouse-follow, stay-near-previous, and length-floor terms are assembled with structural residuals
 - **THEN** the relative soft-vs-hard tradeoff is determined by those soft terms’ weights (or equivalent strengths)
 - **AND** structural residual rows are not required to be globally rescaled solely because soft terms are present
+
+#### Scenario: Soft length floor is one-sided in assembly
+
+- **WHEN** a soft length-floor term is active and the length expression evaluates to \(L\)
+- **AND** the session floor is \(\ell_{\min}\)
+- **THEN** the contribution residual is zero when \(L \ge \ell_{\min}\)
+- **AND** when \(L < \ell_{\min}\) the residual and its Jacobian follow the length expression’s connectivity

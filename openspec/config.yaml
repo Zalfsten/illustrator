@@ -129,14 +129,17 @@ context: |
     via inherent DenseMatrix::scatter_slice.
   - vector.rs: owned Vector (p and r); borrowed DenseVec / ScatterVec;
     VecView / VecAccess (as_dense / block_slice / scatter_slice)
-  - assemble: AssembledSystem(&'a Document, soft); caches structural
-    param_connectivity at construction (graph-only; not p-dependent).
-    SoftContribution is session-only (parameter index + target + weight);
-    soft-vs-hard strength is in SoftTerms / SoftContribution.weight
-    (sqrt(w) in residual), not a separate structural rescale in assembly.
-    SystemEval fills Vector r and Matrix J.
-  - interact: SoftTerms (mouse/stay weights); soft_for_drag builds
-    SoftContribution list; InteractiveSolve commits working Vector
+  - assemble: AssembledSystem(&'a Document, soft, soft_points, soft_lengths);
+    caches structural / soft-point / soft-length param_connectivity at
+    construction (graph-only; not p-dependent). SoftContribution,
+    SoftPointFollow, SoftLengthFloor are session-only; soft-vs-hard
+    strength is in SoftTerms / per-term weight (sqrt(w) in residual),
+    not a separate structural rescale in assembly. SoftLengthFloor is
+    one-sided max(0, ℓ_min − L). SystemEval fills Vector r and Matrix J.
+  - interact: SoftTerms (mouse/stay weights + min_curve_length_fraction);
+    soft_for_drag builds SoftContribution / SoftPointFollow /
+    SoftLengthFloor (ℓ_min = fraction × L0 at drag-start snapshot);
+    InteractiveSolve commits working Vector
   - store: GeometryStore port (id → &GeometryInst); implemented by Document
   - mapper: column maps (geometry_indices / local_indices / join_indices);
     unpack_chart on &impl Chart+AsShell; chart_param_block Range for slices

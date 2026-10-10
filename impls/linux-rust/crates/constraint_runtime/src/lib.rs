@@ -20,7 +20,7 @@ pub mod store;
 pub mod vector;
 
 pub use assemble::{
-    structural_residual_norm, AssembledSystem, SoftContribution, SoftPointFollow,
+    structural_residual_norm, AssembledSystem, SoftContribution, SoftLengthFloor, SoftPointFollow,
 };
 pub use ceres_solver::CeresSolver;
 pub use constraint::{ConstraintEntry, ConstraintId, ConstraintKind};

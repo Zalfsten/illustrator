@@ -2,13 +2,13 @@
 
 ## Purpose
 
-Defines interactive solve behavior for dragging logical UI points: structural constraints stay hard, mouse follow is soft, failed solves keep the last consistent state, and a drag gesture is one atomic edit.
+Defines interactive solve behavior for dragging logical UI points: structural constraints stay hard, mouse follow / stay-near / length-floor are soft, failed solves keep the last consistent state, and a drag gesture is one atomic edit.
 
 ## Requirements
 
 ### Requirement: Distinguish hard structural and soft manipulation conditions
 
-The system SHALL distinguish structural conditions (persistent constraints from the catalog) from manipulation conditions introduced only for the active interaction. Structural conditions SHALL be treated as hard (must be satisfied for a successful commit). Manipulation conditions for mouse follow and stay-near-previous SHALL be treated as soft (best-effort toward the pointer / previous state without violating hard conditions). Soft terms SHALL NOT be stored as document constraints; their residual strength relative to structural residuals SHALL be carried by soft-term weights (or equivalent per-term strengths) used only for the interaction evaluation.
+The system SHALL distinguish structural conditions (persistent constraints from the catalog) from manipulation conditions introduced only for the active interaction. Structural conditions SHALL be treated as hard (must be satisfied for a successful commit). Manipulation conditions for mouse follow, stay-near-previous, and soft curve-length floor SHALL be treated as soft (best-effort toward the pointer / previous state / non-collapse without violating hard conditions). Soft terms SHALL NOT be stored as document constraints; their residual strength relative to structural residuals SHALL be carried by soft-term weights (or equivalent per-term strengths) used only for the interaction evaluation.
 
 #### Scenario: Drag does not permanently store mouse residuals
 
@@ -36,6 +36,24 @@ When multiple structurally consistent solutions exist, interactive solves during
 - **WHEN** a successful interactive solve runs during a small pointer movement
 - **THEN** the resulting configuration remains near the previous consistent configuration
 - **AND** the system does not replace the figure with a distant alternate solution that also satisfies the structural constraints
+
+### Requirement: Soft length floor resists curve collapse during drag
+
+During an interactive drag, the system SHALL include a soft, one-sided floor on each curve geometry's length expression so that collapse to zero length is not a soft minimum under mouse-follow. For each such curve, the floor \(\ell_{\min}\) SHALL be a configured fraction \(f\) of that curve's length \(L_0\) evaluated at the drag-start State (the stay-near snapshot), \(\ell_{\min} = f\,L_0\), and SHALL NOT be a fixed absolute length independent of the sketch scale. The floor residual SHALL be inactive when the current length \(L \ge \ell_{\min}\) and SHALL NOT become a persistent structural constraint. Soft length floors SHALL NOT alter Parallel, Orthogonal, or other catalog constraint semantics.
+
+#### Scenario: Drag toward a degenerate attractor keeps positive curve length
+
+- **WHEN** a document has curve geometries under structural constraints that admit a near-zero-length configuration
+- **AND** the user drags a logical UI point toward a pointer position that would otherwise collapse a curve
+- **THEN** after each successful interactive solve during the drag, that curve's length remains at least on the order of \(f\,L_0\) for the configured fraction \(f\) and drag-start length \(L_0\)
+- **AND** after the drag ends, no length-floor term remains as a document constraint
+
+#### Scenario: Length floor scales with the figure
+
+- **WHEN** two documents differ only by a uniform scale of their geometry and State
+- **AND** the same relative drag gesture is applied with the same configured fraction \(f\)
+- **THEN** the soft length floor thresholds scale with each document's drag-start curve lengths
+- **AND** the floor is not a single absolute length shared across differently scaled figures
 
 ### Requirement: Failed solve keeps last consistent state
 
@@ -82,5 +100,5 @@ The system SHALL expose solving behind a replaceable backend boundary so that di
 #### Scenario: Behavior contract is algorithm-agnostic
 
 - **WHEN** a backend that meets the solve-interaction contract is substituted for another
-- **THEN** structural invariance, soft drag, stay-near-previous, failure retention, and atomic drag semantics remain as specified
+- **THEN** structural invariance, soft drag, stay-near-previous, soft length floor, failure retention, and atomic drag semantics remain as specified
 - **AND** no requirement in this capability mandates a specific numerical method

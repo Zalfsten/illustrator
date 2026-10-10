@@ -84,26 +84,24 @@ fn atomic_drag_undo() {
     assert_eq!(doc.vector(), &before);
 }
 
-#[test]
-fn drag_arc_endpoint_keeps_fillet_radius() {
-    const R: f64 = 0.5;
+fn fillet_doc_without_length_pin(r: f64) -> (Document, crate::geometry::GeometryId) {
     let mut doc = Document::new();
     let s0 = doc.add_geometry::<Segment>(
         GeometryRole::Result,
-        (Point2::new(0.0, 0.0), Point2::new(2.0 - R, 0.0)),
+        (Point2::new(0.0, 0.0), Point2::new(2.0 - r, 0.0)),
     );
     let fillet = doc.add_geometry::<Arc>(
         GeometryRole::Result,
         (
-            Point2::new(2.0 - R, R),
-            Length::new(R),
+            Point2::new(2.0 - r, r),
+            Length::new(r),
             HeadingAngle::new(-std::f64::consts::FRAC_PI_2),
             TurnAngle::new(std::f64::consts::FRAC_PI_2),
         ),
     );
     let s1 = doc.add_geometry::<Segment>(
         GeometryRole::Result,
-        (Point2::new(2.0, R), Point2::new(2.0, 2.0)),
+        (Point2::new(2.0, r), Point2::new(2.0, 2.0)),
     );
     doc.add_constraint(Congruence {
         a: Segment::end_expr(s0),
@@ -129,6 +127,46 @@ fn drag_arc_endpoint_keeps_fillet_radius() {
         point: Segment::start_expr(s0),
         target: Point2::new(0.0, 0.0),
     });
+    (doc, fillet)
+}
+
+#[test]
+fn drag_arc_soft_length_floor_resists_collapse() {
+    const R: f64 = 0.5;
+    let (mut doc, fillet) = fillet_doc_without_length_pin(R);
+    let mut interact = InteractiveSolve::new();
+    interact.structural_only(&mut doc).unwrap();
+
+    let mut drag = DragSession::new();
+    // Collapse attractor: pull the arc start toward the corner (2,0).
+    drag.pointer_down(&doc, Arc::start_expr(fillet));
+    drag.pointer_move(&mut interact, &mut doc, (1.95, 0.0))
+        .unwrap();
+    drag.pointer_up(&mut interact, &mut doc, (1.95, 0.0))
+        .unwrap();
+
+    let len = Arc::length_expr(fillet)
+        .evaluate(&doc, doc.vector())
+        .value();
+    let l0 = R * std::f64::consts::FRAC_PI_2;
+    let floor = interact.soft_weights.min_curve_length_fraction * l0;
+    assert!(
+        len >= floor * 0.5,
+        "soft length floor failed: L={len}, expected ≥ ~{floor}"
+    );
+    let start = Arc::start_expr(fillet).evaluate(&doc, doc.vector());
+    let end = Arc::end_expr(fillet).evaluate(&doc, doc.vector());
+    let join_dist = (start.x - end.x).hypot(start.y - end.y);
+    assert!(
+        join_dist > 1e-2,
+        "arc endpoints collapsed (dist={join_dist})"
+    );
+}
+
+#[test]
+fn drag_arc_endpoint_keeps_fillet_radius() {
+    const R: f64 = 0.5;
+    let (mut doc, fillet) = fillet_doc_without_length_pin(R);
     let arc_len = R * std::f64::consts::FRAC_PI_2;
     let length_gauge = doc.add_geometry::<Segment>(
         GeometryRole::Construction,
