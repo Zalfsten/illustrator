@@ -1,9 +1,9 @@
 //! Application shell: Document, Interact, tools, and Canvas painting.
 
 use constraint_runtime::{
-    Congruence, CurveExprs, CurveParam, Document, DragSession, EndpointExprs, FixPoint, GeometryId,
-    GeometryRole, InteractiveSolve, Mesh, MeshFilter, Orthogonal, Parallel, Point2, PointExpr,
-    Segment, SolveError,
+    Arc, Congruence, CurveExprs, CurveParam, Document, DragSession, EndpointExprs, FixPoint,
+    GeometryId, GeometryRole, HeadingAngle, InteractiveSolve, Length, Mesh, MeshFilter, Orthogonal,
+    Parallel, Point2, PointExpr, Segment, SolveError, TurnAngle,
 };
 use eframe::egui::{self, Color32, Pos2, Rect, Sense, Stroke};
 
@@ -60,14 +60,24 @@ pub struct App {
 impl App {
     pub fn with_sample() -> Self {
         let mut doc = Document::new();
-        // World units, y-up: horizontal then vertical leg of a right angle.
+        // World units, y-up: horizontal + vertical legs with a quarter-circle fillet.
+        const R: f64 = 0.5;
         let s0 = doc.add_geometry::<Segment>(
             GeometryRole::Result,
-            (Point2::new(0.0, 0.0), Point2::new(2.0, 0.0)),
+            (Point2::new(0.0, 0.0), Point2::new(2.0 - R, 0.0)),
+        );
+        let fillet = doc.add_geometry::<Arc>(
+            GeometryRole::Result,
+            (
+                Point2::new(2.0 - R, R),
+                Length::new(R),
+                HeadingAngle::new(-std::f64::consts::FRAC_PI_2),
+                TurnAngle::new(std::f64::consts::FRAC_PI_2),
+            ),
         );
         let s1 = doc.add_geometry::<Segment>(
             GeometryRole::Result,
-            (Point2::new(2.0, 0.0), Point2::new(2.0, 2.0)),
+            (Point2::new(2.0, R), Point2::new(2.0, 2.0)),
         );
         // Demo: helper diagonal marked construction (hidden in result-only).
         let helper = doc.add_geometry::<Segment>(
@@ -77,7 +87,19 @@ impl App {
         assert!(doc.set_geometry_role(helper, GeometryRole::Construction));
         doc.add_constraint(Congruence {
             a: Segment::end_expr(s0),
+            b: Arc::start_expr(fillet),
+        });
+        doc.add_constraint(Congruence {
+            a: Arc::end_expr(fillet),
             b: Segment::start_expr(s1),
+        });
+        doc.add_constraint(Parallel {
+            a: Segment::tangent_expr(s0, CurveParam::Normalized(0.0)),
+            b: Arc::tangent_expr(fillet, CurveParam::Normalized(0.0)),
+        });
+        doc.add_constraint(Parallel {
+            a: Segment::tangent_expr(s1, CurveParam::Normalized(0.0)),
+            b: Arc::tangent_expr(fillet, CurveParam::Normalized(1.0)),
         });
         doc.add_constraint(Orthogonal {
             a: Segment::tangent_expr(s0, CurveParam::Normalized(0.0)),
@@ -103,7 +125,7 @@ impl App {
             pick_points: Vec::new(),
             pick_geoms: Vec::new(),
             segment_clicks: Vec::new(),
-            status: "Sample right angle (world y-up) — drag the free end. Toggle construction to see helper."
+            status: "Sample filleted right angle (world y-up) — drag a free end. Toggle construction to see helper."
                 .into(),
             last_error: None,
             logical_points,
@@ -252,13 +274,8 @@ impl App {
 fn logical_points_for(doc: &Document, filter: MeshFilter) -> Vec<PointExpr> {
     // Handles from Mesh endpoints (congruence-collapsed); not Mesh hit for drag.
     let mesh = Mesh::from_document(doc, doc.vector(), filter);
-    let mut exprs = Vec::new();
-    for e in &mesh.edges {
-        exprs.push(Segment::start_expr(e.geometry));
-        exprs.push(Segment::end_expr(e.geometry));
-    }
     let mut keep = Vec::new();
-    for expr in exprs {
+    for expr in mesh.endpoint_exprs() {
         let p = expr.evaluate(doc, doc.vector());
         let duplicate = keep.iter().any(|k: &PointExpr| {
             let q = k.evaluate(doc, doc.vector());

@@ -6,7 +6,7 @@ use std::fmt::Debug;
 use std::ops::Range;
 
 use super::shell::{AsShell, GeometryShell};
-use crate::geom::{Angle, Length, Point2, Vec2};
+use crate::geom::{HeadingAngle, Length, Point2, TurnAngle, Vec2};
 
 /// Packable atom in the global parameter vector: fixed DOF width and flatten order.
 ///
@@ -54,7 +54,21 @@ impl StateAtom for Point2 {
     }
 }
 
-impl StateAtom for Angle {
+impl StateAtom for HeadingAngle {
+    const DOF_COUNT: usize = 1;
+
+    fn write_params(self, out: &mut [f64]) {
+        debug_assert_eq!(out.len(), Self::DOF_COUNT);
+        out[0] = self.radians();
+    }
+
+    fn read_params(params: &[f64]) -> Self {
+        debug_assert_eq!(params.len(), Self::DOF_COUNT);
+        Self::new(params[0])
+    }
+}
+
+impl StateAtom for TurnAngle {
     const DOF_COUNT: usize = 1;
 
     fn write_params(self, out: &mut [f64]) {

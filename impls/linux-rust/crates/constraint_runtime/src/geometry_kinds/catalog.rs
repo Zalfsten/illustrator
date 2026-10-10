@@ -1,6 +1,6 @@
 //! Closed [`GeometryInst`] catalog (generated from the kind list).
 
-use super::Segment;
+use super::{Arc, Segment};
 use crate::geometry::shell::{AsShell, GeometryId, GeometryRole, GeometryShell};
 use crate::geometry::{Chart, GeometryKind};
 use std::ops::Range;
@@ -93,4 +93,5 @@ macro_rules! geometry_catalog {
 
 geometry_catalog! {
     Segment,
+    Arc,
 }

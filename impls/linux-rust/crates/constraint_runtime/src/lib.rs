@@ -26,13 +26,15 @@ pub use constraint_kinds::{
     Congruence, ConstraintInst, EqualLength, FixPoint, Orthogonal, Parallel,
 };
 pub use document::Document;
-pub use expr::{LengthExpr, PointExpr, VecExpr, MAX_FORMULA_LOCAL_DOF};
-pub use geom::{Angle, CurveParam, Length, Point2, Vec2};
+pub use expr::{
+    HeadingAngleExpr, LengthExpr, PointExpr, TurnAngleExpr, VecExpr, MAX_FORMULA_LOCAL_DOF,
+};
+pub use geom::{CurveParam, HeadingAngle, Length, Point2, TurnAngle, Vec2};
 pub use geometry::{
     AsShell, Chart, ChartSlot, CurveExprs, EndpointExprs, GeometryId, GeometryKind, GeometryRole,
     GeometryShell, StateAtom,
 };
-pub use geometry_kinds::{GeometryInst, InGeometryCatalog, Segment};
+pub use geometry_kinds::{Arc, GeometryInst, InGeometryCatalog, Segment};
 pub use id::IdGenerator;
 pub use interact::{DragSession, InteractiveSolve, SoftTerms, SolveError};
 pub use mapper::Mapper;

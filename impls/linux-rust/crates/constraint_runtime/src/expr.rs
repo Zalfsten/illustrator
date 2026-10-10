@@ -5,7 +5,10 @@
 //! [`crate::geometry::expr`].
 
 use crate::geom::Vec2;
-use crate::geometry::expr::{LengthFormulaKeyed, PointFormulaKeyed, VecFormulaKeyed};
+use crate::geometry::expr::{
+    HeadingAngleFormulaKeyed, LengthFormulaKeyed, PointFormulaKeyed, TurnAngleFormulaKeyed,
+    VecFormulaKeyed,
+};
 use crate::geometry::GeometryId;
 use crate::matrix::{DenseMatrix, MatrixAccess};
 use crate::store::GeometryStore;
@@ -89,6 +92,42 @@ pub struct LengthExpr {
 
 impl LengthExpr {
     pub(crate) fn new(geometry: GeometryId, formula: LengthFormulaKeyed) -> Self {
+        Self { geometry, formula }
+    }
+
+    pub fn referenced_geometry(&self) -> GeometryId {
+        self.geometry
+    }
+}
+
+/// Opaque heading-angle expression: map from Vector parameters to a [`crate::geom::HeadingAngle`].
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct HeadingAngleExpr {
+    pub(crate) geometry: GeometryId,
+    pub(crate) formula: HeadingAngleFormulaKeyed,
+}
+
+impl HeadingAngleExpr {
+    #[allow(dead_code)] // constructed when a kind registers heading formulas
+    pub(crate) fn new(geometry: GeometryId, formula: HeadingAngleFormulaKeyed) -> Self {
+        Self { geometry, formula }
+    }
+
+    pub fn referenced_geometry(&self) -> GeometryId {
+        self.geometry
+    }
+}
+
+/// Opaque turn-angle expression: map from Vector parameters to a [`crate::geom::TurnAngle`].
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct TurnAngleExpr {
+    pub(crate) geometry: GeometryId,
+    pub(crate) formula: TurnAngleFormulaKeyed,
+}
+
+impl TurnAngleExpr {
+    #[allow(dead_code)] // constructed when a kind registers turn formulas
+    pub(crate) fn new(geometry: GeometryId, formula: TurnAngleFormulaKeyed) -> Self {
         Self { geometry, formula }
     }
 

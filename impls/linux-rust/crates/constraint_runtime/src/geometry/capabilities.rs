@@ -3,11 +3,12 @@
 //! - [`CurveExprs`]: on-curve / tangent / normal / length.
 //! - [`EndpointExprs`]: start / end (open/join curves only).
 //!
-//! [`EndpointExprs`] defaults start/end to on-curve at normalized \(t = 0\) / \(t = 1\);
-//! kinds MAY override via [`EndpointFormulaKey`] (installed by
-//! [`register_expr_kinds!`](super::expr) when `endpoint:` is set).
-//! Closed curves implement [`CurveExprs`] only (via [`CurveFormulaKey`] from the
-//! same registry). Factories are kind-associated (not on the document catalog).
+//! [`EndpointExprs`] comes only from [`EndpointFormulaKey`] (installed by
+//! [`register_expr_kinds!`](super::expr) when `endpoint:` is set). Open kinds
+//! supply kind-efficient start/end formulas; there is no on-curve-at-\(t=0/1\)
+//! default. Closed curves implement [`CurveExprs`] only (via
+//! [`CurveFormulaKey`] from the same registry). Factories are kind-associated
+//! (not on the document catalog).
 
 use super::expr::{LengthFormulaKeyed, PointFormulaKeyed, VecFormulaKeyed};
 use super::shell::GeometryId;
@@ -24,17 +25,12 @@ pub trait CurveExprs {
 
 /// Geometric join endpoints (not required for intrinsically periodic closed curves).
 ///
-/// Defaults use [`CurveExprs::on_curve_expr`] at normalized endpoints. Override when
-/// the kind has a cheaper formula (connectivity / Jacobian), as
-/// [`crate::geometry_kinds::Segment`] does via [`EndpointFormulaKey`].
+/// Implemented only via [`EndpointFormulaKey`] (kind-efficient start/end formulas
+/// and connectivity). See [`crate::geometry_kinds::Segment`] /
+/// [`crate::geometry_kinds::Arc`].
 pub trait EndpointExprs: CurveExprs {
-    fn start_expr(id: GeometryId) -> PointExpr {
-        Self::on_curve_expr(id, CurveParam::Normalized(0.0))
-    }
-
-    fn end_expr(id: GeometryId) -> PointExpr {
-        Self::on_curve_expr(id, CurveParam::Normalized(1.0))
-    }
+    fn start_expr(id: GeometryId) -> PointExpr;
+    fn end_expr(id: GeometryId) -> PointExpr;
 }
 
 /// Shared point-formula tags for [`CurveExprs`] (kind-agnostic; eval on the kind).
@@ -43,7 +39,7 @@ pub(crate) enum CurvePointFormula {
     OnCurve { param: CurveParam },
 }
 
-/// Shared point-formula tags for [`EndpointExprs`] overrides (kind-efficient endpoints).
+/// Shared point-formula tags for [`EndpointExprs`] (kind-efficient endpoints).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum EndpointPointFormula {
     StartPoint,
@@ -61,6 +57,18 @@ pub(crate) enum VecFormula {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum CurveLengthFormula {
     Length,
+}
+
+/// Shared heading-angle formula tags (kinds that expose absolute orientation).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) enum HeadingAngleFormula {
+    StartHeading,
+}
+
+/// Shared turn-angle formula tags (kinds that expose free angular displacement).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) enum TurnAngleFormula {
+    Sweep,
 }
 
 /// Maps shared formula tags to kind-keyed wrappers in [`super::expr`].
@@ -91,11 +99,9 @@ impl<T: CurveFormulaKey> CurveExprs for T {
     }
 }
 
-/// Kind-efficient endpoint formula keying (overrides [`EndpointExprs`] defaults).
+/// Kind-efficient endpoint formula keying → [`EndpointExprs`].
 ///
 /// Implemented by [`register_expr_kinds!`](super::expr) when `endpoint:` is set.
-/// For default on-curve endpoints, omit `endpoint:` and write
-/// `impl EndpointExprs for $ty {}`.
 pub(crate) trait EndpointFormulaKey: CurveFormulaKey {
     fn endpoint_point(f: EndpointPointFormula) -> PointFormulaKeyed;
 }

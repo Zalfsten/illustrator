@@ -15,6 +15,8 @@ Behavioral contracts live in OpenSpec capabilities (`geometry-ir`, `state-vector
 | **Parameter window** | Contiguous index range on a geometry record (offset + count) identifying that geometry's slots in State; evaluate/formulas read \(p\) through this window. |
 | **Vec2 / free vector** | Displacement or direction in the plane. Fundamental linear quantity: difference of points, segment direction, etc. |
 | **Point2 / point** | Affine location. May be written as a position vector relative to an origin, but is not a free vector. $P - Q$ is a vector; $P + v$ is a point; $P + Q$ is not meaningful. |
+| **HeadingAngle** | Absolute orientation from a fixed planar null ray (radians). Analogous to `Point2`: $\theta - \phi$ is a turn; $\theta + \tau$ is a heading; $\theta + \phi$ (two headings) is not meaningful. No wrap at the type level. |
+| **TurnAngle** | Free angular displacement (radians). Analogous to `Vec2`: independent of the angle origin. linux-rust: `HeadingAngle` / `TurnAngle` replace an undifferentiated `Angle` DOF. |
 | **World coordinates** | Durable planar frame for Document State and Mesh edge positions. **y-up** (scientific/mathematical): $+y$ points upward. Not window pixels. |
 | **Viewport** | App/UI session mapping between world and screen coordinates: uniform scale, origin, and y-flip for toolkits with $+y$ downward. Paint uses world→screen; pointer input and pixel pick radii use screen→world (`r_{\mathrm{world}}=r_{\mathrm{px}}/\mathrm{scale}`). |
 | **Point expression** | Opaque handle to a (private catalog of) **point formula**(s): a map from geometry State parameters to a 2D **point**. Not a free-standing point entity and not a coordinate snapshot. Geometry kinds construct formulas (e.g. segment start/end / on-curve); constraints and Interact only evaluate them — they do not match on formula kinds. |
@@ -28,10 +30,10 @@ Behavioral contracts live in OpenSpec capabilities (`geometry-ir`, `state-vector
 | **GeometryStore** | Read-only port: resolve `GeometryId` → `&GeometryInst` (linux-rust: `store.rs`). |
 | **Mapper** | Chart layout: param block, unpack from State, local→global index lift via `GeometryShell.param_offset` (linux-rust: `mapper.rs`). Expressions resolve via GeometryStore, then unpack via `InGeometryCatalog` + Mapper; kinds stay in local indices. |
 | **Vector expression** | Opaque handle to a map from geometry parameters to a free **vector** (e.g. segment direction, curve tangent or normal). Same opacity principle as point expressions; kind-owned formulas behind an outer kind sum. |
-| **Scalar expression** | Opaque handle to a map from geometry parameters to a real number (e.g. curve length). Same opacity principle; kind-owned formulas; analytical \(1\times n\) Jacobian written into `MatrixAccess`. linux-rust: `LengthExpr` today. |
-| **Curve length** | Total arc length of a curve as a scalar expression (`length_expr` on the curve capability). Segment: Euclidean distance between endpoints. |
+| **Scalar expression** | Opaque handle in a **typed** scalar family (length, heading angle, or turn angle). Same opacity principle; kind-owned formulas; analytical \(1\times n\) Jacobian written into `MatrixAccess`. linux-rust: `LengthExpr`, `HeadingAngleExpr`, `TurnAngleExpr` (no untyped `ScalarExpr` / single `AngleExpr`). |
+| **Curve length** | Total arc length of a curve as a scalar expression (`length_expr` on the curve capability). Segment: Euclidean distance between endpoints. Circular arc: \(|R|\,|\Delta\theta|\). |
 | **Normalized curve parameter** | Chart coordinate \(t \in [0,1]\): the curve's native formula domain affinely mapped to the unit interval. Equal \(\Delta t\) need not mean equal arc length. |
-| **Uniform curve parameter** | Arc-length fraction \(u \in [0,1]\): equal \(\Delta u\) means equal arc length along the curve. For a line segment, Normalized and Uniform coincide. |
+| **Uniform curve parameter** | Arc-length fraction \(u \in [0,1]\): equal \(\Delta u\) means equal arc length along the curve. For a line segment, and for a circular arc with constant \(|R|\), Normalized and Uniform coincide. |
 | **Curve tangent** | Chart derivative \(\gamma'(t)\) as a free vector; length is parametric speed (segment: segment length). Not required to be unit length. |
 | **Curve normal** | Leftward planar rotate of the tangent \((-v_y, v_x)\); same length as the tangent. Not a curvature-weighted vector. |
 | **Residual** | Scalar (or small vector) that is zero iff a constraint (or soft term) is satisfied within tolerance. |
@@ -39,7 +41,7 @@ Behavioral contracts live in OpenSpec capabilities (`geometry-ir`, `state-vector
 | **Connectivity** $M_N$ | Explicit map from local parameter indices of contribution $N$ to global indices in $p$. Used to scatter local residuals/Jacobians into global arrays. |
 | **Assembly** | Building the global residual $r(p)$ and Jacobian $J(p)=\partial r/\partial p$ by evaluating each contribution and scattering via connectivity. |
 | **Soft contribution** | Transient residual used only during Interact (e.g. mouse follow, stay-near-previous). Not stored as a structural constraint in Document. Weighted relative to structural residuals via soft-term weights (not a separate global hard-row rescale). |
-| **Mesh** | View-layer tessellation of Document evaluated at a State \(p\) into drawable edges (tagged with geometry identity and role) in **world coordinates**. Derived only — not authoritative for parameters or constraints. Used for Canvas paint (via Viewport) and optional WYSIWYG hit-testing. Built with a **MeshFilter** that may omit construction geometries. |
+| **Mesh** | View-layer tessellation of Document evaluated at a State \(p\) into drawable edges (tagged with geometry identity and role) in **world coordinates**. Derived only — not authoritative for parameters or constraints. Used for Canvas paint (via Viewport) and optional WYSIWYG hit-testing. Built with a **MeshFilter** that may omit construction geometries. Segments contribute one edge; circular arcs contribute a polyline of chords (same geometry identity on every chord). Endpoint hit-testing uses geometric start/end only, not intermediate polyline vertices. |
 | **GeometryRole** | Document flag on each geometry: **Result** (published figure) or **Construction** (helper). Construction remains in State and constraints; role alone does not remove parameters. |
 | **Presentation mode** | App/UI session choice: result-only vs include-construction. Selects the MeshFilter for paint, Mesh hits, and logical handles so invisible construction is not pickable. |
 | **Working copy** | Temporary State used during Interact / solve iterations. May differ from the committed State. |
@@ -51,7 +53,7 @@ Behavioral contracts live in OpenSpec capabilities (`geometry-ir`, `state-vector
 
 **Why:** Call sites should see “a point/vector map”, not `Endpoint | OnCurve | …`. A small fixed catalog stays data-driven (`PartialEq`, `Copy`, easy Debug/serde) without exposing variants. True openness (trait objects / closures) was tried and rejected for this codebase in favor of this facade — see approaches below.
 
-**Consequences (linux-rust):** Per-kind private formula **structs** under `geometry_kinds/<kind>.rs`, catalogued by a private enum; opaque `PointExpr` / `VecExpr` / `LengthExpr` in `expr.rs`; kind-keyed dispatch in `geometry/expr.rs`. Formula Jacobians write into `MatrixAccess` (`accumulate_jacobian` / `accumulate_contracted`). Kind instances implement `Chart` + `AsShell` via `geometry_shell_instance!` and `GeometryKind`. Document stores closed catalogs `GeometryInst` / `ConstraintInst` (no `dyn`) in `HashMap`s by id. Shared affine types in `geom`; owned `Vector` / `Matrix` in `vector.rs` / `matrix.rs`; `GeometryStore` resolves to `&GeometryInst`, then `InGeometryCatalog` + `Mapper` unpack. Constraints never match on formula kinds.
+**Consequences (linux-rust):** Per-kind private formula **structs** under `geometry_kinds/<kind>.rs`, catalogued by a private enum; opaque `PointExpr` / `VecExpr` / `LengthExpr` / `HeadingAngleExpr` / `TurnAngleExpr` in `expr.rs`; kind-keyed dispatch in `geometry/expr.rs`. Formula Jacobians write into `MatrixAccess` (`accumulate_jacobian` / `accumulate_contracted`). Kind instances implement `Chart` + `AsShell` via `geometry_shell_instance!` and `GeometryKind`. Document stores closed catalogs `GeometryInst` / `ConstraintInst` (no `dyn`) in `HashMap`s by id. Shared affine types in `geom` (`Point2`/`Vec2`, `HeadingAngle`/`TurnAngle`, `Length`); owned `Vector` / `Matrix` in `vector.rs` / `matrix.rs`; `GeometryStore` resolves to `&GeometryInst`, then `InGeometryCatalog` + `Mapper` unpack. Constraints never match on formula kinds.
 
 ### Approaches considered
 
@@ -191,6 +193,21 @@ E_{\mathrm{start}}(p_{\mathrm{loc}}) &= (x_a, y_a), \\
 E_{\mathrm{end}}(p_{\mathrm{loc}}) &= (x_b, y_b).
 \end{aligned}
 $$
+
+Example (circular arc): local parameters
+$(c_x,c_y,R,\theta_0,\Delta\theta)$ with signed radius $R$, start heading
+$\theta_0$, and sweep turn $\Delta\theta$. Chart:
+
+$$
+\begin{aligned}
+\theta(t) &= \theta_0 + t\,\Delta\theta, \\
+\gamma(t) &= (c_x, c_y) + R\,(\cos\theta(t),\sin\theta(t)), \\
+L &= |R|\,|\Delta\theta|.
+\end{aligned}
+$$
+
+linux-rust kind `Arc` also exposes `start_heading_expr` / `sweep_expr` as
+typed angle expressions over the chart atoms.
 
 Analytical derivatives of these maps w.r.t. $p_{\mathrm{loc}}$ feed constraint
 Jacobians (see `geometry-eval`).

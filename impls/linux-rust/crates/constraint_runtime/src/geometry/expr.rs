@@ -1,7 +1,9 @@
 //! Geometry-kind formula keying and Expr evaluate / Jacobian dispatch.
 //!
 //! Opaque [`PointExpr`](crate::expr::PointExpr) / [`VecExpr`](crate::expr::VecExpr) /
-//! [`LengthExpr`](crate::expr::LengthExpr) types live in [`crate::expr`]. Shared
+//! [`LengthExpr`](crate::expr::LengthExpr) /
+//! [`HeadingAngleExpr`](crate::expr::HeadingAngleExpr) /
+//! [`TurnAngleExpr`](crate::expr::TurnAngleExpr) types live in [`crate::expr`]. Shared
 //! formula *tags* live in [`super::capabilities`]. This module keys them by
 //! geometry kind ([`register_expr_kinds!`]) so constraints never match on
 //! formula kinds. Local→global index lifts use [`crate::mapper::Mapper`].
@@ -302,19 +304,28 @@ macro_rules! register_expr_kinds {
             /// Write the \(2 \times n\) point Jacobian into `j` (formula-local columns).
             pub fn accumulate_jacobian<S: $crate::store::GeometryStore + ?Sized, J: $crate::matrix::MatrixAccess>(
                 &self,
-                _store: &S,
-                _p: &$crate::vector::Vector,
+                store: &S,
+                p: &$crate::vector::Vector,
                 j: &mut J,
                 scale: f64,
             ) {
+                let g = store.expect_geometry(self.geometry);
                 match &self.formula {
                     $(
                         PointFormulaKeyed::$curve_var(f) => {
-                            <$kind>::accumulate_curve_point_jacobian(*f, j, scale)
+                            let chart = $crate::mapper::Mapper::unpack_chart(
+                                <$kind as $crate::geometry_kinds::InGeometryCatalog>::as_catalog_ref(g),
+                                p,
+                            );
+                            <$kind>::accumulate_curve_point_jacobian(*f, chart, j, scale)
                         }
                         $(
                             PointFormulaKeyed::$endpoint_var(f) => {
-                                <$kind>::accumulate_endpoint_point_jacobian(*f, j, scale)
+                                let chart = $crate::mapper::Mapper::unpack_chart(
+                                    <$kind as $crate::geometry_kinds::InGeometryCatalog>::as_catalog_ref(g),
+                                    p,
+                                );
+                                <$kind>::accumulate_endpoint_point_jacobian(*f, chart, j, scale)
                             }
                         )?
                     )+
@@ -325,7 +336,7 @@ macro_rules! register_expr_kinds {
         impl_keyed_expr! {
             VecExpr, VecFormulaKeyed => $crate::geom::Vec2;
             eval: eval_vec;
-            jac_static: accumulate_vec_jacobian;
+            jac_chart: accumulate_vec_jacobian;
             $($vec_var => $kind),+
         }
 
@@ -347,4 +358,154 @@ register_expr_kinds! {
         vec: Segment,
         length: Segment,
     },
+    crate::geometry_kinds::Arc {
+        curve: ArcCurve,
+        endpoint: ArcEndpoint,
+        vec: Arc,
+        length: Arc,
+    },
+}
+
+/// Kind-keyed heading formulas.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) enum HeadingAngleFormulaKeyed {
+    Arc(crate::geometry::capabilities::HeadingAngleFormula),
+}
+
+/// Kind-keyed turn formulas.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) enum TurnAngleFormulaKeyed {
+    Arc(crate::geometry::capabilities::TurnAngleFormula),
+}
+
+impl crate::expr::HeadingAngleExpr {
+    pub fn evaluate<S: crate::store::GeometryStore + ?Sized>(
+        &self,
+        store: &S,
+        p: &crate::vector::Vector,
+    ) -> crate::geom::HeadingAngle {
+        let g = store.expect_geometry(self.geometry);
+        match &self.formula {
+            HeadingAngleFormulaKeyed::Arc(f) => {
+                let chart = crate::mapper::Mapper::unpack_chart(
+                    <crate::geometry_kinds::Arc as crate::geometry_kinds::InGeometryCatalog>::as_catalog_ref(
+                        g,
+                    ),
+                    p,
+                );
+                crate::geometry_kinds::Arc::eval_heading(*f, chart)
+            }
+        }
+    }
+
+    pub fn param_indices<S: crate::store::GeometryStore + ?Sized>(
+        &self,
+        store: &S,
+    ) -> Vec<usize> {
+        let local = match &self.formula {
+            HeadingAngleFormulaKeyed::Arc(f) => {
+                crate::geometry_kinds::Arc::heading_param_indices(*f)
+            }
+        };
+        crate::mapper::Mapper::globalize_indices(store.expect_geometry(self.geometry), local)
+    }
+
+    pub fn param_count(&self) -> usize {
+        match &self.formula {
+            HeadingAngleFormulaKeyed::Arc(f) => {
+                crate::geometry_kinds::Arc::heading_param_count(*f)
+            }
+        }
+    }
+
+    pub fn accumulate_jacobian<
+        S: crate::store::GeometryStore + ?Sized,
+        J: crate::matrix::MatrixAccess,
+    >(
+        &self,
+        _store: &S,
+        _p: &crate::vector::Vector,
+        j: &mut J,
+        scale: f64,
+    ) {
+        match &self.formula {
+            HeadingAngleFormulaKeyed::Arc(f) => {
+                crate::geometry_kinds::Arc::accumulate_heading_jacobian(*f, j, scale)
+            }
+        }
+    }
+}
+
+impl crate::expr::TurnAngleExpr {
+    pub fn evaluate<S: crate::store::GeometryStore + ?Sized>(
+        &self,
+        store: &S,
+        p: &crate::vector::Vector,
+    ) -> crate::geom::TurnAngle {
+        let g = store.expect_geometry(self.geometry);
+        match &self.formula {
+            TurnAngleFormulaKeyed::Arc(f) => {
+                let chart = crate::mapper::Mapper::unpack_chart(
+                    <crate::geometry_kinds::Arc as crate::geometry_kinds::InGeometryCatalog>::as_catalog_ref(
+                        g,
+                    ),
+                    p,
+                );
+                crate::geometry_kinds::Arc::eval_turn(*f, chart)
+            }
+        }
+    }
+
+    pub fn param_indices<S: crate::store::GeometryStore + ?Sized>(
+        &self,
+        store: &S,
+    ) -> Vec<usize> {
+        let local = match &self.formula {
+            TurnAngleFormulaKeyed::Arc(f) => crate::geometry_kinds::Arc::turn_param_indices(*f),
+        };
+        crate::mapper::Mapper::globalize_indices(store.expect_geometry(self.geometry), local)
+    }
+
+    pub fn param_count(&self) -> usize {
+        match &self.formula {
+            TurnAngleFormulaKeyed::Arc(f) => crate::geometry_kinds::Arc::turn_param_count(*f),
+        }
+    }
+
+    pub fn accumulate_jacobian<
+        S: crate::store::GeometryStore + ?Sized,
+        J: crate::matrix::MatrixAccess,
+    >(
+        &self,
+        _store: &S,
+        _p: &crate::vector::Vector,
+        j: &mut J,
+        scale: f64,
+    ) {
+        match &self.formula {
+            TurnAngleFormulaKeyed::Arc(f) => {
+                crate::geometry_kinds::Arc::accumulate_turn_jacobian(*f, j, scale)
+            }
+        }
+    }
+}
+
+impl crate::geometry_kinds::Arc {
+    /// Heading at the arc start (chart atom).
+    pub fn start_heading_expr(id: crate::geometry::GeometryId) -> crate::expr::HeadingAngleExpr {
+        crate::expr::HeadingAngleExpr::new(
+            id,
+            HeadingAngleFormulaKeyed::Arc(
+                crate::geometry::capabilities::HeadingAngleFormula::StartHeading,
+            ),
+        )
+    }
+
+    /// Signed sweep turn (chart atom).
+    pub fn sweep_expr(id: crate::geometry::GeometryId) -> crate::expr::TurnAngleExpr {
+        crate::expr::TurnAngleExpr::new(
+            id,
+            TurnAngleFormulaKeyed::Arc(crate::geometry::capabilities::TurnAngleFormula::Sweep),
+        )
+    }
 }

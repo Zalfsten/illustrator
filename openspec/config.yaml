@@ -43,23 +43,31 @@ context: |
   must respect the distinction: point − point → vector; point + vector →
   point; vector + vector → vector; point + point is not meaningful.
 
-  Point / vector / length expressions (opaque, Model B):
-  A point, free-vector, or length expression is an opaque handle to a
+  Angle ontology (heading vs turn):
+  Same absolute/free split as Point2 / Vec2. HeadingAngle is an absolute
+  orientation from a fixed planar null ray; TurnAngle is a free angular
+  displacement. Operations: heading − heading → turn; heading ± turn →
+  heading; turn ± turn → turn; heading + heading is not meaningful. Do not
+  overload a single Angle type for both. Radians as State DOFs; no wrap at
+  the type level (arc conventions come with kinds that use them).
+
+  Point / vector / length / angle expressions (opaque, Model B):
+  A point, free-vector, or typed scalar expression is an opaque handle to a
   geometry-kind-owned formula that maps parameter State \(p\) to a Point2, Vec2,
-  or Length (plus connectivity / MatrixAccess). Do not expose formula-kind
-  variants on the public expression type (no formula-kind match in the
-  constraint path). Internally shared capability formula tags are keyed by
-  geometry kind in a closed sum for dispatch. Point and free-vector Jacobians
-  are both 2×n; length Jacobians are 1×n, written into MatrixView with
-  formula-local columns (sparse vs full geometry block). Parallel/Orthogonal
-  may write \(g^\top J_v\) via accumulate_contracted. Typed scalar families
-  stay separate
-  (LengthExpr today; AngleExpr when a kind needs angles — no untyped
-  ScalarExpr). Parallel/Orthogonal take two opaque vector expressions;
-  EqualLength takes two LengthExprs. Geometries construct expressions via
-  capability factories (CurveExprs / EndpointExprs); constraints, Mesh, and
-  Interact only evaluate them. See docs/constraint-mathematics.md
-  (Design decision: opaque expressions).
+  Length, HeadingAngle, or TurnAngle (plus connectivity / MatrixAccess). Do
+  not expose formula-kind variants on the public expression type (no
+  formula-kind match in the constraint path). Internally shared capability
+  formula tags are keyed by geometry kind in a closed sum for dispatch. Point
+  and free-vector Jacobians are both 2×n; length / heading / turn Jacobians
+  are 1×n, written into MatrixView with formula-local columns (sparse vs full
+  geometry block). Parallel/Orthogonal may write \(g^\top J_v\) via
+  accumulate_contracted. Typed scalar families stay separate (LengthExpr,
+  HeadingAngleExpr, TurnAngleExpr — no untyped ScalarExpr / single AngleExpr).
+  Parallel/Orthogonal take two opaque vector expressions; EqualLength takes
+  two LengthExprs. Geometries construct expressions via capability factories
+  (CurveExprs / EndpointExprs); constraints, Mesh, and Interact only evaluate
+  them. See docs/constraint-mathematics.md (Design decision: opaque
+  expressions).
 
   Geometry identity and resolution:
   One stable GeometryId for all kinds (no segment-only id type). Document
@@ -83,10 +91,11 @@ context: |
 
   Rust module and unit-test layout (impls/linux-rust):
   constraint_runtime splits geometry concerns as follows:
-  - geom: shared affine / scalar DOF types (Point2, Vec2, Angle, Length,
-    CurveParam); formula Jacobians accumulate into MatrixView
-  - expr.rs: opaque PointExpr / VecExpr / LengthExpr;
-    VecExpr::accumulate_contracted (stack scratch, gᵀJᵥ)
+  - geom: shared affine / scalar DOF types (Point2, Vec2, HeadingAngle,
+    TurnAngle, Length, CurveParam); formula Jacobians accumulate into
+    MatrixView
+  - expr.rs: opaque PointExpr / VecExpr / LengthExpr / HeadingAngleExpr /
+    TurnAngleExpr; VecExpr::accumulate_contracted (stack scratch, gᵀJᵥ)
   - geometry/:
     - shell.rs: GeometryShell, GeometryId, roles, AsShell,
       geometry_shell_instance!
@@ -101,9 +110,14 @@ context: |
   - id.rs: IdGenerator<Id> (shared by geometry + constraint namespaces)
   - geometry_kinds/: catalog.rs (GeometryInst + InGeometryCatalog);
     per kind file: shell + chart_atoms!; eval_* + accumulate_*_jacobian
-    (set_scaled); optional sparse endpoint param helpers;
-    register_expr_kinds! entry. Document: HashMap<GeometryId, GeometryInst>;
+    (set_scaled); optional sparse endpoint / heading / turn helpers;
+    register_expr_kinds! entry. Kinds today: Segment (2×Point2), Arc
+    (center Point2, signed Length radius, HeadingAngle start, TurnAngle
+    sweep). Document: HashMap<GeometryId, GeometryInst>;
     add_geometry: GeometryKind + Into<GeometryInst>.
+  - mesh.rs: Display Mesh from Document+State; Segment → one edge; Arc →
+    polyline chords (angular step π/8, clamp 2..64 samples); endpoint hits
+    use geometric start/end expressions only.
   - constraint.rs: ConstraintKind (generic over GeometryStore / VecAccess /
     MatrixAccess); referenced_geometries is a deduplicated GeometryId list.
     ConstraintId + ConstraintEntry (ConstraintInst body).

@@ -7,8 +7,10 @@
 //! - per formula family: `eval_*` + `accumulate_*_jacobian`
 //! - one entry in [`register_expr_kinds!`](crate::geometry::expr)
 
+pub mod arc;
 pub mod catalog;
 pub mod segment;
 
+pub use arc::Arc;
 pub use catalog::{GeometryInst, InGeometryCatalog};
 pub use segment::Segment;

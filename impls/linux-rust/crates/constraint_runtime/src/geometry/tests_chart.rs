@@ -1,5 +1,5 @@
 use super::*;
-use crate::geom::{Angle, Length, Point2, Vec2};
+use crate::geom::{HeadingAngle, Length, Point2, TurnAngle, Vec2};
 
 #[test]
 fn state_atom_point_and_vec_round_trip_xy_order() {
@@ -16,12 +16,18 @@ fn state_atom_point_and_vec_round_trip_xy_order() {
 }
 
 #[test]
-fn state_atom_angle_and_length_round_trip() {
-    let a = Angle::new(1.25);
-    let mut buf = [0.0; Angle::DOF_COUNT];
-    a.write_params(&mut buf);
+fn state_atom_heading_turn_and_length_round_trip() {
+    let h = HeadingAngle::new(1.25);
+    let mut buf = [0.0; HeadingAngle::DOF_COUNT];
+    h.write_params(&mut buf);
     assert_eq!(buf, [1.25]);
-    assert_eq!(Angle::read_params(&buf), a);
+    assert_eq!(HeadingAngle::read_params(&buf), h);
+
+    let t = TurnAngle::new(-0.75);
+    let mut buf_t = [0.0; TurnAngle::DOF_COUNT];
+    t.write_params(&mut buf_t);
+    assert_eq!(buf_t, [-0.75]);
+    assert_eq!(TurnAngle::read_params(&buf_t), t);
 
     let len = Length::new(-3.5);
     let mut buf1 = [0.0; Length::DOF_COUNT];

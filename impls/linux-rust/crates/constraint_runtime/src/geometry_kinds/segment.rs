@@ -49,6 +49,7 @@ impl Segment {
     /// Write \(2 \times 4\) curve-point Jacobian into `j` (SLOTS-local columns).
     pub(crate) fn accumulate_curve_point_jacobian<J: MatrixAccess>(
         f: CurvePointFormula,
+        _chart: (Point2, Point2),
         j: &mut J,
         scale: f64,
     ) {
@@ -77,6 +78,7 @@ impl Segment {
     /// Write \(2 \times 2\) endpoint identity Jacobian into `j` (Point2-local columns).
     pub(crate) fn accumulate_endpoint_point_jacobian<J: MatrixAccess>(
         f: EndpointPointFormula,
+        _chart: (Point2, Point2),
         j: &mut J,
         scale: f64,
     ) {
@@ -111,6 +113,7 @@ impl Segment {
     /// Write \(2 \times 4\) free-vector Jacobian into `j` (SLOTS-local columns).
     pub(crate) fn accumulate_vec_jacobian<J: MatrixAccess>(
         f: VecFormula,
+        _chart: (Point2, Point2),
         j: &mut J,
         scale: f64,
     ) {

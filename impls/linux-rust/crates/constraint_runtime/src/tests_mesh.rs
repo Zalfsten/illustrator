@@ -1,7 +1,7 @@
 use super::*;
 use crate::document::Document;
-use crate::geom::Point2;
-use crate::geometry_kinds::Segment;
+use crate::geom::{HeadingAngle, Length, Point2, TurnAngle};
+use crate::geometry_kinds::{Arc, Segment};
 use crate::geometry::{EndpointExprs, GeometryRole};
 
 #[test]
@@ -80,6 +80,58 @@ fn construction_omitted_from_result_only_mesh() {
         .edges
         .iter()
         .any(|e| e.geometry == construction && e.role == GeometryRole::Construction));
+}
+
+#[test]
+fn arc_tessellates_to_multiple_edges() {
+    let mut doc = Document::new();
+    let id = doc.add_geometry::<Arc>(
+        GeometryRole::Result,
+        (
+            Point2::new(0.0, 0.0),
+            Length::new(1.0),
+            HeadingAngle::new(0.0),
+            TurnAngle::new(std::f64::consts::FRAC_PI_2),
+        ),
+    );
+    let mesh = Mesh::from_document(&doc, doc.vector(), MeshFilter::RESULT_ONLY);
+    assert!(mesh.edges.len() > 1);
+    assert!(mesh.edges.iter().all(|e| e.geometry == id));
+    let start = Arc::start_expr(id).evaluate(&doc, doc.vector());
+    let end = Arc::end_expr(id).evaluate(&doc, doc.vector());
+    assert_eq!(mesh.edges[0].a, start);
+    assert_eq!(mesh.edges.last().unwrap().b, end);
+    assert_eq!(
+        mesh.hit_endpoint(Point2::new(1.0, 0.05), 0.2),
+        Some(Arc::start_expr(id))
+    );
+    assert_eq!(
+        mesh.hit_endpoint(Point2::new(0.05, 1.0), 0.2),
+        Some(Arc::end_expr(id))
+    );
+}
+
+#[test]
+fn segment_and_arc_mesh_side_by_side() {
+    let mut doc = Document::new();
+    let seg = doc.add_geometry::<Segment>(
+        GeometryRole::Result,
+        (Point2::new(0.0, 0.0), Point2::new(1.0, 0.0)),
+    );
+    let arc = doc.add_geometry::<Arc>(
+        GeometryRole::Result,
+        (
+            Point2::new(2.0, 0.0),
+            Length::new(1.0),
+            HeadingAngle::new(0.0),
+            TurnAngle::new(std::f64::consts::PI),
+        ),
+    );
+    let mesh = Mesh::from_document(&doc, doc.vector(), MeshFilter::RESULT_ONLY);
+    let seg_edges: Vec<_> = mesh.edges.iter().filter(|e| e.geometry == seg).collect();
+    let arc_edges: Vec<_> = mesh.edges.iter().filter(|e| e.geometry == arc).collect();
+    assert_eq!(seg_edges.len(), 1);
+    assert!(arc_edges.len() > 1);
 }
 
 #[test]

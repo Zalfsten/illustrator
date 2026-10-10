@@ -70,6 +70,22 @@ Opaque scalar expressions that appear in structural constraints SHALL evaluate t
 - **THEN** the scalar equals \(\sqrt{(x_2-x_1)^2+(y_2-y_1)^2}\) from those endpoint coordinates in \(p\)
 - **AND** the expression's parameter indices cover the parameters that length depends on
 
+### Requirement: Heading-angle and turn-angle expressions expose analytical 1×n Jacobians
+
+Opaque heading-angle expressions and opaque turn-angle expressions that appear in structural constraints or other production evaluate paths SHALL evaluate to a heading angle or turn angle (radians) from Document (or an equivalent geometry-resolution port) and State \(p\), applying kind-owned formulas of the named geometries. They SHALL provide analytical derivative information with respect to the formula-local parameters they depend on as a \(1 \times n\) Jacobian (row \(\partial \theta / \partial p_i\)), where \(n\) is the number of parameters the formula depends on and column order matches the expression's reported parameter-index list. The production Jacobian path SHALL use those analytical derivatives; finite-difference SHALL NOT be the production path for those derivatives.
+
+#### Scenario: Heading-angle Jacobian is analytical when a formula exists
+
+- **WHEN** a heading-angle expression with a registered kind formula is evaluated for residual assembly
+- **THEN** analytical \(1 \times n\) derivative information for that expression is available
+- **AND** finite-difference is not used as the production derivative for that expression
+
+#### Scenario: Turn-angle Jacobian is analytical when a formula exists
+
+- **WHEN** a turn-angle expression with a registered kind formula is evaluated for residual assembly
+- **THEN** analytical \(1 \times n\) derivative information for that expression is available
+- **AND** column order matches the expression's reported parameter-index list
+
 ### Requirement: Curve frame expressions evaluate with derivatives
 
 For curve geometries, on-curve point expressions and tangent/normal vector expressions at a stated curve parameter SHALL evaluate from local parameters in the supplied State using the length and orientation semantics of the curve contract (tangent = chart derivative; normal = leftward planar rotate of tangent with equal length). They SHALL provide analytical derivatives with respect to the involved local parameters sufficient to form Jacobian contributions when those expressions appear in residuals. The production Jacobian path for these quantities SHALL be analytical; finite-difference approximation SHALL NOT be used as a substitute for those derivatives.

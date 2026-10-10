@@ -7,24 +7,93 @@
 //! (native formula domain affinely mapped). [`CurveParam::Uniform`] is constant-speed
 //! / arc-length fraction on \([0,1]\). For line segments the two coincide.
 //!
-//! Scalar chart parameters: [`Angle`] (radians) and [`Length`] (signed Vector DOF).
+//! Scalar chart parameters: [`HeadingAngle`] / [`TurnAngle`] (radians; absolute vs
+//! free, analogous to [`Point2`] / [`Vec2`]) and [`Length`] (signed Vector DOF).
 //! Vector packing of all of these lives in [`crate::geometry::StateAtom`].
-//! Formula Jacobians write into [`crate::matrix::MatrixView`] (see expressions /
+//! Formula Jacobians write into [`crate::matrix::MatrixAccess`] (see expressions /
 //! geometry kinds).
 
 use std::ops::{Add, Mul, Neg, Sub};
 
-/// Oriented angle in radians (Vector DOF; no wrap at the type level).
+/// Absolute orientation from a fixed planar null ray (radians; no wrap at the type level).
+///
+/// Analogous to [`Point2`]: measured relative to an angle origin. Difference of two
+/// headings is a [`TurnAngle`]; adding a turn yields another heading.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub struct Angle(f64);
+pub struct HeadingAngle(f64);
 
-impl Angle {
+impl HeadingAngle {
     pub fn new(radians: f64) -> Self {
         Self(radians)
     }
 
     pub fn radians(self) -> f64 {
         self.0
+    }
+}
+
+/// Free angular displacement (radians; no wrap at the type level).
+///
+/// Analogous to [`Vec2`]: independent of the angle origin. Sum/difference of turns
+/// is a turn; heading ± turn is a heading.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct TurnAngle(f64);
+
+impl TurnAngle {
+    pub fn new(radians: f64) -> Self {
+        Self(radians)
+    }
+
+    pub fn radians(self) -> f64 {
+        self.0
+    }
+}
+
+impl Sub for HeadingAngle {
+    type Output = TurnAngle;
+
+    fn sub(self, rhs: Self) -> TurnAngle {
+        TurnAngle::new(self.0 - rhs.0)
+    }
+}
+
+impl Add<TurnAngle> for HeadingAngle {
+    type Output = Self;
+
+    fn add(self, rhs: TurnAngle) -> Self {
+        Self::new(self.0 + rhs.0)
+    }
+}
+
+impl Sub<TurnAngle> for HeadingAngle {
+    type Output = Self;
+
+    fn sub(self, rhs: TurnAngle) -> Self {
+        Self::new(self.0 - rhs.0)
+    }
+}
+
+impl Add for TurnAngle {
+    type Output = Self;
+
+    fn add(self, rhs: Self) -> Self {
+        Self::new(self.0 + rhs.0)
+    }
+}
+
+impl Sub for TurnAngle {
+    type Output = Self;
+
+    fn sub(self, rhs: Self) -> Self {
+        Self::new(self.0 - rhs.0)
+    }
+}
+
+impl Neg for TurnAngle {
+    type Output = Self;
+
+    fn neg(self) -> Self {
+        Self::new(-self.0)
     }
 }
 

@@ -3,10 +3,10 @@
 //! Derived view only — not authoritative for parameters or constraints.
 
 use crate::document::Document;
-use crate::geom::Point2;
-use crate::geometry_kinds::Segment;
 use crate::expr::PointExpr;
-use crate::geometry::{EndpointExprs, GeometryId, GeometryRole};
+use crate::geom::{CurveParam, Point2};
+use crate::geometry::{CurveExprs, EndpointExprs, GeometryId, GeometryRole};
+use crate::geometry_kinds::{Arc, GeometryInst, Segment};
 use crate::vector::Vector;
 
 /// Which geometries contribute edges to a Mesh.
@@ -36,9 +36,9 @@ impl Default for MeshFilter {
 pub struct MeshEdge {
     pub geometry: GeometryId,
     pub role: GeometryRole,
-    /// Start endpoint for segment edges.
+    /// Edge start in world coordinates.
     pub a: Point2,
-    /// End endpoint for segment edges.
+    /// Edge end in world coordinates.
     pub b: Point2,
 }
 
@@ -46,42 +46,81 @@ pub struct MeshEdge {
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Mesh {
     pub edges: Vec<MeshEdge>,
+    /// Geometric curve endpoints (not every polyline vertex) for hit-testing.
+    endpoints: Vec<(PointExpr, Point2)>,
 }
 
 impl Mesh {
     pub fn from_document(doc: &Document, p: &Vector, filter: MeshFilter) -> Self {
-        let mut edges = Vec::with_capacity(doc.geometries().len());
+        let mut edges = Vec::new();
+        let mut endpoints = Vec::new();
         for g in doc.geometries().values() {
             if !filter.include_construction && g.role() == GeometryRole::Construction {
                 continue;
             }
             let id = g.id();
-            edges.push(MeshEdge {
-                geometry: id,
-                role: g.role(),
-                // Today every kind is a segment; widen when other charts exist.
-                a: Segment::start_expr(id).evaluate(doc, p),
-                b: Segment::end_expr(id).evaluate(doc, p),
-            });
+            let role = g.role();
+            match g {
+                GeometryInst::Segment(_) => {
+                    let a = Segment::start_expr(id).evaluate(doc, p);
+                    let b = Segment::end_expr(id).evaluate(doc, p);
+                    edges.push(MeshEdge {
+                        geometry: id,
+                        role,
+                        a,
+                        b,
+                    });
+                    endpoints.push((Segment::start_expr(id), a));
+                    endpoints.push((Segment::end_expr(id), b));
+                }
+                GeometryInst::Arc(_) => {
+                    let start_expr = Arc::start_expr(id);
+                    let end_expr = Arc::end_expr(id);
+                    let start_pt = start_expr.evaluate(doc, p);
+                    let end_pt = end_expr.evaluate(doc, p);
+                    let chart = crate::mapper::Mapper::unpack_chart(
+                        <Arc as crate::geometry_kinds::InGeometryCatalog>::as_catalog_ref(g),
+                        p,
+                    );
+                    let n = Arc::mesh_sample_count(chart.3);
+                    let mut prev = start_pt;
+                    for i in 1..n {
+                        let t = i as f64 / (n - 1) as f64;
+                        let pt = if i + 1 == n {
+                            end_pt
+                        } else {
+                            Arc::on_curve_expr(id, CurveParam::Normalized(t)).evaluate(doc, p)
+                        };
+                        edges.push(MeshEdge {
+                            geometry: id,
+                            role,
+                            a: prev,
+                            b: pt,
+                        });
+                        prev = pt;
+                    }
+                    endpoints.push((start_expr, start_pt));
+                    endpoints.push((end_expr, end_pt));
+                }
+            }
         }
-        Self { edges }
+        Self { edges, endpoints }
     }
 
-    /// Nearest Mesh endpoint within `radius`, or `None`.
-    /// For segment edges, `a` is start and `b` is end.
+    /// Geometric curve endpoint expressions (segment start/end; arc start/end).
+    pub fn endpoint_exprs(&self) -> impl Iterator<Item = PointExpr> + '_ {
+        self.endpoints.iter().map(|(e, _)| *e)
+    }
+
+    /// Nearest geometric curve endpoint within `radius`, or `None`.
     pub fn hit_endpoint(&self, query: Point2, radius: f64) -> Option<PointExpr> {
         let mut best: Option<PointExpr> = None;
         let mut best_d = radius;
-        for e in &self.edges {
-            for (expr, pt) in [
-                (Segment::start_expr(e.geometry), e.a),
-                (Segment::end_expr(e.geometry), e.b),
-            ] {
-                let d = (pt.x - query.x).hypot(pt.y - query.y);
-                if d < best_d {
-                    best_d = d;
-                    best = Some(expr);
-                }
+        for (expr, pt) in &self.endpoints {
+            let d = (pt.x - query.x).hypot(pt.y - query.y);
+            if d < best_d {
+                best_d = d;
+                best = Some(*expr);
             }
         }
         best
