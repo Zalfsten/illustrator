@@ -1,0 +1,20 @@
+# aider runs non-interactively, driven by tools/local-coder/delegate.sh.
+# The supervising agent reviews the working tree, so aider never commits.
+auto-commits: false
+dirty-commits: false
+gitignore: false
+
+# Edit -> cargo test -> fix loop stays local; only the end result is reported.
+auto-test: true
+test-cmd: cargo test --manifest-path impls/linux-rust/Cargo.toml
+auto-lint: false
+
+yes-always: true
+pretty: false
+stream: false
+analytics-disable: true
+check-update: false
+show-release-notes: false
+show-model-warnings: false
+
+map-tokens: 1024

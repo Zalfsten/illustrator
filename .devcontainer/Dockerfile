@@ -42,3 +42,20 @@ RUN apt-get update \
   && gh --version \
   && git --version \
   && rm -rf /var/lib/apt/lists/*
+
+# aider: delegates small, test-verified coding tasks to the host's Ollama
+# (see tools/local-coder/). Installed system-wide so the vscode user can run it.
+ENV UV_TOOL_DIR=/opt/uv-tools \
+    UV_TOOL_BIN_DIR=/usr/local/bin \
+    UV_PYTHON_INSTALL_DIR=/opt/uv-python
+RUN curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR=/usr/local/bin sh \
+  && uv tool install --python 3.12 aider-chat \
+  && aider --version
+
+# Claude Code CLI. Its config/credentials live in a named volume
+# (see devcontainer.json) so login survives container rebuilds.
+ENV CLAUDE_CONFIG_DIR=/home/vscode/.claude
+RUN npm install -g @anthropic-ai/claude-code \
+  && claude --version \
+  && mkdir -p /home/vscode/.claude \
+  && chown vscode:vscode /home/vscode/.claude

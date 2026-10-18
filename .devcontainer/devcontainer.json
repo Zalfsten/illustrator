@@ -18,7 +18,8 @@
       "extensions": [
         "rust-lang.rust-analyzer",
         "tamasfe.even-better-toml",
-        "usernamehw.errorlens"
+        "usernamehw.errorlens",
+        "anthropic.claude-code"
       ]
     }
   },
@@ -27,12 +28,19 @@
 
   "runArgs": [
     "--env",
-    "DISPLAY=${localEnv:DISPLAY}"
+    "DISPLAY=${localEnv:DISPLAY}",
+    // Host network so aider reaches the host's Ollama on 127.0.0.1:11434
+    "--network=host"
   ],
+
+  "containerEnv": {
+    "OLLAMA_API_BASE": "http://127.0.0.1:11434"
+  },
 
   "mounts": [
     "source=${localEnv:HOME}${localEnv:USERPROFILE}/.ssh,target=/home/vscode/.ssh,readonly,type=bind,consistency=cached",
-    "source=/tmp/.X11-unix,target=/tmp/.X11-unix,type=bind"
+    "source=/tmp/.X11-unix,target=/tmp/.X11-unix,type=bind",
+    "source=claude-code-config-${devcontainerId},target=/home/vscode/.claude,type=volume"
   ],
 
   "remoteUser": "vscode"

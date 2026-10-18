@@ -1,0 +1,18 @@
+# Per-model settings for the local Ollama models.
+# num_ctx must be set explicitly: Ollama's default context is far too small
+# for Rust sources plus compiler output.
+
+# Dense 7B, fits fully into 8 GB VRAM. Small models botch diff edits,
+# so they rewrite whole files (keep delegated files small).
+- name: ollama_chat/qwen2.5-coder:7b
+  edit_format: whole
+  use_repo_map: true
+  extra_params:
+    num_ctx: 16384
+
+# MoE (~3B active), partially offloaded to system RAM.
+- name: ollama_chat/qwen3-coder:30b
+  edit_format: diff
+  use_repo_map: true
+  extra_params:
+    num_ctx: 32768

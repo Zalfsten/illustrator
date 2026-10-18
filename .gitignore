@@ -2,3 +2,9 @@
 **/target/
 **/*.rs.bk
 *.pdb
+
+# aider / local coder
+.aider.chat.history.md
+.aider.input.history
+.aider.tags.cache.*
+.local-coder/

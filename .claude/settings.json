@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(tools/local-coder/delegate.sh:*)"
+    ]
+  }
+}
