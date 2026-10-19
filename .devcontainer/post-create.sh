@@ -10,11 +10,11 @@ echo "Claude Code: $(claude --version)"
 echo "aider: $(aider --version)"
 
 if [[ ! -d openspec ]]; then
-  echo "Initializing OpenSpec for Cursor..."
-  openspec init --tools cursor --no-animation
+  echo "Initializing OpenSpec for Cursor and Claude Code..."
+  openspec init --tools cursor,claude --no-animation
 else
   echo "Refreshing OpenSpec tool integrations..."
   openspec update --no-animation || true
 fi
 
-echo "Dev container ready. Use /opsx-propose in Cursor Agent chat."
+echo "Dev container ready. Use /opsx-propose (Cursor) or /opsx:propose (Claude Code)."
