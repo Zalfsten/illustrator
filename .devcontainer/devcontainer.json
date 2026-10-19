@@ -30,11 +30,18 @@
     "--env",
     "DISPLAY=${localEnv:DISPLAY}",
     // Host network so aider reaches the host's Ollama on 127.0.0.1:11434
-    "--network=host"
+    "--network=host",
+    // Hard caps: a runaway build/test inside the container gets OOM-killed
+    // there instead of freezing the host (which also runs Ollama).
+    "--memory=24g",
+    "--memory-swap=24g",
+    "--cpus=10"
   ],
 
   "containerEnv": {
-    "OLLAMA_API_BASE": "http://127.0.0.1:11434"
+    "OLLAMA_API_BASE": "http://127.0.0.1:11434",
+    // Ceres/Eigen C++ units need ~1-2 GB each; cap parallel compile jobs.
+    "CARGO_BUILD_JOBS": "6"
   },
 
   "mounts": [
