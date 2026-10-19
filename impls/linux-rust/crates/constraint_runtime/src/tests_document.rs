@@ -147,28 +147,23 @@ fn constraints_on_tracks_incidence() {
 }
 
 #[test]
-fn id_generator_allocate_and_observe() {
+fn id_map_next_id_skips_explicit_and_removed_ids() {
     use crate::geometry::GeometryId;
-    use crate::id::IdGenerator;
+    use crate::id::IdMap;
 
-    let mut ids = IdGenerator::<GeometryId>::new();
-    assert_eq!(ids.allocate(), GeometryId(0));
-    assert_eq!(ids.allocate(), GeometryId(1));
-    ids.observe(GeometryId(10));
-    assert_eq!(ids.allocate(), GeometryId(11));
+    let mut ids = IdMap::<GeometryId, ()>::new();
+    assert_eq!(ids.next_id(), GeometryId(0));
+    ids.insert(GeometryId(0), ());
+    ids.insert(GeometryId(10), ());
+    assert_eq!(ids.next_id(), GeometryId(11));
+    assert_eq!(ids.remove(GeometryId(10)), Some(()));
+    assert_eq!(ids.next_id(), GeometryId(11));
+    assert_eq!(ids.len(), 1);
 }
 
 #[test]
 fn constraint_id_allocate_lookup_and_remove() {
     use crate::constraint::ConstraintId;
-    use crate::id::IdGenerator;
-
-    let mut ids = IdGenerator::<ConstraintId>::new();
-    assert_eq!(ids.allocate(), ConstraintId(0));
-    assert_eq!(ids.allocate(), ConstraintId(1));
-    ids.observe(ConstraintId(10));
-    assert_eq!(ids.allocate(), ConstraintId(11));
-
     let mut doc = Document::new();
     let s0 = doc.add_geometry::<Segment>(
         GeometryRole::Result,

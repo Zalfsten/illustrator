@@ -9,10 +9,9 @@ use std::collections::HashMap;
 use crate::constraint::{ConstraintEntry, ConstraintId};
 use crate::constraint_kinds::ConstraintInst;
 use crate::expr::PointExpr;
-use crate::geometry::{GeometryId, GeometryKind, GeometryRole, GeometryShell};
+use crate::geometry::{Geometry, GeometryId, GeometryRole, GeometryShell};
 use crate::geometry_kinds::GeometryInst;
-use crate::id::IdGenerator;
-use crate::store::GeometryStore;
+use crate::id::IdMap;
 use crate::vector::Vector;
 
 /// One Congruence edge, indexed under each participating geometry.
@@ -38,16 +37,14 @@ impl IdentificationEdge {
 /// Document = discrete sketch (geometries, constraints, incidence) + committed Vector.
 #[derive(Clone, Debug, Default)]
 pub struct Document {
-    /// Geometry store (id → catalog instance).
-    geometries: HashMap<GeometryId, GeometryInst>,
-    /// Constraint store (id → entry).
-    constraints: HashMap<ConstraintId, ConstraintEntry>,
+    /// Geometry store (id → catalog instance; array lookup on the solve path).
+    geometries: IdMap<GeometryId, GeometryInst>,
+    /// Constraint store (id → entry; id order fixes assembly row order).
+    constraints: IdMap<ConstraintId, ConstraintEntry>,
     /// `GeometryId` → constraints that reference it (incidence).
     constraints_on_geometry: HashMap<GeometryId, Vec<ConstraintId>>,
     /// `GeometryId` → Congruence edges touching that geometry (PointExpr partners).
     identification_by_geometry: HashMap<GeometryId, Vec<IdentificationEdge>>,
-    ids: IdGenerator<GeometryId>,
-    constraint_ids: IdGenerator<ConstraintId>,
     /// Committed continuous parameters \(p\).
     pub vector: Vector,
 }
@@ -69,20 +66,29 @@ impl Document {
         &self.vector
     }
 
-    pub fn geometries(&self) -> &HashMap<GeometryId, GeometryInst> {
+    pub fn geometries(&self) -> &IdMap<GeometryId, GeometryInst> {
         &self.geometries
     }
 
     pub fn geometry(&self, id: GeometryId) -> Option<&GeometryInst> {
-        self.geometries.get(&id)
+        self.geometries.get(id)
     }
 
-    pub fn constraints(&self) -> &HashMap<ConstraintId, ConstraintEntry> {
+    /// Geometry `id`, panicking if absent (expressions only reference live ids).
+    #[inline]
+    pub fn expect_geometry(&self, id: GeometryId) -> &GeometryInst {
+        match self.geometries.get(id) {
+            Some(g) => g,
+            None => missing_geometry(id),
+        }
+    }
+
+    pub fn constraints(&self) -> &IdMap<ConstraintId, ConstraintEntry> {
         &self.constraints
     }
 
     pub fn constraint(&self, id: ConstraintId) -> Option<&ConstraintInst> {
-        self.constraints.get(&id).map(|e| e.body())
+        self.constraints.get(id).map(|e| e.body())
     }
 
     /// Constraint ids that reference geometry `id` (empty if none / unknown id).
@@ -110,37 +116,27 @@ impl Document {
     /// Pack chart init → extend Vector → register a geometry instance.
     ///
     /// Chart pack receives only kind init (no identity). Id and Vector offset are
-    /// assigned here via [`IdGenerator`] and the current Vector length.
-    pub fn add_geometry<C>(&mut self, role: GeometryRole, init: C::Init) -> GeometryId
-    where
-        C: GeometryKind + Into<GeometryInst>,
-    {
-        let packed = C::pack(init);
-        debug_assert_eq!(packed.as_ref().len(), C::PARAMETER_COUNT);
-        let id = self.ids.allocate();
+    /// assigned here from [`IdMap::next_id`] and the current Vector length.
+    pub fn add_geometry<K: Geometry>(&mut self, role: GeometryRole, init: K::Init) -> GeometryId {
+        let packed = K::pack(init);
+        debug_assert_eq!(packed.as_ref().len(), K::PARAMETER_COUNT);
+        let id = self.geometries.next_id();
         let param_offset = self.vector.len();
         self.vector.extend_from_slice(packed.as_ref());
-        self.push_geometry(C::from(GeometryShell::new(id, role, param_offset)));
+        self.push_geometry(GeometryInst::of::<K>(GeometryShell::new(id, role, param_offset)));
         debug_assert_eq!(self.vector.len(), self.parameter_count());
         id
     }
 
     /// Register a geometry whose parameters already live in an external Vector.
     /// Prefer [`Document::add_geometry`] so graph and committed Vector stay matched.
-    pub(crate) fn push_geometry(&mut self, g: impl Into<GeometryInst>) {
-        let g = g.into();
-        let id = g.id();
-        debug_assert!(
-            !self.geometries.contains_key(&id),
-            "duplicate geometry id {id:?}"
-        );
-        self.ids.observe(id);
-        self.geometries.insert(id, g);
+    pub(crate) fn push_geometry(&mut self, g: GeometryInst) {
+        self.geometries.insert(g.id(), g);
     }
 
     /// Set geometry role (result vs construction). Returns false if id missing.
     pub fn set_geometry_role(&mut self, id: GeometryId, role: GeometryRole) -> bool {
-        let Some(g) = self.geometries.get_mut(&id) else {
+        let Some(g) = self.geometries.get_mut(id) else {
             return false;
         };
         g.set_role(role);
@@ -150,11 +146,7 @@ impl Document {
     pub fn add_constraint(&mut self, c: impl Into<ConstraintInst>) -> ConstraintId {
         let body = c.into();
         let geos = body.referenced_geometries();
-        let id = self.constraint_ids.allocate();
-        debug_assert!(
-            !self.constraints.contains_key(&id),
-            "duplicate constraint id {id:?}"
-        );
+        let id = self.constraints.next_id();
         if let Some(g) = body.as_congruence() {
             self.link_identification(id, g.a, g.b);
         }
@@ -165,7 +157,7 @@ impl Document {
 
     /// Remove a constraint by id. Returns false if missing.
     pub fn remove_constraint(&mut self, id: ConstraintId) -> bool {
-        let Some(entry) = self.constraints.remove(&id) else {
+        let Some(entry) = self.constraints.remove(id) else {
             return false;
         };
         let geos = entry.body().referenced_geometries();
@@ -179,7 +171,7 @@ impl Document {
 
     /// Remove a geometry: compact Vector, remap offsets, drop orphan constraints.
     pub fn remove_geometry(&mut self, id: GeometryId) -> bool {
-        let Some(removed) = self.geometries.remove(&id) else {
+        let Some(removed) = self.geometries.remove(id) else {
             return false;
         };
 
@@ -194,7 +186,7 @@ impl Document {
         }
 
         self.constraints
-            .retain(|_, e| !e.body().references_geometry(id));
+            .retain(|e| !e.body().references_geometry(id));
         self.rebuild_incidence();
 
         debug_assert_eq!(self.vector.len(), self.parameter_count());
@@ -303,10 +295,10 @@ impl Document {
     }
 }
 
-impl GeometryStore for Document {
-    fn geometry(&self, id: GeometryId) -> Option<&GeometryInst> {
-        self.geometries.get(&id)
-    }
+#[cold]
+#[track_caller]
+fn missing_geometry(id: GeometryId) -> ! {
+    panic!("geometry id {id:?} not in document")
 }
 
 #[cfg(test)]

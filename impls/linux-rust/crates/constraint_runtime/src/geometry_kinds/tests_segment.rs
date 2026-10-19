@@ -6,28 +6,25 @@ use crate::geometry::{
     Chart, CurveExprs, EndpointExprs, GeometryId, GeometryRole, GeometryShell,
 };
 use crate::geometry_kinds::GeometryInst;
-use crate::mapper::Mapper;
 use crate::matrix::DenseMatrix;
 use crate::vector::Vector;
 
-fn store_with(g: Segment) -> Document {
+fn store_with(g: GeometryInst) -> Document {
     let mut doc = Document::new();
     doc.push_geometry(g);
     doc
 }
 
-fn segment_geom(id: usize, param_offset: usize) -> Segment {
-    Segment {
-        shell: GeometryShell::new(GeometryId(id), GeometryRole::Result, param_offset),
-    }
+fn segment_geom(id: usize, param_offset: usize) -> GeometryInst {
+    GeometryInst::of::<Segment>(GeometryShell::new(GeometryId(id), GeometryRole::Result, param_offset))
 }
 
 #[test]
 fn segment_layout_and_param_block() {
     let offset = 0;
     assert_eq!(Segment::PARAMETER_COUNT, 2 * Point2::DOF_COUNT);
-    assert_eq!(Segment::start.indices(), vec![0, 1]);
-    assert_eq!(Segment::end.indices(), vec![2, 3]);
+    assert_eq!(Segment::start.range().collect::<Vec<_>>(), vec![0, 1]);
+    assert_eq!(Segment::end.range().collect::<Vec<_>>(), vec![2, 3]);
     let init = (Point2::new(0.0, 0.0), Point2::new(1.0, 0.0));
     assert_eq!(
         <Segment as Chart>::pack(init).as_ref(),
@@ -35,7 +32,7 @@ fn segment_layout_and_param_block() {
     );
     assert_eq!(Segment::unpack(&[0.0, 0.0, 1.0, 0.0]), init);
     assert_eq!(
-        Mapper::chart_param_block(&segment_geom(0, offset)),
+        segment_geom(0, offset).param_block(),
         0..4
     );
     assert_eq!(Segment::param_block_at(2), 2..6);
@@ -43,7 +40,7 @@ fn segment_layout_and_param_block() {
 
 #[test]
 fn reindex_after_removal_shifts_later_blocks() {
-    let mut g = GeometryInst::from(segment_geom(1, 4));
+    let mut g = segment_geom(1, 4);
     g.reindex_after_removal(0, 4);
     assert_eq!(g.param_block().start, 0);
     g.reindex_after_removal(0, 4);

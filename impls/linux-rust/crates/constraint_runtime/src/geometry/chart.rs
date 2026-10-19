@@ -1,11 +1,9 @@
 //! Kind-owned chart: Vector layout (`pack` / `unpack`) and named local slots.
 //!
-//! [`GeometryKind`] is the Document add bound: [`Chart`] plus shell identity.
+//! Formulas on top of a chart live on [`crate::geometry::Geometry`].
 
-use std::fmt::Debug;
 use std::ops::Range;
 
-use super::shell::{AsShell, GeometryShell};
 use crate::geom::{HeadingAngle, Length, Point2, TurnAngle, Vec2};
 
 /// Packable atom in the global parameter vector: fixed DOF width and flatten order.
@@ -96,106 +94,10 @@ impl StateAtom for Length {
     }
 }
 
-/// Pack / unpack a fixed Init tuple of [`StateAtom`]s into a contiguous chart block.
-///
-/// Used by [`chart_atoms!`] so the macro only names slots; flatten order follows the tuple.
-pub(crate) trait PackAtoms: Sized {
-    const DOF_COUNT: usize;
-    fn write_all(self, out: &mut [f64]);
-    fn read_all(params: &[f64]) -> Self;
-}
-
-impl<A: StateAtom> PackAtoms for (A,) {
-    const DOF_COUNT: usize = A::DOF_COUNT;
-
-    fn write_all(self, out: &mut [f64]) {
-        debug_assert_eq!(out.len(), Self::DOF_COUNT);
-        self.0.write_params(out);
-    }
-
-    fn read_all(params: &[f64]) -> Self {
-        debug_assert_eq!(params.len(), Self::DOF_COUNT);
-        (A::read_params(params),)
-    }
-}
-
-impl<A: StateAtom, B: StateAtom> PackAtoms for (A, B) {
-    const DOF_COUNT: usize = A::DOF_COUNT + B::DOF_COUNT;
-
-    fn write_all(self, out: &mut [f64]) {
-        debug_assert_eq!(out.len(), Self::DOF_COUNT);
-        let (a, b) = self;
-        a.write_params(&mut out[..A::DOF_COUNT]);
-        b.write_params(&mut out[A::DOF_COUNT..]);
-    }
-
-    fn read_all(params: &[f64]) -> Self {
-        debug_assert_eq!(params.len(), Self::DOF_COUNT);
-        (
-            A::read_params(&params[..A::DOF_COUNT]),
-            B::read_params(&params[A::DOF_COUNT..]),
-        )
-    }
-}
-
-impl<A: StateAtom, B: StateAtom, C: StateAtom> PackAtoms for (A, B, C) {
-    const DOF_COUNT: usize = A::DOF_COUNT + B::DOF_COUNT + C::DOF_COUNT;
-
-    fn write_all(self, out: &mut [f64]) {
-        debug_assert_eq!(out.len(), Self::DOF_COUNT);
-        let (a, b, c) = self;
-        let i1 = A::DOF_COUNT;
-        let i2 = i1 + B::DOF_COUNT;
-        a.write_params(&mut out[..i1]);
-        b.write_params(&mut out[i1..i2]);
-        c.write_params(&mut out[i2..]);
-    }
-
-    fn read_all(params: &[f64]) -> Self {
-        debug_assert_eq!(params.len(), Self::DOF_COUNT);
-        let i1 = A::DOF_COUNT;
-        let i2 = i1 + B::DOF_COUNT;
-        (
-            A::read_params(&params[..i1]),
-            B::read_params(&params[i1..i2]),
-            C::read_params(&params[i2..]),
-        )
-    }
-}
-
-impl<A: StateAtom, B: StateAtom, C: StateAtom, D: StateAtom> PackAtoms for (A, B, C, D) {
-    const DOF_COUNT: usize = A::DOF_COUNT + B::DOF_COUNT + C::DOF_COUNT + D::DOF_COUNT;
-
-    fn write_all(self, out: &mut [f64]) {
-        debug_assert_eq!(out.len(), Self::DOF_COUNT);
-        let (a, b, c, d) = self;
-        let i1 = A::DOF_COUNT;
-        let i2 = i1 + B::DOF_COUNT;
-        let i3 = i2 + C::DOF_COUNT;
-        a.write_params(&mut out[..i1]);
-        b.write_params(&mut out[i1..i2]);
-        c.write_params(&mut out[i2..i3]);
-        d.write_params(&mut out[i3..]);
-    }
-
-    fn read_all(params: &[f64]) -> Self {
-        debug_assert_eq!(params.len(), Self::DOF_COUNT);
-        let i1 = A::DOF_COUNT;
-        let i2 = i1 + B::DOF_COUNT;
-        let i3 = i2 + C::DOF_COUNT;
-        (
-            A::read_params(&params[..i1]),
-            B::read_params(&params[i1..i2]),
-            C::read_params(&params[i2..i3]),
-            D::read_params(&params[i3..]),
-        )
-    }
-}
-
 /// Contiguous local DOF window for one [`StateAtom`] inside a chart parameter block.
 ///
-/// Slot offsets define pack order and formula-local index ranges. Prefer
-/// [`chart_atoms!`] so kinds only name atoms; pack / unpack / [`SLOTS`] follow.
+/// Slot offsets define pack order and formula-local index ranges. Kinds declare
+/// slots with `chart_atoms!`; pack / unpack / `SLOTS` follow.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct ChartSlot {
     offset: usize,
@@ -230,37 +132,20 @@ impl ChartSlot {
         self.offset + comp
     }
 
-    /// Formula-local parameter indices covered by this slot.
-    pub fn indices(self) -> Vec<usize> {
-        self.range().collect()
-    }
-
-    /// Concatenate indices of several slots in declaration order.
-    pub fn union_indices(slots: &[ChartSlot]) -> Vec<usize> {
-        let mut out = Vec::new();
-        for &s in slots {
-            out.extend(s.indices());
-        }
-        out
-    }
-
-    /// Total DOF covered by `slots` (no allocation).
-    pub fn union_dof(slots: &[ChartSlot]) -> usize {
-        slots.iter().map(|s| s.dof).sum()
+    /// Contiguous local window from the start of `self` through the end of `last`.
+    pub const fn span(self, last: ChartSlot) -> Range<usize> {
+        self.offset..last.end()
     }
 }
 
 /// Geometry kind as a chart: packs init into Vector.
 ///
-/// Concrete kinds call [`geometry_shell_instance!`](crate::geometry::shell::geometry_shell_instance)
-/// so they satisfy [`GeometryKind`]. Document identity / reindex after storage
-/// live on [`crate::geometry_kinds::GeometryInst`].
-///
-/// Prefer [`chart_atoms!`] to declare named [`StateAtom`] slots and derive
-/// [`PARAMETER_COUNT`] / `pack` / `unpack`.
+/// Document identity / reindex after storage live on
+/// [`crate::geometry_kinds::GeometryInst`]. Prefer `chart_atoms!` to declare
+/// named [`StateAtom`] slots and derive [`Self::PARAMETER_COUNT`] / `pack` / `unpack`.
 pub trait Chart {
     /// Kind-specific construction inputs (e.g. segment endpoints).
-    type Init;
+    type Init: Copy;
 
     /// Number of contiguous Vector scalars for one instance of this kind.
     const PARAMETER_COUNT: usize;
@@ -277,20 +162,11 @@ pub trait Chart {
     }
 }
 
-/// Concrete geometry kind ready for Document storage and structural add.
+/// Declare named chart atoms; derive slots, `SLOTS`, and [`Chart`] pack/unpack.
 ///
-/// Implement [`Chart`] and invoke [`geometry_shell_instance!`] — this marker
-/// follows via the blanket. Conversion into the document catalog is
-/// [`Into<crate::geometry_kinds::GeometryInst>`]. Shared shell ops after
-/// storage go through [`GeometryInst`](crate::geometry_kinds::GeometryInst).
-pub trait GeometryKind: Chart + AsShell + From<GeometryShell> + Clone + Debug + 'static {}
-
-impl<T> GeometryKind for T where T: Chart + AsShell + From<GeometryShell> + Clone + Debug + 'static {}
-
-/// Declare named chart atoms; derive slots, [`SLOTS`](ChartSlot), and [`Chart`] pack/unpack.
-///
-/// Pack / unpack / [`PARAMETER_COUNT`](Chart::PARAMETER_COUNT) come from [`PackAtoms`] on
-/// the Init tuple; this macro only names contiguous [`ChartSlot`]s.
+/// Each atom gets a contiguous [`ChartSlot`]; `pack` / `unpack` read and write
+/// atoms through those slot ranges, so layout is stated once (slot order).
+/// The Init tuple follows declaration order.
 ///
 /// ```ignore
 /// chart_atoms! {
@@ -319,21 +195,28 @@ macro_rules! chart_atoms {
         }
 
         impl $crate::geometry::Chart for $ty {
-            // Trailing comma keeps a single atom as a 1-tuple for [`PackAtoms`].
+            // Trailing comma keeps a single atom as a 1-tuple.
             type Init = ($first_atom, $($atom,)*);
 
-            const PARAMETER_COUNT: usize =
-                <Self::Init as $crate::geometry::chart::PackAtoms>::DOF_COUNT;
+            const PARAMETER_COUNT: usize = <$first_atom as $crate::geometry::StateAtom>::DOF_COUNT
+                $(+ <$atom as $crate::geometry::StateAtom>::DOF_COUNT)*;
 
+            #[inline]
             fn pack(init: Self::Init) -> impl AsRef<[f64]> {
                 let mut buf = [0.0; Self::PARAMETER_COUNT];
-                $crate::geometry::chart::PackAtoms::write_all(init, &mut buf);
+                let ($first, $($name,)*) = init;
+                $crate::geometry::StateAtom::write_params($first, &mut buf[Self::$first.range()]);
+                $($crate::geometry::StateAtom::write_params($name, &mut buf[Self::$name.range()]);)*
                 buf
             }
 
+            #[inline]
             fn unpack(params: &[f64]) -> Self::Init {
                 debug_assert_eq!(params.len(), Self::PARAMETER_COUNT);
-                <Self::Init as $crate::geometry::chart::PackAtoms>::read_all(params)
+                (
+                    <$first_atom as $crate::geometry::StateAtom>::read_params(&params[Self::$first.range()]),
+                    $(<$atom as $crate::geometry::StateAtom>::read_params(&params[Self::$name.range()]),)*
+                )
             }
         }
     };

@@ -12,11 +12,9 @@ pub mod geometry;
 pub mod geometry_kinds;
 pub mod id;
 pub mod interact;
-pub mod mapper;
 pub mod matrix;
 pub mod mesh;
 pub mod solver;
-pub mod store;
 pub mod vector;
 
 pub use assemble::{
@@ -29,21 +27,20 @@ pub use constraint_kinds::{
 };
 pub use document::Document;
 pub use expr::{
-    HeadingAngleExpr, LengthExpr, PointExpr, TurnAngleExpr, VecExpr, MAX_FORMULA_LOCAL_DOF,
+    Expr, HeadingAngleExpr, LengthExpr, PointExpr, TurnAngleExpr, VecExpr, VecJet,
+    MAX_FORMULA_LOCAL_DOF,
 };
 pub use geom::{CurveParam, HeadingAngle, Length, Point2, TurnAngle, Vec2};
 pub use geometry::{
-    AsShell, Chart, ChartSlot, CurveExprs, EndpointExprs, GeometryId, GeometryKind, GeometryRole,
+    Chart, ChartSlot, CurveExprs, EndpointExprs, Geometry, GeometryId, GeometryRole,
     GeometryShell, StateAtom,
 };
-pub use geometry_kinds::{Arc, GeometryInst, InGeometryCatalog, Segment};
-pub use id::IdGenerator;
+pub use geometry_kinds::{Arc, GeometryInst, GeometryKind, Segment};
+pub use id::IdMap;
 pub use interact::{DragSession, InteractiveSolve, SoftTerms, SolveError};
-pub use mapper::Mapper;
-pub use matrix::{DenseMatrix, MatrixAccess, Matrix, MatrixView, ScatterMatrix};
+pub use matrix::{DenseMatrix, Matrix, MatrixAccess, ScatterMatrix};
 pub use mesh::{Mesh, MeshEdge, MeshFilter, MAX_CHORD_TURN};
 pub use solver::{ffi, LmSolver, SolveOutcome, SolverOptions, SolverPort, StubSolver, SystemEval};
-pub use store::GeometryStore;
-pub use vector::{DenseVec, ScatterVec, VecAccess, VecView, Vector};
+pub use vector::Vector;
 
 pub const SOLVE_TOL: f64 = 1e-6;

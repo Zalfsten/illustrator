@@ -1,12 +1,11 @@
 //! Parallel free vectors (one residual: 2D cross).
 
-use crate::constraint::ConstraintKind;
+use crate::constraint::{pair_connectivity, unique_geometry_ids, ConstraintKind};
+use crate::document::Document;
 use crate::expr::VecExpr;
 use crate::geometry::GeometryId;
-use crate::mapper::Mapper;
 use crate::matrix::MatrixAccess;
-use crate::store::GeometryStore;
-use crate::vector::{VecAccess, Vector};
+use crate::vector::Vector;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Parallel {
@@ -17,42 +16,25 @@ pub struct Parallel {
 impl ConstraintKind for Parallel {
     const RESIDUAL_ARITY: usize = 1;
 
-    fn param_connectivity<S: GeometryStore + ?Sized>(&self, store: &S) -> Vec<usize> {
-        Mapper::join_indices([self.a.param_indices(store), self.b.param_indices(store)])
+    fn param_connectivity(&self, doc: &Document) -> Vec<usize> {
+        pair_connectivity(doc, &self.a, &self.b)
     }
 
-    fn eval_residual<S: GeometryStore + ?Sized, R: VecAccess>(
-        &self,
-        store: &S,
-        p: &Vector,
-        out: &mut R,
-    ) {
-        let va = self.a.evaluate(store, p);
-        let vb = self.b.evaluate(store, p);
+    fn eval_residual(&self, doc: &Document, p: &Vector, out: &mut [f64]) {
+        let va = self.a.evaluate(doc, p);
+        let vb = self.b.evaluate(doc, p);
         out[0] = va.cross(vb);
     }
 
-    fn accumulate_jacobian<S: GeometryStore + ?Sized, J: MatrixAccess>(
-        &self,
-        store: &S,
-        p: &Vector,
-        j: &mut J,
-    ) {
+    fn accumulate_jacobian<J: MatrixAccess>(&self, doc: &Document, p: &Vector, j: &mut J) {
         // r = va × vb; ∂r/∂va = vb.right_normal(), ∂r/∂vb = va.left_normal()
-        let va = self.a.evaluate(store, p);
-        let vb = self.b.evaluate(store, p);
-        let na = self.a.param_count();
-        self.a
-            .accumulate_contracted(store, p, j, vb.right_normal(), 1.0);
-        let mut jb = j.block_slice(0, na, j.nrows(), j.ncols() - na);
-        self.b
-            .accumulate_contracted(store, p, &mut jb, va.left_normal(), 1.0);
+        let ja = self.a.jet(doc, p);
+        let jb = self.b.jet(doc, p);
+        ja.contract_into(j, 0, jb.value.right_normal(), 1.0);
+        jb.contract_into(j, ja.cols(), ja.value.left_normal(), 1.0);
     }
 
     fn referenced_geometries(&self) -> Vec<GeometryId> {
-        crate::constraint::unique_geometry_ids([
-            self.a.referenced_geometry(),
-            self.b.referenced_geometry(),
-        ])
+        unique_geometry_ids([self.a.referenced_geometry(), self.b.referenced_geometry()])
     }
 }

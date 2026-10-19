@@ -1,23 +1,21 @@
 use super::*;
 use crate::document::Document;
+use crate::geometry_kinds::GeometryInst;
 use crate::geom::{CurveParam, HeadingAngle, Length, Point2, TurnAngle};
 use crate::geometry::{Chart, CurveExprs, EndpointExprs, GeometryId, GeometryRole, GeometryShell};
-use crate::mapper::Mapper;
 use crate::matrix::DenseMatrix;
 use crate::vector::Vector;
 
 type ArcInit = (Point2, Length, HeadingAngle, TurnAngle);
 
-fn store_with(g: Arc) -> Document {
+fn store_with(g: GeometryInst) -> Document {
     let mut doc = Document::new();
     doc.push_geometry(g);
     doc
 }
 
-fn arc_geom(id: usize, param_offset: usize) -> Arc {
-    Arc {
-        shell: GeometryShell::new(GeometryId(id), GeometryRole::Result, param_offset),
-    }
+fn arc_geom(id: usize, param_offset: usize) -> GeometryInst {
+    GeometryInst::of::<Arc>(GeometryShell::new(GeometryId(id), GeometryRole::Result, param_offset))
 }
 
 fn unit_quarter() -> (ArcInit, Vector) {
@@ -34,10 +32,10 @@ fn unit_quarter() -> (ArcInit, Vector) {
 #[test]
 fn arc_layout_and_param_block() {
     assert_eq!(Arc::PARAMETER_COUNT, 5);
-    assert_eq!(Arc::center.indices(), vec![0, 1]);
-    assert_eq!(Arc::radius.indices(), vec![2]);
-    assert_eq!(Arc::start.indices(), vec![3]);
-    assert_eq!(Arc::sweep.indices(), vec![4]);
+    assert_eq!(Arc::center.range().collect::<Vec<_>>(), vec![0, 1]);
+    assert_eq!(Arc::radius.range().collect::<Vec<_>>(), vec![2]);
+    assert_eq!(Arc::start.range().collect::<Vec<_>>(), vec![3]);
+    assert_eq!(Arc::sweep.range().collect::<Vec<_>>(), vec![4]);
     let init = (
         Point2::new(1.0, 2.0),
         Length::new(3.0),
@@ -47,7 +45,7 @@ fn arc_layout_and_param_block() {
     let packed = <Arc as Chart>::pack(init);
     assert_eq!(packed.as_ref(), &[1.0, 2.0, 3.0, 0.5, -0.25]);
     assert_eq!(Arc::unpack(packed.as_ref()), init);
-    assert_eq!(Mapper::chart_param_block(&arc_geom(0, 0)), 0..5);
+    assert_eq!(arc_geom(0, 0).param_block(), 0..5);
 }
 
 #[test]
@@ -196,5 +194,5 @@ fn endpoint_start_sparser_than_full_chart() {
     assert_eq!(start.evaluate(&store, &p), at0.evaluate(&store, &p));
     assert_eq!(start.param_indices(&store), vec![0, 1, 2, 3]);
     assert_eq!(at0.param_indices(&store), vec![0, 1, 2, 3, 4]);
-    assert_eq!(start.param_count(), 4);
+    assert_eq!(start.param_count(&store), 4);
 }

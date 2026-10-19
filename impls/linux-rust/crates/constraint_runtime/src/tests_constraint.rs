@@ -1,23 +1,23 @@
 use crate::constraint_kinds::{Congruence, ConstraintInst, EqualLength, FixPoint, Orthogonal, Parallel};
 use crate::document::Document;
 use crate::geom::{CurveParam, Point2};
-use crate::geometry_kinds::Segment;
+use crate::geometry_kinds::{GeometryInst, Segment};
 use crate::geometry::{Chart, CurveExprs, EndpointExprs, GeometryId, GeometryRole, GeometryShell};
 use crate::matrix::Matrix;
-use crate::vector::{DenseVec, Vector};
+use crate::vector::Vector;
 
 fn two_segs() -> (Document, Vector) {
     let mut doc = Document::new();
-    doc.push_geometry(Segment {
-        shell: GeometryShell::new(GeometryId(0), GeometryRole::Result, 0),
-    });
-    doc.push_geometry(Segment {
-        shell: GeometryShell::new(
-            GeometryId(1),
-            GeometryRole::Result,
-            Segment::PARAMETER_COUNT,
-        ),
-    });
+    doc.push_geometry(GeometryInst::of::<Segment>(GeometryShell::new(
+        GeometryId(0),
+        GeometryRole::Result,
+        0,
+    )));
+    doc.push_geometry(GeometryInst::of::<Segment>(GeometryShell::new(
+        GeometryId(1),
+        GeometryRole::Result,
+        Segment::PARAMETER_COUNT,
+    )));
     // s0: (0,0)-(1,0), s1: (0,0)-(0,1) perpendicular sharing origin conceptually
     let p = Vector::from(vec![0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0]);
     (doc, p)
@@ -72,19 +72,13 @@ fn jacobian_matches_fd_for_catalog() {
         }
 
         let mut r0 = vec![0.0; m];
-        {
-            let mut out = DenseVec::packed(&mut r0);
-            c.eval_residual(&doc, &p, &mut out);
-        }
+        c.eval_residual(&doc, &p, &mut r0);
 
         for &g in &conn {
             let mut p2 = p.clone();
             p2[g] += eps;
             let mut rp = vec![0.0; m];
-            {
-                let mut out = DenseVec::packed(&mut rp);
-                c.eval_residual(&doc, &p2, &mut out);
-            }
+            c.eval_residual(&doc, &p2, &mut rp);
             for i in 0..m {
                 let fd = (rp[i] - r0[i]) / eps;
                 let analytic = mat[(i, g)];

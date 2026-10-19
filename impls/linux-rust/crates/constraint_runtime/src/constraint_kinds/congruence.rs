@@ -1,12 +1,11 @@
 //! Point-point coincidence (two residual rows).
 
-use crate::constraint::ConstraintKind;
+use crate::constraint::{pair_connectivity, unique_geometry_ids, ConstraintKind};
+use crate::document::Document;
 use crate::expr::PointExpr;
 use crate::geometry::GeometryId;
-use crate::mapper::Mapper;
 use crate::matrix::MatrixAccess;
-use crate::vector::{VecAccess, Vector};
-use crate::store::GeometryStore;
+use crate::vector::Vector;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Congruence {
@@ -30,39 +29,25 @@ impl Congruence {
 impl ConstraintKind for Congruence {
     const RESIDUAL_ARITY: usize = 2;
 
-    fn param_connectivity<S: GeometryStore + ?Sized>(&self, store: &S) -> Vec<usize> {
-        Mapper::join_indices([self.a.param_indices(store), self.b.param_indices(store)])
+    fn param_connectivity(&self, doc: &Document) -> Vec<usize> {
+        pair_connectivity(doc, &self.a, &self.b)
     }
 
-    fn eval_residual<S: GeometryStore + ?Sized, R: VecAccess>(
-        &self,
-        store: &S,
-        p: &Vector,
-        out: &mut R,
-    ) {
-        let pa = self.a.evaluate(store, p);
-        let pb = self.b.evaluate(store, p);
+    fn eval_residual(&self, doc: &Document, p: &Vector, out: &mut [f64]) {
+        let pa = self.a.evaluate(doc, p);
+        let pb = self.b.evaluate(doc, p);
         out[0] = pa.x - pb.x;
         out[1] = pa.y - pb.y;
     }
 
-    fn accumulate_jacobian<S: GeometryStore + ?Sized, J: MatrixAccess>(
-        &self,
-        store: &S,
-        p: &Vector,
-        j: &mut J,
-    ) {
+    fn accumulate_jacobian<J: MatrixAccess>(&self, doc: &Document, p: &Vector, j: &mut J) {
         // r = a - b ⇒ ∂r/∂a = Ja, ∂r/∂b = -Jb
-        let na = self.a.param_count();
-        self.a.accumulate_jacobian(store, p, j, 1.0);
+        let na = self.a.accumulate_jacobian(doc, p, j, 1.0);
         let mut jb = j.block_slice(0, na, j.nrows(), j.ncols() - na);
-        self.b.accumulate_jacobian(store, p, &mut jb, -1.0);
+        self.b.accumulate_jacobian(doc, p, &mut jb, -1.0);
     }
 
     fn referenced_geometries(&self) -> Vec<GeometryId> {
-        crate::constraint::unique_geometry_ids([
-            self.a.referenced_geometry(),
-            self.b.referenced_geometry(),
-        ])
+        unique_geometry_ids([self.a.referenced_geometry(), self.b.referenced_geometry()])
     }
 }

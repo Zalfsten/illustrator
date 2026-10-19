@@ -1,18 +1,20 @@
 //! Circular arc: Vector layout, chart sampling, and formula evaluation.
 
-use crate::geom::{CurveParam, HeadingAngle, Length, Point2, TurnAngle, Vec2};
-use crate::geometry::capabilities::{
-    CurveLengthFormula, CurvePointFormula, EndpointPointFormula, HeadingAngleFormula,
-    TurnAngleFormula, VecFormula,
-};
+use std::ops::Range;
+
+use crate::expr::{HeadingAngleExpr, LengthExpr, TurnAngleExpr};
+use crate::geom::{HeadingAngle, Length, Point2, TurnAngle, Vec2};
+use crate::geometry::capabilities::{CurveExprs, EndpointExprs};
 use crate::geometry::chart::chart_atoms;
-use crate::geometry::shell::{geometry_shell_instance, GeometryShell};
-use crate::geometry::StateAtom;
+use crate::geometry::{
+    Geometry, GeometryId, HeadingFormula, LengthFormula, PointFormula, TurnFormula, VecFormula,
+};
+use crate::geometry_kinds::GeometryKind;
 use crate::matrix::MatrixAccess;
 
-/// Circular-arc instance: document shell plus arc chart formulas.
+/// Circular-arc kind (type-level marker; instances live in
+/// [`crate::geometry_kinds::GeometryInst`]).
 ///
-/// Parameters live at `p[shell.param_offset..shell.param_offset+PARAMETER_COUNT]`.
 /// Layout via [`chart_atoms!`]: [`Self::center`], [`Self::radius`] (signed Length),
 /// [`Self::start`] (heading), [`Self::sweep`] (turn). Position uses \(R\) as stored
 /// (signed radius flips the point through the center). Length uses magnitudes:
@@ -21,11 +23,7 @@ use crate::matrix::MatrixAccess;
 /// Chart: \(\theta(t)=\theta_0 + t\,\Delta\theta\),
 /// \(\gamma(t)=C + R\,(\cos\theta,\sin\theta)\).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct Arc {
-    pub shell: GeometryShell,
-}
-
-geometry_shell_instance!(Arc);
+pub struct Arc;
 
 chart_atoms! {
     Arc {
@@ -36,101 +34,68 @@ chart_atoms! {
     }
 }
 
-type ArcChart = (Point2, Length, HeadingAngle, TurnAngle);
+impl CurveExprs for Arc {}
+impl EndpointExprs for Arc {}
 
 impl Arc {
+    /// Heading at the arc start (chart atom).
+    pub fn start_heading_expr(id: GeometryId) -> HeadingAngleExpr {
+        HeadingAngleExpr::new(id, HeadingFormula::StartHeading)
+    }
+
+    /// Signed sweep turn (chart atom).
+    pub fn sweep_expr(id: GeometryId) -> TurnAngleExpr {
+        TurnAngleExpr::new(id, TurnFormula::Sweep)
+    }
+
+    /// Signed radius Length chart atom.
+    pub fn radius_expr(id: GeometryId) -> LengthExpr {
+        LengthExpr::new(id, LengthFormula::Radius)
+    }
+
     #[inline]
     fn theta(t: f64, start: HeadingAngle, sweep: TurnAngle) -> f64 {
         start.radians() + t * sweep.radians()
     }
 
+    /// Chart parameter of a point formula (endpoints are `t = 0 / 1`).
     #[inline]
-    fn point_at(center: Point2, r: f64, theta: f64) -> Point2 {
-        Point2::new(center.x + r * theta.cos(), center.y + r * theta.sin())
-    }
-
-    pub(crate) fn eval_curve_point(
-        f: CurvePointFormula,
-        (center, radius, start, sweep): ArcChart,
-    ) -> Point2 {
+    fn point_t(f: PointFormula) -> f64 {
         match f {
-            CurvePointFormula::OnCurve { param } => {
-                let t = param.chart_t();
-                let th = Self::theta(t, start, sweep);
-                Self::point_at(center, radius.value(), th)
-            }
+            PointFormula::OnCurve { param } => param.chart_t(),
+            PointFormula::Start => 0.0,
+            PointFormula::End => 1.0,
         }
     }
+}
 
-    /// Write \(2 \times 5\) curve-point Jacobian into `j` (SLOTS-local columns).
-    pub(crate) fn accumulate_curve_point_jacobian<J: MatrixAccess>(
-        f: CurvePointFormula,
-        (center, radius, start, sweep): ArcChart,
-        j: &mut J,
-        scale: f64,
-    ) {
-        let _ = center;
-        match f {
-            CurvePointFormula::OnCurve { param } => {
-                let t = param.chart_t();
-                let r = radius.value();
-                let th = Self::theta(t, start, sweep);
-                let (c, s) = (th.cos(), th.sin());
-                // ∂γ/∂(cx,cy,R,θ0,Δθ)
-                j.set_scaled(
-                    scale,
-                    [
-                        [1.0, 0.0, c, -r * s, -r * s * t],
-                        [0.0, 1.0, s, r * c, r * c * t],
-                    ],
-                );
-            }
-        }
-    }
+impl Geometry for Arc {
+    const KIND: GeometryKind = GeometryKind::Arc;
 
-    pub(crate) fn eval_endpoint_point(
-        f: EndpointPointFormula,
-        chart: ArcChart,
-    ) -> Point2 {
-        match f {
-            EndpointPointFormula::StartPoint => Self::eval_curve_point(
-                CurvePointFormula::OnCurve {
-                    param: CurveParam::Normalized(0.0),
-                },
-                chart,
-            ),
-            EndpointPointFormula::EndPoint => Self::eval_curve_point(
-                CurvePointFormula::OnCurve {
-                    param: CurveParam::Normalized(1.0),
-                },
-                chart,
-            ),
-        }
-    }
-
-    /// Write endpoint Jacobian into `j` (formula-local columns; see connectivity).
-    pub(crate) fn accumulate_endpoint_point_jacobian<J: MatrixAccess>(
-        f: EndpointPointFormula,
-        (center, radius, start, sweep): ArcChart,
-        j: &mut J,
-        scale: f64,
-    ) {
-        let _ = center;
+    fn point(f: PointFormula, (center, radius, start, sweep): Self::Init) -> Point2 {
+        let th = Self::theta(Self::point_t(f), start, sweep);
         let r = radius.value();
+        Point2::new(center.x + r * th.cos(), center.y + r * th.sin())
+    }
+
+    /// \(2 \times 5\) (or \(2 \times 4\) for `Start`, which is independent of sweep).
+    fn point_jacobian<J: MatrixAccess>(
+        f: PointFormula,
+        (_center, radius, start, sweep): Self::Init,
+        j: &mut J,
+        scale: f64,
+    ) {
+        let t = Self::point_t(f);
+        let r = radius.value();
+        let th = Self::theta(t, start, sweep);
+        let (c, s) = (th.cos(), th.sin());
         match f {
-            EndpointPointFormula::StartPoint => {
-                let th = start.radians();
-                let (c, s) = (th.cos(), th.sin());
-                // local cols: center.x,y, R, θ0 (no sweep)
-                j.set_scaled(
-                    scale,
-                    [[1.0, 0.0, c, -r * s], [0.0, 1.0, s, r * c]],
-                );
+            // local cols: center.x,y, R, θ0 (no sweep)
+            PointFormula::Start => {
+                j.set_scaled(scale, [[1.0, 0.0, c, -r * s], [0.0, 1.0, s, r * c]]);
             }
-            EndpointPointFormula::EndPoint => {
-                let t = 1.0;
-                let th = Self::theta(t, start, sweep);
-                let (c, s) = (th.cos(), th.sin());
+            // ∂γ/∂(cx,cy,R,θ0,Δθ)
+            PointFormula::OnCurve { .. } | PointFormula::End => {
                 j.set_scaled(
                     scale,
                     [
@@ -142,63 +107,38 @@ impl Arc {
         }
     }
 
-    pub(crate) fn endpoint_point_param_indices(f: EndpointPointFormula) -> Vec<usize> {
+    fn point_params(f: PointFormula) -> Range<usize> {
         match f {
             // start independent of sweep at t=0
-            EndpointPointFormula::StartPoint => {
-                let mut idx = Self::center.indices();
-                idx.extend(Self::radius.indices());
-                idx.extend(Self::start.indices());
-                idx
-            }
-            EndpointPointFormula::EndPoint => {
-                crate::geometry::ChartSlot::union_indices(Self::SLOTS)
-            }
+            PointFormula::Start => Self::center.span(Self::start),
+            PointFormula::OnCurve { .. } | PointFormula::End => Self::center.span(Self::sweep),
         }
     }
 
-    pub(crate) fn endpoint_point_param_count(f: EndpointPointFormula) -> usize {
-        match f {
-            EndpointPointFormula::StartPoint => {
-                Point2::DOF_COUNT + Length::DOF_COUNT + HeadingAngle::DOF_COUNT
-            }
-            EndpointPointFormula::EndPoint => {
-                crate::geometry::ChartSlot::union_dof(Self::SLOTS)
-            }
-        }
-    }
-
-    pub(crate) fn eval_vec(
-        f: VecFormula,
-        (center, radius, start, sweep): ArcChart,
-    ) -> Vec2 {
-        let _ = center;
+    fn vec(f: VecFormula, (_center, radius, start, sweep): Self::Init) -> Vec2 {
         let r = radius.value();
         let dth = sweep.radians();
         match f {
             VecFormula::TangentAt { param } => {
-                let t = param.chart_t();
-                let th = Self::theta(t, start, sweep);
+                let th = Self::theta(param.chart_t(), start, sweep);
                 // γ'(t) = R Δθ (-sin θ, cos θ)
                 Vec2::new(-r * dth * th.sin(), r * dth * th.cos())
             }
             VecFormula::NormalAt { param } => {
-                let t = param.chart_t();
-                let th = Self::theta(t, start, sweep);
+                let th = Self::theta(param.chart_t(), start, sweep);
                 // left_normal(tangent) = R Δθ (-cos θ, -sin θ)
                 Vec2::new(-r * dth * th.cos(), -r * dth * th.sin())
             }
         }
     }
 
-    /// Write \(2 \times 5\) free-vector Jacobian into `j` (SLOTS-local columns).
-    pub(crate) fn accumulate_vec_jacobian<J: MatrixAccess>(
+    /// \(2 \times 5\) free-vector Jacobian.
+    fn vec_jacobian<J: MatrixAccess>(
         f: VecFormula,
-        (center, radius, start, sweep): ArcChart,
+        (_center, radius, start, sweep): Self::Init,
         j: &mut J,
         scale: f64,
     ) {
-        let _ = center;
         let r = radius.value();
         let dth = sweep.radians();
         match f {
@@ -210,20 +150,8 @@ impl Arc {
                 j.set_scaled(
                     scale,
                     [
-                        [
-                            0.0,
-                            0.0,
-                            -dth * s,
-                            -r * dth * c,
-                            -r * s - r * dth * t * c,
-                        ],
-                        [
-                            0.0,
-                            0.0,
-                            dth * c,
-                            -r * dth * s,
-                            r * c - r * dth * t * s,
-                        ],
+                        [0.0, 0.0, -dth * s, -r * dth * c, -r * s - r * dth * t * c],
+                        [0.0, 0.0, dth * c, -r * dth * s, r * c - r * dth * t * s],
                     ],
                 );
             }
@@ -235,133 +163,77 @@ impl Arc {
                 j.set_scaled(
                     scale,
                     [
-                        [
-                            0.0,
-                            0.0,
-                            -dth * c,
-                            r * dth * s,
-                            -r * c + r * dth * t * s,
-                        ],
-                        [
-                            0.0,
-                            0.0,
-                            -dth * s,
-                            -r * dth * c,
-                            -r * s - r * dth * t * c,
-                        ],
+                        [0.0, 0.0, -dth * c, r * dth * s, -r * c + r * dth * t * s],
+                        [0.0, 0.0, -dth * s, -r * dth * c, -r * s - r * dth * t * c],
                     ],
                 );
             }
         }
     }
 
-    pub(crate) fn eval_length(
-        f: CurveLengthFormula,
-        (_center, radius, _start, sweep): ArcChart,
-    ) -> Length {
+    fn length(f: LengthFormula, (_center, radius, _start, sweep): Self::Init) -> Length {
         match f {
-            CurveLengthFormula::Length => {
-                Length::new(radius.value().abs() * sweep.radians().abs())
-            }
-            CurveLengthFormula::Radius => radius,
+            LengthFormula::Length => Length::new(radius.value().abs() * sweep.radians().abs()),
+            LengthFormula::Radius => radius,
         }
     }
 
-    /// Write \(1 \times 5\) length Jacobian into row 0 of `j` (SLOTS-local columns).
-    pub(crate) fn accumulate_length_jacobian<J: MatrixAccess>(
-        f: CurveLengthFormula,
-        (_center, radius, _start, sweep): ArcChart,
+    /// \(1 \times 5\) length Jacobian.
+    fn length_jacobian<J: MatrixAccess>(
+        f: LengthFormula,
+        (_center, radius, _start, sweep): Self::Init,
         j: &mut J,
         scale: f64,
     ) {
         match f {
-            CurveLengthFormula::Length => {
+            LengthFormula::Length => {
                 let r = radius.value();
                 let s = sweep.radians();
-                let d_r = if r != 0.0 {
-                    r.signum() * s.abs()
-                } else {
-                    0.0
-                };
-                let d_s = if s != 0.0 {
-                    r.abs() * s.signum()
-                } else {
-                    0.0
-                };
+                let d_r = if r != 0.0 { r.signum() * s.abs() } else { 0.0 };
+                let d_s = if s != 0.0 { r.abs() * s.signum() } else { 0.0 };
                 j.set_scaled(scale, [[0.0, 0.0, d_r, 0.0, d_s]]);
             }
-            CurveLengthFormula::Radius => {
+            LengthFormula::Radius => {
                 j.set_scaled(scale, [[0.0, 0.0, 1.0, 0.0, 0.0]]);
             }
         }
     }
 
-    pub(crate) fn eval_heading(
-        f: HeadingAngleFormula,
-        (_center, _radius, start, _sweep): ArcChart,
-    ) -> HeadingAngle {
+    fn heading(f: HeadingFormula, (_center, _radius, start, _sweep): Self::Init) -> HeadingAngle {
         match f {
-            HeadingAngleFormula::StartHeading => start,
+            HeadingFormula::StartHeading => start,
         }
     }
 
-    pub(crate) fn accumulate_heading_jacobian<J: MatrixAccess>(
-        f: HeadingAngleFormula,
-        j: &mut J,
-        scale: f64,
-    ) {
+    fn heading_jacobian<J: MatrixAccess>(f: HeadingFormula, _c: Self::Init, j: &mut J, scale: f64) {
         match f {
-            HeadingAngleFormula::StartHeading => {
-                j.set_scaled(scale, [[1.0]]);
-            }
+            HeadingFormula::StartHeading => j.set_scaled(scale, [[1.0]]),
         }
     }
 
-    pub(crate) fn heading_param_indices(f: HeadingAngleFormula) -> Vec<usize> {
+    fn heading_params(f: HeadingFormula) -> Range<usize> {
         match f {
-            HeadingAngleFormula::StartHeading => Self::start.indices(),
+            HeadingFormula::StartHeading => Self::start.range(),
         }
     }
 
-    pub(crate) fn heading_param_count(f: HeadingAngleFormula) -> usize {
+    fn turn(f: TurnFormula, (_center, _radius, _start, sweep): Self::Init) -> TurnAngle {
         match f {
-            HeadingAngleFormula::StartHeading => HeadingAngle::DOF_COUNT,
+            TurnFormula::Sweep => sweep,
         }
     }
 
-    pub(crate) fn eval_turn(
-        f: TurnAngleFormula,
-        (_center, _radius, _start, sweep): ArcChart,
-    ) -> TurnAngle {
+    fn turn_jacobian<J: MatrixAccess>(f: TurnFormula, _c: Self::Init, j: &mut J, scale: f64) {
         match f {
-            TurnAngleFormula::Sweep => sweep,
+            TurnFormula::Sweep => j.set_scaled(scale, [[1.0]]),
         }
     }
 
-    pub(crate) fn accumulate_turn_jacobian<J: MatrixAccess>(
-        f: TurnAngleFormula,
-        j: &mut J,
-        scale: f64,
-    ) {
+    fn turn_params(f: TurnFormula) -> Range<usize> {
         match f {
-            TurnAngleFormula::Sweep => {
-                j.set_scaled(scale, [[1.0]]);
-            }
+            TurnFormula::Sweep => Self::sweep.range(),
         }
     }
-
-    pub(crate) fn turn_param_indices(f: TurnAngleFormula) -> Vec<usize> {
-        match f {
-            TurnAngleFormula::Sweep => Self::sweep.indices(),
-        }
-    }
-
-    pub(crate) fn turn_param_count(f: TurnAngleFormula) -> usize {
-        match f {
-            TurnAngleFormula::Sweep => TurnAngle::DOF_COUNT,
-        }
-    }
-
 }
 
 #[cfg(test)]

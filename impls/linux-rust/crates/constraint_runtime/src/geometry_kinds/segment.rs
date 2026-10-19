@@ -1,33 +1,22 @@
 //! Line segment: Vector layout, chart sampling, and formula evaluation.
 
+use std::ops::Range;
+
 use crate::geom::{Length, Point2, Vec2};
-use crate::geometry::capabilities::{
-    CurveLengthFormula, CurvePointFormula, EndpointPointFormula, VecFormula,
-};
+use crate::geometry::capabilities::{CurveExprs, EndpointExprs};
 use crate::geometry::chart::chart_atoms;
-use crate::geometry::shell::{geometry_shell_instance, GeometryShell};
-use crate::geometry::StateAtom;
+use crate::geometry::{Geometry, LengthFormula, PointFormula, VecFormula};
+use crate::geometry_kinds::GeometryKind;
 use crate::matrix::MatrixAccess;
 
-/// Line-segment instance: document shell plus segment chart formulas.
+/// Line-segment kind (type-level marker; instances live in
+/// [`crate::geometry_kinds::GeometryInst`]).
 ///
-/// Parameters live at `p[shell.param_offset..shell.param_offset+PARAMETER_COUNT]`.
-/// Layout: [`Point2`] atoms [`Self::start`] / [`Self::end`] via [`chart_atoms!`];
-/// pack / unpack / [`Self::SLOTS`] follow from that.
-/// Shell fields via [`crate::geometry::AsShell`] (from [`geometry_shell_instance!`]);
-/// together with [`Chart`] that yields [`crate::geometry::GeometryKind`].
-/// Expression keying comes from [`register_expr_kinds!`](crate::geometry::expr)
-/// (`endpoint:` → sparse start/end).
-///
-/// Full-chart Jacobian columns are formula-local `0..4` in [`Self::SLOTS`] order
-/// (start.x, start.y, end.x, end.y). Endpoint formulas use local `0..2` (packed
-/// [`Point2`]). Placement into contribution/global space is the view's job.
+/// Layout: [`Point2`] atoms [`Self::start`] / [`Self::end`] via [`chart_atoms!`].
+/// Full-chart Jacobian columns are formula-local `0..4` (start.x, start.y,
+/// end.x, end.y). Endpoint formulas use only their own [`Point2`] slot.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct Segment {
-    pub shell: GeometryShell,
-}
-
-geometry_shell_instance!(Segment);
+pub struct Segment;
 
 chart_atoms! {
     Segment {
@@ -36,25 +25,26 @@ chart_atoms! {
     }
 }
 
-impl Segment {
-    pub(crate) fn eval_curve_point(f: CurvePointFormula, (a, b): (Point2, Point2)) -> Point2 {
+impl CurveExprs for Segment {}
+impl EndpointExprs for Segment {}
+
+impl Geometry for Segment {
+    const KIND: GeometryKind = GeometryKind::Segment;
+
+    fn point(f: PointFormula, (a, b): Self::Init) -> Point2 {
         match f {
-            CurvePointFormula::OnCurve { param } => {
+            PointFormula::OnCurve { param } => {
                 let t = param.chart_t();
                 Point2::new((1.0 - t) * a.x + t * b.x, (1.0 - t) * a.y + t * b.y)
             }
+            PointFormula::Start => a,
+            PointFormula::End => b,
         }
     }
 
-    /// Write \(2 \times 4\) curve-point Jacobian into `j` (SLOTS-local columns).
-    pub(crate) fn accumulate_curve_point_jacobian<J: MatrixAccess>(
-        f: CurvePointFormula,
-        _chart: (Point2, Point2),
-        j: &mut J,
-        scale: f64,
-    ) {
+    fn point_jacobian<J: MatrixAccess>(f: PointFormula, _c: Self::Init, j: &mut J, scale: f64) {
         match f {
-            CurvePointFormula::OnCurve { param } => {
+            PointFormula::OnCurve { param } => {
                 let t = param.chart_t();
                 // (1-t)I | t I
                 j.set_scaled(
@@ -65,44 +55,21 @@ impl Segment {
                     ],
                 );
             }
-        }
-    }
-
-    pub(crate) fn eval_endpoint_point(f: EndpointPointFormula, (a, b): (Point2, Point2)) -> Point2 {
-        match f {
-            EndpointPointFormula::StartPoint => a,
-            EndpointPointFormula::EndPoint => b,
-        }
-    }
-
-    /// Write \(2 \times 2\) endpoint identity Jacobian into `j` (Point2-local columns).
-    pub(crate) fn accumulate_endpoint_point_jacobian<J: MatrixAccess>(
-        f: EndpointPointFormula,
-        _chart: (Point2, Point2),
-        j: &mut J,
-        scale: f64,
-    ) {
-        match f {
-            EndpointPointFormula::StartPoint | EndpointPointFormula::EndPoint => {
+            PointFormula::Start | PointFormula::End => {
                 j.set_scaled(scale, [[1.0, 0.0], [0.0, 1.0]]);
             }
         }
     }
 
-    /// Sparse endpoint connectivity (override; curve/vec/length default to [`Self::SLOTS`]).
-    pub(crate) fn endpoint_point_param_indices(f: EndpointPointFormula) -> Vec<usize> {
+    fn point_params(f: PointFormula) -> Range<usize> {
         match f {
-            EndpointPointFormula::StartPoint => Self::start.indices(),
-            EndpointPointFormula::EndPoint => Self::end.indices(),
+            PointFormula::OnCurve { .. } => Self::start.span(Self::end),
+            PointFormula::Start => Self::start.range(),
+            PointFormula::End => Self::end.range(),
         }
     }
 
-    /// DOF count for an endpoint formula (no allocation).
-    pub(crate) fn endpoint_point_param_count(_f: EndpointPointFormula) -> usize {
-        Point2::DOF_COUNT
-    }
-
-    pub(crate) fn eval_vec(f: VecFormula, (a, b): (Point2, Point2)) -> Vec2 {
+    fn vec(f: VecFormula, (a, b): Self::Init) -> Vec2 {
         match f {
             // γ'(t) = B - A (constant on a segment); length = segment length
             VecFormula::TangentAt { .. } => b - a,
@@ -110,13 +77,7 @@ impl Segment {
         }
     }
 
-    /// Write \(2 \times 4\) free-vector Jacobian into `j` (SLOTS-local columns).
-    pub(crate) fn accumulate_vec_jacobian<J: MatrixAccess>(
-        f: VecFormula,
-        _chart: (Point2, Point2),
-        j: &mut J,
-        scale: f64,
-    ) {
+    fn vec_jacobian<J: MatrixAccess>(f: VecFormula, _c: Self::Init, j: &mut J, scale: f64) {
         match f {
             VecFormula::TangentAt { .. } => {
                 // ∂(B-A)/∂(A,B) = -I | I
@@ -135,24 +96,21 @@ impl Segment {
         }
     }
 
-    pub(crate) fn eval_length(f: CurveLengthFormula, (a, b): (Point2, Point2)) -> Length {
+    fn length(f: LengthFormula, (a, b): Self::Init) -> Length {
         match f {
-            CurveLengthFormula::Length => Length::new((b - a).length()),
-            CurveLengthFormula::Radius => {
-                unreachable!("segment chart has no radius length atom")
-            }
+            LengthFormula::Length => Length::new((b - a).length()),
+            LengthFormula::Radius => unreachable!("segment chart has no radius length atom"),
         }
     }
 
-    /// Write \(1 \times 4\) length Jacobian into row 0 of `j` (SLOTS-local columns).
-    pub(crate) fn accumulate_length_jacobian<J: MatrixAccess>(
-        f: CurveLengthFormula,
-        (a, b): (Point2, Point2),
+    fn length_jacobian<J: MatrixAccess>(
+        f: LengthFormula,
+        (a, b): Self::Init,
         j: &mut J,
         scale: f64,
     ) {
         match f {
-            CurveLengthFormula::Length => {
+            LengthFormula::Length => {
                 let d = b - a;
                 let len = d.length();
                 if len > 0.0 {
@@ -161,9 +119,7 @@ impl Segment {
                     j.set_scaled(scale, [[-ux, -uy, ux, uy]]);
                 }
             }
-            CurveLengthFormula::Radius => {
-                unreachable!("segment chart has no radius length atom")
-            }
+            LengthFormula::Radius => unreachable!("segment chart has no radius length atom"),
         }
     }
 }

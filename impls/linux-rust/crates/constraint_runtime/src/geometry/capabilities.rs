@@ -1,120 +1,81 @@
-//! Capability-scoped expression factories and shared formula catalogs.
+//! Kind-agnostic formula tags and capability-scoped expression factories.
 //!
 //! - [`CurveExprs`]: on-curve / tangent / normal / length.
 //! - [`EndpointExprs`]: start / end (open/join curves only).
 //!
-//! [`EndpointExprs`] comes only from [`EndpointFormulaKey`] (installed by
-//! [`register_expr_kinds!`](super::expr) when `endpoint:` is set). Open kinds
-//! supply kind-efficient start/end formulas; there is no on-curve-at-\(t=0/1\)
-//! default. Closed curves implement [`CurveExprs`] only (via
-//! [`CurveFormulaKey`] from the same registry). Factories are kind-associated
-//! (not on the document catalog).
+//! Tags name *what* to evaluate; the geometry kind behind an expression's
+//! [`GeometryId`] decides *how* (see [`crate::geometry::Geometry`]). Factory
+//! traits are opt-in per kind so e.g. closed curves cannot hand out endpoints.
 
-use super::expr::{LengthFormulaKeyed, PointFormulaKeyed, VecFormulaKeyed};
+use super::formula::Geometry;
 use super::shell::GeometryId;
 use crate::expr::{LengthExpr, PointExpr, VecExpr};
 use crate::geom::CurveParam;
 
-/// Curve chart expression factories (position / frame / length along the chart).
-pub trait CurveExprs {
-    fn on_curve_expr(id: GeometryId, param: CurveParam) -> PointExpr;
-    fn tangent_expr(id: GeometryId, param: CurveParam) -> VecExpr;
-    fn normal_expr(id: GeometryId, param: CurveParam) -> VecExpr;
-    fn length_expr(id: GeometryId) -> LengthExpr;
-}
-
-/// Geometric join endpoints (not required for intrinsically periodic closed curves).
-///
-/// Implemented only via [`EndpointFormulaKey`] (kind-efficient start/end formulas
-/// and connectivity). See [`crate::geometry_kinds::Segment`] /
-/// [`crate::geometry_kinds::Arc`].
-pub trait EndpointExprs: CurveExprs {
-    fn start_expr(id: GeometryId) -> PointExpr;
-    fn end_expr(id: GeometryId) -> PointExpr;
-}
-
-/// Shared point-formula tags for [`CurveExprs`] (kind-agnostic; eval on the kind).
+/// Point formulas (curve position and geometric endpoints).
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) enum CurvePointFormula {
+pub enum PointFormula {
     OnCurve { param: CurveParam },
+    /// Kind-efficient start point (may depend on fewer DOFs than `OnCurve(0)`).
+    Start,
+    /// Kind-efficient end point.
+    End,
 }
 
-/// Shared point-formula tags for [`EndpointExprs`] (kind-efficient endpoints).
+/// Free-vector formulas for the curve frame.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) enum EndpointPointFormula {
-    StartPoint,
-    EndPoint,
-}
-
-/// Shared free-vector formula tags for curve frame capabilities.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) enum VecFormula {
+pub enum VecFormula {
     TangentAt { param: CurveParam },
     NormalAt { param: CurveParam },
 }
 
-/// Shared length-formula tags for curve / chart length capabilities.
+/// Length formulas.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) enum CurveLengthFormula {
+pub enum LengthFormula {
     /// Total curve arc length (`length_expr`).
     Length,
     /// Signed radius Length chart atom (circular arc).
     Radius,
 }
 
-/// Shared heading-angle formula tags (kinds that expose absolute orientation).
+/// Heading-angle formulas (kinds that expose absolute orientation).
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) enum HeadingAngleFormula {
+pub enum HeadingFormula {
     StartHeading,
 }
 
-/// Shared turn-angle formula tags (kinds that expose free angular displacement).
+/// Turn-angle formulas (kinds that expose free angular displacement).
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) enum TurnAngleFormula {
+pub enum TurnFormula {
     Sweep,
 }
 
-/// Maps shared formula tags to kind-keyed wrappers in [`super::expr`].
-///
-/// Implemented by [`register_expr_kinds!`](super::expr); [`CurveExprs`] follows
-/// from the blanket below.
-pub(crate) trait CurveFormulaKey {
-    fn curve_point(f: CurvePointFormula) -> PointFormulaKeyed;
-    fn vec(f: VecFormula) -> VecFormulaKeyed;
-    fn length(f: CurveLengthFormula) -> LengthFormulaKeyed;
-}
-
-impl<T: CurveFormulaKey> CurveExprs for T {
+/// Curve chart expression factories (position / frame / length along the chart).
+pub trait CurveExprs: Geometry {
     fn on_curve_expr(id: GeometryId, param: CurveParam) -> PointExpr {
-        PointExpr::new(id, T::curve_point(CurvePointFormula::OnCurve { param }))
+        PointExpr::new(id, PointFormula::OnCurve { param })
     }
 
     fn tangent_expr(id: GeometryId, param: CurveParam) -> VecExpr {
-        VecExpr::new(id, T::vec(VecFormula::TangentAt { param }))
+        VecExpr::new(id, VecFormula::TangentAt { param })
     }
 
     fn normal_expr(id: GeometryId, param: CurveParam) -> VecExpr {
-        VecExpr::new(id, T::vec(VecFormula::NormalAt { param }))
+        VecExpr::new(id, VecFormula::NormalAt { param })
     }
 
     fn length_expr(id: GeometryId) -> LengthExpr {
-        LengthExpr::new(id, T::length(CurveLengthFormula::Length))
+        LengthExpr::new(id, LengthFormula::Length)
     }
 }
 
-/// Kind-efficient endpoint formula keying → [`EndpointExprs`].
-///
-/// Implemented by [`register_expr_kinds!`](super::expr) when `endpoint:` is set.
-pub(crate) trait EndpointFormulaKey: CurveFormulaKey {
-    fn endpoint_point(f: EndpointPointFormula) -> PointFormulaKeyed;
-}
-
-impl<T: EndpointFormulaKey> EndpointExprs for T {
+/// Geometric join endpoints (not for intrinsically periodic closed curves).
+pub trait EndpointExprs: CurveExprs {
     fn start_expr(id: GeometryId) -> PointExpr {
-        PointExpr::new(id, T::endpoint_point(EndpointPointFormula::StartPoint))
+        PointExpr::new(id, PointFormula::Start)
     }
 
     fn end_expr(id: GeometryId) -> PointExpr {
-        PointExpr::new(id, T::endpoint_point(EndpointPointFormula::EndPoint))
+        PointExpr::new(id, PointFormula::End)
     }
 }

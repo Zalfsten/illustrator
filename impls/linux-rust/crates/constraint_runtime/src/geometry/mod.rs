@@ -5,9 +5,12 @@
 
 pub mod capabilities;
 pub mod chart;
-pub mod expr;
+pub mod formula;
 pub mod shell;
 
-pub use capabilities::{CurveExprs, EndpointExprs};
-pub use chart::{Chart, ChartSlot, GeometryKind, StateAtom};
-pub use shell::{AsShell, GeometryId, GeometryRole, GeometryShell};
+pub use capabilities::{
+    CurveExprs, EndpointExprs, HeadingFormula, LengthFormula, PointFormula, TurnFormula, VecFormula,
+};
+pub use chart::{Chart, ChartSlot, StateAtom};
+pub use formula::{Formula, Geometry};
+pub use shell::{GeometryId, GeometryRole, GeometryShell};

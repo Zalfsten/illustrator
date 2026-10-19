@@ -5,7 +5,7 @@ use crate::expr::{LengthExpr, PointExpr};
 use crate::geom::Point2;
 use crate::matrix::Matrix;
 use crate::solver::SystemEval;
-use crate::vector::{VecAccess, Vector};
+use crate::vector::Vector;
 use crate::SOLVE_TOL;
 
 /// Soft residual on a single State slot: \(\sqrt{w}\,(p_i - t)\).
@@ -23,7 +23,7 @@ impl SoftContribution {
         1
     }
 
-    fn eval_residual<R: VecAccess>(&self, p: &Vector, out: &mut R) {
+    fn eval_residual(&self, p: &Vector, out: &mut [f64]) {
         out[0] = self.weight.sqrt() * (p[self.index] - self.target);
     }
 
@@ -164,22 +164,19 @@ impl SystemEval for AssembledSystem<'_> {
     fn residual(&self, p: &Vector, r: &mut Vector) {
         assert_eq!(r.len(), self.n_res);
         r.fill(0.0);
-        let mut r_view = r.as_dense();
         for (ci, entry) in self.doc.constraints().values().enumerate() {
             let c = entry.body();
             let m = c.residual_arity();
             let row0 = self.structural_row0[ci];
-            let mut out = r_view.block_slice(row0, m);
-            c.eval_residual(self.doc, p, &mut out);
+            c.eval_residual(self.doc, p, &mut r[row0..row0 + m]);
         }
         for (si, s) in self.soft.iter().enumerate() {
             let row = self.soft_row0 + si;
-            let mut out = r_view.block_slice(row, 1);
-            s.eval_residual(p, &mut out);
+            s.eval_residual(p, &mut r[row..row + 1]);
         }
         for (si, sp) in self.soft_points.iter().enumerate() {
             let row0 = self.soft_point_row0[si];
-            let mut out = r_view.block_slice(row0, 2);
+            let out = &mut r[row0..row0 + 2];
             let pt = sp.point.evaluate(self.doc, p);
             let s = sp.weight.sqrt();
             out[0] = s * (pt.x - sp.target.x);
@@ -187,7 +184,7 @@ impl SystemEval for AssembledSystem<'_> {
         }
         for (si, sl) in self.soft_lengths.iter().enumerate() {
             let row0 = self.soft_length_row0[si];
-            let mut out = r_view.block_slice(row0, 1);
+            let out = &mut r[row0..row0 + 1];
             let len = sl.length.evaluate(self.doc, p).value();
             let deficit = (sl.min_length - len).max(0.0);
             out[0] = sl.weight.sqrt() * deficit;

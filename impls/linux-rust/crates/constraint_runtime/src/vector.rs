@@ -1,12 +1,9 @@
-//! Owned 1-D vectors and dense / scatter vector views.
+//! Owned 1-D vector (parameter state \(p\), residual \(r\), …).
 //!
-//! [`Vector`] owns a contiguous `f64` buffer (parameter state \(p\), residual
-//! \(r\), …). Borrowed windows are [`DenseVec`] (contiguous) or [`ScatterVec`]
-//! (local index → connectivity). Shared semantics: [`VecView`] / [`VecAccess`].
-//!
-//! For matrices see [`crate::matrix`].
+//! Borrowed windows are plain slices (`&mut r[row0..row0 + m]`). For matrices
+//! see [`crate::matrix`].
 
-use std::ops::{Deref, DerefMut, Index, IndexMut};
+use std::ops::{Deref, DerefMut};
 
 /// Owned contiguous `f64` vector (counterpart to [`crate::matrix::Matrix`]).
 ///
@@ -38,21 +35,6 @@ impl Vector {
 
     pub fn as_mut_slice(&mut self) -> &mut [f64] {
         &mut self.0
-    }
-
-    /// Mutable dense view of the whole vector.
-    pub fn as_dense(&mut self) -> DenseVec<'_> {
-        DenseVec::packed(&mut self.0)
-    }
-
-    /// Contiguous parameter window `[start, start+len)` (geometry chart block).
-    pub fn block_slice(&mut self, start: usize, len: usize) -> DenseVec<'_> {
-        DenseVec::new(&mut self.0, start, len)
-    }
-
-    /// Non-contiguous DOFs via connectivity (e.g. soft mouse index set).
-    pub fn scatter_slice<'c>(&mut self, conn: &'c [usize]) -> ScatterVec<'_, 'c> {
-        ScatterVec::new(&mut self.0, conn)
     }
 
     pub fn len(&self) -> usize {
@@ -139,20 +121,6 @@ impl DerefMut for Vector {
     }
 }
 
-impl Index<usize> for Vector {
-    type Output = f64;
-
-    fn index(&self, i: usize) -> &f64 {
-        &self.0[i]
-    }
-}
-
-impl IndexMut<usize> for Vector {
-    fn index_mut(&mut self, i: usize) -> &mut f64 {
-        &mut self.0[i]
-    }
-}
-
 impl AsRef<[f64]> for Vector {
     fn as_ref(&self) -> &[f64] {
         &self.0
@@ -162,168 +130,6 @@ impl AsRef<[f64]> for Vector {
 impl AsMut<[f64]> for Vector {
     fn as_mut(&mut self) -> &mut [f64] {
         &mut self.0
-    }
-}
-
-/// Dense local index space over a contiguous segment of a parent vector.
-pub struct DenseVec<'a> {
-    data: &'a mut [f64],
-    start: usize,
-    len: usize,
-}
-
-impl<'a> DenseVec<'a> {
-    pub fn new(data: &'a mut [f64], start: usize, len: usize) -> Self {
-        debug_assert!(start + len <= data.len());
-        Self { data, start, len }
-    }
-
-    pub fn packed(data: &'a mut [f64]) -> Self {
-        let len = data.len();
-        Self::new(data, 0, len)
-    }
-
-    pub fn len(&self) -> usize {
-        self.len
-    }
-
-    /// Contiguous sub-segment with local indices `0..len`.
-    pub fn block_slice(&mut self, start: usize, len: usize) -> DenseVec<'_> {
-        debug_assert!(start + len <= self.len);
-        DenseVec::new(self.data, self.start + start, len)
-    }
-
-    /// Scatter view: local `i` maps to `start + conn[i]` in the parent buffer.
-    pub fn scatter_slice<'c>(&mut self, conn: &'c [usize]) -> ScatterVec<'_, 'c> {
-        ScatterVec {
-            data: self.data,
-            start: self.start,
-            conn,
-        }
-    }
-
-    fn flat(&self, i: usize) -> usize {
-        debug_assert!(i < self.len);
-        self.start + i
-    }
-}
-
-impl Index<usize> for DenseVec<'_> {
-    type Output = f64;
-    fn index(&self, i: usize) -> &f64 {
-        &self.data[self.flat(i)]
-    }
-}
-
-impl IndexMut<usize> for DenseVec<'_> {
-    fn index_mut(&mut self, i: usize) -> &mut f64 {
-        let idx = self.flat(i);
-        &mut self.data[idx]
-    }
-}
-
-/// Scatter local `i` into parent entry `start + conn[i]`.
-pub struct ScatterVec<'d, 'c> {
-    data: &'d mut [f64],
-    start: usize,
-    conn: &'c [usize],
-}
-
-impl<'d, 'c> ScatterVec<'d, 'c> {
-    /// Absolute connectivity into `data` (`start == 0`).
-    pub fn new(data: &'d mut [f64], conn: &'c [usize]) -> Self {
-        Self {
-            data,
-            start: 0,
-            conn,
-        }
-    }
-
-    fn flat(&self, i: usize) -> usize {
-        debug_assert!(i < self.conn.len());
-        let g = self.start + self.conn[i];
-        debug_assert!(g < self.data.len());
-        g
-    }
-}
-
-impl Index<usize> for ScatterVec<'_, '_> {
-    type Output = f64;
-    fn index(&self, i: usize) -> &f64 {
-        &self.data[self.flat(i)]
-    }
-}
-
-impl IndexMut<usize> for ScatterVec<'_, '_> {
-    fn index_mut(&mut self, i: usize) -> &mut f64 {
-        let idx = self.flat(i);
-        &mut self.data[idx]
-    }
-}
-
-/// Vector semantics on a dense local index space.
-///
-/// Used via generics (`V: VecView` / [`VecAccess`]) so accesses monomorphize.
-pub trait VecView {
-    fn len(&self) -> usize;
-    fn cell(&self, i: usize) -> &f64;
-    fn cell_mut(&mut self, i: usize) -> &mut f64;
-    fn get(&self, i: usize) -> f64 {
-        *self.cell(i)
-    }
-    fn set(&mut self, i: usize, v: f64) {
-        *self.cell_mut(i) = v;
-    }
-    fn add(&mut self, i: usize, v: f64) {
-        *self.cell_mut(i) += v;
-    }
-    fn fill(&mut self, value: f64) {
-        for i in 0..self.len() {
-            *self.cell_mut(i) = value;
-        }
-    }
-}
-
-/// Writable vector buffer: [`VecView`] plus `v[i]` indexing (e.g. residual path).
-///
-/// Concrete backends: [`DenseVec`], [`ScatterVec`]. Parallel to [`crate::matrix::MatrixAccess`]
-/// on the matrix side — not the parameter vector [`Vector`].
-pub trait VecAccess: VecView + Index<usize, Output = f64> + IndexMut<usize, Output = f64> {}
-impl<T> VecAccess for T where T: VecView + Index<usize, Output = f64> + IndexMut<usize, Output = f64> {}
-
-impl VecView for DenseVec<'_> {
-    fn len(&self) -> usize {
-        self.len
-    }
-
-    fn cell(&self, i: usize) -> &f64 {
-        &self.data[self.flat(i)]
-    }
-
-    fn cell_mut(&mut self, i: usize) -> &mut f64 {
-        let idx = self.flat(i);
-        &mut self.data[idx]
-    }
-
-    fn fill(&mut self, value: f64) {
-        let start = self.start;
-        let end = start + self.len;
-        self.data[start..end].fill(value);
-    }
-}
-
-impl VecView for ScatterVec<'_, '_> {
-    fn len(&self) -> usize {
-        self.conn.len()
-    }
-
-    fn cell(&self, i: usize) -> &f64 {
-        &self.data[self.flat(i)]
-    }
-
-    fn cell_mut(&mut self, i: usize) -> &mut f64 {
-        let idx = self.flat(i);
-        &mut self.data[idx]
     }
 }
 

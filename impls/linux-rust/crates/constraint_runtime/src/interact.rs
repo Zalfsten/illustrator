@@ -6,7 +6,7 @@ use crate::document::Document;
 use crate::expr::{LengthExpr, PointExpr};
 use crate::geom::Point2;
 use crate::geometry::CurveExprs;
-use crate::geometry_kinds::{Arc, GeometryInst, Segment};
+use crate::geometry_kinds::with_kind;
 use crate::solver::{SolverOptions, SolverPort, SystemEval};
 use crate::vector::Vector;
 
@@ -66,15 +66,10 @@ struct SoftDrag {
 }
 
 fn curve_length_exprs(doc: &Document) -> Vec<LengthExpr> {
-    let mut out = Vec::new();
-    for g in doc.geometries().values() {
-        let id = g.id();
-        match g {
-            GeometryInst::Segment(_) => out.push(Segment::length_expr(id)),
-            GeometryInst::Arc(_) => out.push(Arc::length_expr(id)),
-        }
-    }
-    out
+    doc.geometries()
+        .values()
+        .map(|g| with_kind!(g.kind(), K => K::length_expr(g.id())))
+        .collect()
 }
 
 fn soft_for_drag(

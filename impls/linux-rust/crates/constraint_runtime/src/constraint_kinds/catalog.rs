@@ -3,9 +3,9 @@
 use super::{Congruence, EqualLength, FixPoint, Orthogonal, Parallel};
 use crate::constraint::ConstraintKind;
 use crate::geometry::GeometryId;
+use crate::document::Document;
 use crate::matrix::MatrixAccess;
-use crate::store::GeometryStore;
-use crate::vector::{VecAccess, Vector};
+use crate::vector::Vector;
 
 /// Build [`ConstraintInst`] + `From` + dispatch from the closed kind list.
 macro_rules! constraint_catalog {
@@ -39,31 +39,21 @@ macro_rules! constraint_catalog {
                 }
             }
 
-            pub fn param_connectivity<S: GeometryStore + ?Sized>(&self, store: &S) -> Vec<usize> {
+            pub fn param_connectivity(&self, doc: &Document) -> Vec<usize> {
                 match self {
-                    $(Self::$kind(c) => c.param_connectivity(store),)+
+                    $(Self::$kind(c) => c.param_connectivity(doc),)+
                 }
             }
 
-            pub fn eval_residual<S: GeometryStore + ?Sized, R: VecAccess>(
-                &self,
-                store: &S,
-                p: &Vector,
-                out: &mut R,
-            ) {
+            pub fn eval_residual(&self, doc: &Document, p: &Vector, out: &mut [f64]) {
                 match self {
-                    $(Self::$kind(c) => c.eval_residual(store, p, out),)+
+                    $(Self::$kind(c) => c.eval_residual(doc, p, out),)+
                 }
             }
 
-            pub fn accumulate_jacobian<S: GeometryStore + ?Sized, J: MatrixAccess>(
-                &self,
-                store: &S,
-                p: &Vector,
-                j: &mut J,
-            ) {
+            pub fn accumulate_jacobian<J: MatrixAccess>(&self, doc: &Document, p: &Vector, j: &mut J) {
                 match self {
-                    $(Self::$kind(c) => c.accumulate_jacobian(store, p, j),)+
+                    $(Self::$kind(c) => c.accumulate_jacobian(doc, p, j),)+
                 }
             }
 

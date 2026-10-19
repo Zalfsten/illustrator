@@ -9,7 +9,7 @@ use crate::document::Document;
 use crate::expr::PointExpr;
 use crate::geom::{CurveParam, Point2, Vec2};
 use crate::geometry::{CurveExprs, EndpointExprs, GeometryId, GeometryRole};
-use crate::geometry_kinds::{Arc, GeometryInst, Segment};
+use crate::geometry_kinds::with_kind;
 use crate::vector::Vector;
 
 /// Max unsigned turn (radians) between tangents at the ends of one chord interval.
@@ -72,14 +72,9 @@ impl Mesh {
             }
             let id = g.id();
             let role = g.role();
-            match g {
-                GeometryInst::Segment(_) => {
-                    append_open_curve_mesh::<Segment>(doc, p, id, role, &mut edges, &mut endpoints);
-                }
-                GeometryInst::Arc(_) => {
-                    append_open_curve_mesh::<Arc>(doc, p, id, role, &mut edges, &mut endpoints);
-                }
-            }
+            with_kind!(g.kind(), K => {
+                append_open_curve_mesh::<K>(doc, p, id, role, &mut edges, &mut endpoints)
+            });
         }
         Self { edges, endpoints }
     }

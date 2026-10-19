@@ -6,10 +6,11 @@
 
 use std::fmt::Debug;
 
-use crate::geometry::GeometryId;
+use crate::document::Document;
+use crate::expr::Expr;
+use crate::geometry::{Formula, GeometryId};
 use crate::matrix::MatrixAccess;
-use crate::vector::{VecAccess, Vector};
-use crate::store::GeometryStore;
+use crate::vector::Vector;
 
 /// Deduplicate geometry ids while preserving first-seen order.
 pub(crate) fn unique_geometry_ids(
@@ -22,6 +23,17 @@ pub(crate) fn unique_geometry_ids(
         }
     }
     out
+}
+
+/// Global columns of a two-sided contribution: `a`'s block, then `b`'s.
+pub(crate) fn pair_connectivity<A: Formula, B: Formula>(
+    doc: &Document,
+    a: &Expr<A>,
+    b: &Expr<B>,
+) -> Vec<usize> {
+    let mut conn = a.param_indices(doc);
+    conn.extend(b.param_indices(doc));
+    conn
 }
 
 /// Stable document identity for a structural constraint instance.
@@ -62,23 +74,13 @@ pub trait ConstraintKind: Clone + Debug + 'static {
     const RESIDUAL_ARITY: usize;
 
     /// Global Vector columns involved in this contribution (assembly scatter map).
-    fn param_connectivity<S: GeometryStore + ?Sized>(&self, store: &S) -> Vec<usize>;
+    fn param_connectivity(&self, doc: &Document) -> Vec<usize>;
 
     /// Local residual `r_N` in contribution order (length = [`Self::RESIDUAL_ARITY`]).
-    fn eval_residual<S: GeometryStore + ?Sized, R: VecAccess>(
-        &self,
-        store: &S,
-        p: &Vector,
-        out: &mut R,
-    );
+    fn eval_residual(&self, doc: &Document, p: &Vector, out: &mut [f64]);
 
     /// Write this contribution's Jacobian into `j` (dense or scatter local indices).
-    fn accumulate_jacobian<S: GeometryStore + ?Sized, J: MatrixAccess>(
-        &self,
-        store: &S,
-        p: &Vector,
-        j: &mut J,
-    );
+    fn accumulate_jacobian<J: MatrixAccess>(&self, doc: &Document, p: &Vector, j: &mut J);
 
     /// Geometry instances this constraint depends on (incidence / reverse index).
     fn referenced_geometries(&self) -> Vec<GeometryId>;
