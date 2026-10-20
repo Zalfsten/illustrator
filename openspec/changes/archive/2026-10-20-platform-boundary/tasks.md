@@ -14,7 +14,7 @@
 ## 3. Browser serving
 
 - [x] 3.1 Add `crates/sketch_ui/index.html` for Trunk (rust link, full-window canvas `the_canvas_id`); verify `trunk build` in `crates/sketch_ui` produces `dist/` with `.wasm` and `.js`, and add `dist/` to `.gitignore`
-- [ ] 3.2 Run `trunk serve` and open `http://localhost:8737` on the host (apply note: port set in `Trunk.toml`; 8080 was taken on this host); verify the sample sketch renders and a point drag updates the sketch (system-architecture: same behavior on both hosts)
+- [x] 3.2 Run `trunk serve` and open `http://localhost:8737` on the host (apply note: port set in `Trunk.toml`; 8080 was taken on this host; the browser test exposed a drag-start bug in shared `app.rs` — hit-test used the pointer position after egui's 6 px drag threshold instead of `pointer.press_origin()` — fixed, confirmed by the user); verify the sample sketch renders and a point drag updates the sketch (system-architecture: same behavior on both hosts)
 
 ## 4. Documentation
 
