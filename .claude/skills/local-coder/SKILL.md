@@ -42,7 +42,7 @@ tools/local-coder/delegate.sh -p "<task>" [-r context.rs ...] [-t "<narrow test 
 
 - Paths are relative to the repo root.
 - Narrow the test command to the crate/test you care about, e.g.
-  `-t "cargo test --manifest-path impls/linux-rust/Cargo.toml -p geometry_eval scenario_"`;
+  `-t "cargo test --manifest-path impls/rust/Cargo.toml -p geometry_eval scenario_"`;
   the workspace-wide default is slow.
 - Runs take minutes: call Bash with `timeout: 600000`, or `run_in_background`.
 - Model: default `qwen3-coder:30b` (~17 tok/s on this machine); `-m qwen2.5-coder:7b`

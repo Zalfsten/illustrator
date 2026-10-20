@@ -1,4 +1,8 @@
-# Linux Rust implementation
+# Rust implementation
+
+Runs natively (Linux, and other desktop targets eframe supports) and in the
+browser (WebAssembly). Formerly `impls/linux-rust` (renamed 2026-10-20; archived
+OpenSpec changes still use the old path).
 
 First implementation of the shared OpenSpec capabilities for the constraint
 runtime (geometry IR, catalog, solve interaction, solver port).
@@ -26,7 +30,7 @@ runtime (geometry IR, catalog, solve interaction, solver port).
 ## Build & test
 
 ```bash
-cd impls/linux-rust
+cd impls/rust
 cargo test -p constraint_runtime
 cargo build -p sketch_ui
 ```
@@ -70,14 +74,14 @@ cargo install --locked trunk
 Check that the core and the UI still build for the browser target:
 
 ```bash
-impls/linux-rust/scripts/check-wasm.sh
+impls/rust/scripts/check-wasm.sh
 ```
 
 Serve locally (http://localhost:8737, port set in `crates/sketch_ui/Trunk.toml`;
 reachable from the host because the Dev Container uses host networking):
 
 ```bash
-cd impls/linux-rust/crates/sketch_ui
+cd impls/rust/crates/sketch_ui
 trunk serve
 ```
 

@@ -11,7 +11,7 @@
         "files.eol": "\n",
         "terminal.integrated.defaultProfile.linux": "bash",
         "rust-analyzer.linkedProjects": [
-          "impls/linux-rust/Cargo.toml"
+          "impls/rust/Cargo.toml"
         ],
         "rust-analyzer.testExplorer": true,
         "rust-analyzer.check.command": "clippy"

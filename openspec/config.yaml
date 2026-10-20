@@ -83,7 +83,7 @@ context: |
   \(p\) (offset + parameter count / parameter window). Geometries do not share
   State indices; joins are constraints (e.g. Congruence), not aliased DOFs.
   Connectivity for assembly is derived from that block. Committed and working
-  copies share one owned vector type (linux-rust: Vector). Assembled residual
+  copies share one owned vector type (impls/rust: Vector). Assembled residual
   \(r\) is a separate Vector of length m. Structural add/remove goes through
   the Document composite so graph and State stay length-matched; kinds
   pack/unpack chart init and own formulas, and evaluate reads the geometry's
@@ -96,11 +96,11 @@ context: |
   the browser (WebAssembly). Host services (files, clipboard, time, sharing)
   go through one replaceable host boundary with completion-based delivery
   and runtime-discoverable optional capabilities (system-architecture spec).
-  linux-rust: `cfg(target_arch)` only in sketch_ui/src/main.rs and Cargo
+  impls/rust: `cfg(target_arch)` only in sketch_ui/src/main.rs and Cargo
   target tables; scripts/check-wasm.sh guards the wasm32 build; the
   `Platform` trait arrives with the first host-service feature.
 
-  Rust module and unit-test layout (impls/linux-rust):
+  Rust module and unit-test layout (impls/rust):
   constraint_runtime splits concerns as follows:
   - geom: shared affine / scalar DOF types (Point2, Vec2, HeadingAngle,
     TurnAngle, Length, CurveParam)
@@ -197,14 +197,14 @@ rules:
   tasks:
     - Scope tasks to the implementation(s) named in design.md; do not invent parallel impls unless the change asks for them.
     - Prefer proving the shared runtime contracts with tests before expanding illustration UI features.
-    - "For linux-rust: place new unit tests in src/tests_<module>.rs (sibling of <module>.rs), not inline at the bottom of a monolithic .rs file; create a module directory only for real nested submodules."
+    - "For impls/rust: place new unit tests in src/tests_<module>.rs (sibling of <module>.rs), not inline at the bottom of a monolithic .rs file; create a module directory only for real nested submodules."
 
 # Per-operation guidance
 operations:
   apply:
     guidance:
       - Implement against the shared specs; keep impl-specific choices aligned with design.md.
-      - "For linux-rust Rust code: keep unit tests as src/<module>.rs + src/tests_<module>.rs (#[path]); module directories only for nested submodules; do not reintroduce large inline #[cfg(test)] blocks or anonymous mod.rs/tests.rs pairs."
+      - "For impls/rust Rust code: keep unit tests as src/<module>.rs + src/tests_<module>.rs (#[path]); module directories only for nested submodules; do not reintroduce large inline #[cfg(test)] blocks or anonymous mod.rs/tests.rs pairs."
   archive:
     guidance:
       - Summarize what became shared capability truth versus what remained impl-specific design.

@@ -6,7 +6,7 @@ gitignore: false
 
 # Edit -> cargo test -> fix loop stays local; only the end result is reported.
 auto-test: true
-test-cmd: cargo test --manifest-path impls/linux-rust/Cargo.toml
+test-cmd: cargo test --manifest-path impls/rust/Cargo.toml
 auto-lint: false
 
 yes-always: true

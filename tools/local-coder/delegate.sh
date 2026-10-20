@@ -27,7 +27,7 @@ usage() { sed -n '2,/^set -euo/p' "$0" | sed '$d; s/^# \{0,1\}//'; exit 2; }
 
 model="${LOCAL_CODER_MODEL:-qwen3-coder:30b}"
 timeout_secs="${LOCAL_CODER_TIMEOUT:-900}"
-default_test_cmd="cargo test --manifest-path impls/linux-rust/Cargo.toml"
+default_test_cmd="cargo test --manifest-path impls/rust/Cargo.toml"
 task="" test_cmd="" read_only=()
 
 while getopts "p:F:r:t:m:T:h" opt; do
