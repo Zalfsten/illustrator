@@ -237,8 +237,8 @@ block's dense submatrix (no scatter on write); formulas write via
 `DenseMatrix::set_scaled` / `accumulate_jacobian` / vector jets with
 `contract_into` (stack scratch for \(g^\top J_v\)); successive operand blocks
 use `block_slice`. Difference residuals pass scale \(\pm 1\). Solver eval fills
-owned `Vector` \(r\) and `BlockSparseMatrix` \(J\); LM/FFI reuse evaluation
-scratch within a solve, and the Ceres adapter densifies.)
+owned `Vector` \(r\) and `BlockSparseMatrix` \(J\); the LM reuses evaluation
+scratch within a solve.)
 
 ## Assembly (FEM-style)
 

@@ -18,6 +18,10 @@ Machine: AMD Ryzen 7 5800X (8 cores / 16 threads), rustc 1.99.0, Linux
 Dev Container, release profile (criterion default). Median of criterion's
 estimate.
 
+> The Ceres reference backend was removed in change `remove-ceres-backend`.
+> Its rows below are historical measurements; the current bench covers the
+> sparse LM only.
+
 ## Baseline (before sparse-lm-solver)
 
 Source state: commit `9c21447` (dense `Matrix` Jacobian through

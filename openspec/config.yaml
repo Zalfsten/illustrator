@@ -155,15 +155,12 @@ context: |
     Levenberg–Marquardt (normal.rs assembles JᵀJ / Jᵀr from blocks with
     precomputed slots; sparse_chol.rs wraps faer sparse Cholesky, symbolic
     once per solve, numeric per iteration; hot path allocation-free).
-    ffi.rs: EvalHandle + C trampolines (&dyn SystemEval only at the C
-    boundary); CeresSolver (ceres_solver.rs) is an optional dense reference
-    backend behind the `ceres` Cargo feature.
   Prefer sibling files once a module has unit tests: src/<module>.rs for
   production code and src/tests_<module>.rs for that module's unit tests,
   declared with `#[cfg(test)] #[path = "tests_<module>.rs"] mod tests_<module>;`
   in <module>.rs. Do not create a src/<module>/ directory solely to hold
   tests. A module directory exists only when there are real nested
-  submodules (e.g. solver.rs + solver/ffi.rs + solver/tests_ffi.rs and
+  submodules (e.g. solver.rs + solver/normal.rs + solver/tests_normal.rs and
   src/tests_solver.rs). Do not use anonymous mod.rs / tests.rs pairs.
   Do not put large unit-test suites inline at the bottom of foo.rs.
   Integration/acceptance tests that only need the public API stay under

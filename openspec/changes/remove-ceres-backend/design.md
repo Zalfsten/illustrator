@@ -9,7 +9,7 @@ See proposal.md (Why). Current state after `sparse-lm-solver`:
 - `CeresSolver` (`src/ceres_solver.rs`, tests in `src/tests_ceres_solver.rs`) wraps `cpp/ceres_bridge.{h,cpp}`. It is compiled only with the non-default Cargo feature `ceres`; `build.rs` returns early otherwise; `cc` is a build dependency used only for this bridge.
 - `src/solver/ffi.rs`: `EvalHandle` (`&dyn SystemEval`, state pointer, residual / Jacobian scratch) plus `extern "C"` `residual_trampoline` (always built) and `jacobian_trampoline` (feature `ceres`, densifies via `BlockSparseMatrix::add_to_dense`). `src/solver/tests_ffi.rs` tests the residual trampoline. Only `CeresSolver` uses the module.
 - `tests/ceres_reference.rs` compares `LmSolver` and `CeresSolver` (feature-gated). `benches/solve.rs` has a feature-gated Ceres group with `DENSE_SIZES`.
-- Dev Container: `libceres-dev`, `pkg-config` and `g++` are installed "for the C++ bridge". `pkg-config` is also needed by `sketch_ui` (`wayland-sys` build dependency via `eframe` → `glutin`); `cc` / C++ is not used by any other crate in the workspace.
+- Dev Container: `libceres-dev`, `pkg-config` and `g++` are installed "for the C++ bridge". `pkg-config` is also needed by `sketch_ui` (`wayland-sys` build dependency via `eframe` → `glutin`). `cc` is also used by `wayland-backend` (compiles a small C shim), so a C compiler stays required; the base image provides it via `build-essential` (which also pulls `g++`), so the explicit `g++` package is redundant. *(Corrected during apply: the first draft claimed no other crate uses `cc`.)*
 - Docs mentioning Ceres / FFI: `impls/linux-rust/README.md`, `docs/constraint-mathematics.md`, `openspec/config.yaml` context, `src/lib.rs` and `src/solver.rs` doc comments, `.devcontainer/devcontainer.json` comment on `CARGO_BUILD_JOBS`.
 
 ## Goals / Non-Goals
@@ -70,7 +70,7 @@ No further simplifications were found that do not remove an abstraction.
 
 - [Losing a cross-check against an established library] → The remaining tests check the Jacobian against finite differences and the solve against the acceptance scenes. Ceres can be restored from git if a future constraint type needs comparison.
 - [Spec change affects other implementations] → Only removes an obligation; nothing that conformed before becomes non-conforming.
-- [Dockerfile change untested until rebuild] → `g++` and `cc` are unused by any remaining crate (checked with `cargo tree -i`). If the rebuild fails, re-adding a package is a one-line change.
+- [Dockerfile change untested until rebuild] → `libceres-dev` has no remaining user; the C toolchain needed by `wayland-backend`'s `cc` build comes from the base image's `build-essential` (installed, depends on `gcc` and `g++`). If the rebuild fails, re-adding a package is a one-line change.
 
 ## Migration Plan
 

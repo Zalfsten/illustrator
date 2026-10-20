@@ -41,7 +41,7 @@
 
   "containerEnv": {
     "OLLAMA_API_BASE": "http://127.0.0.1:11434",
-    // Ceres/Eigen C++ units need ~1-2 GB each; cap parallel compile jobs.
+    // Keep parallel rustc jobs within the container's memory/CPU caps.
     "CARGO_BUILD_JOBS": "6"
   },
 

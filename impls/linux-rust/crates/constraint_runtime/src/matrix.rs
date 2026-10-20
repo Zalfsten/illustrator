@@ -270,7 +270,8 @@ impl BlockSparseMatrix {
         }
     }
 
-    /// Add the matrix into a row-major `nrows × ncols` buffer (caller zeroes it).
+    /// Dense materialisation (tests, debugging): add the matrix into a
+    /// row-major `nrows × ncols` buffer (caller zeroes it).
     pub fn add_to_dense(&self, out: &mut [f64]) {
         let n = self.ncols;
         debug_assert_eq!(out.len(), self.nrows * n);

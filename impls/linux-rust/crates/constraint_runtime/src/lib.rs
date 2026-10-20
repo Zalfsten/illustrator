@@ -1,10 +1,8 @@
 //! Model E constraint runtime: global state vector, connectivity assembly,
-//! analytical Jacobians, and a swappable solver port (owned sparse LM by
-//! default; Ceres as an optional reference backend).
+//! analytical Jacobians, and a swappable solver port (owned sparse
+//! Levenberg–Marquardt backend, pure Rust).
 
 pub mod assemble;
-#[cfg(feature = "ceres")]
-pub mod ceres_solver;
 pub mod constraint;
 pub mod constraint_kinds;
 pub mod document;
@@ -25,8 +23,6 @@ mod test_alloc;
 pub use assemble::{
     structural_residual_norm, AssembledSystem, SoftContribution, SoftLengthFloor, SoftPointFollow,
 };
-#[cfg(feature = "ceres")]
-pub use ceres_solver::CeresSolver;
 pub use constraint::{ConstraintEntry, ConstraintId, ConstraintKind};
 pub use constraint_kinds::{
     Congruence, ConstraintInst, EqualLength, FixPoint, Orthogonal, Parallel,
@@ -46,7 +42,7 @@ pub use id::IdMap;
 pub use interact::{DragSession, InteractiveSolve, SoftTerms, SolveError};
 pub use matrix::{Block, BlockSparseMatrix, DenseMatrix};
 pub use mesh::{Mesh, MeshEdge, MeshFilter, MAX_CHORD_TURN};
-pub use solver::{ffi, LmSolver, SolveOutcome, SolverOptions, SolverPort, StubSolver, SystemEval};
+pub use solver::{LmSolver, SolveOutcome, SolverOptions, SolverPort, StubSolver, SystemEval};
 pub use vector::Vector;
 
 pub const SOLVE_TOL: f64 = 1e-6;

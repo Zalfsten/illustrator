@@ -16,7 +16,7 @@ pub struct SolverOptions {
     pub tol: f64,
     pub max_iters: usize,
     /// Initial LM damping, relative to the Marquardt scaling
-    /// \(\mathrm{diag}(J^\top J)\) ([`LmSolver`] only; Ceres ignores it).
+    /// \(\mathrm{diag}(J^\top J)\) (LM backends only, e.g. [`LmSolver`]).
     pub lm_lambda0: f64,
 }
 
@@ -35,8 +35,8 @@ impl Default for SolverOptions {
 /// The Jacobian is a [`BlockSparseMatrix`] with one dense row block per
 /// contribution. Its block structure is fixed for the evaluator (independent
 /// of `p`): [`Self::new_jacobian`] builds it once per solve, then
-/// [`Self::jacobian`] refills the values. Backends that need a dense
-/// \(m \times n\) matrix use [`BlockSparseMatrix::add_to_dense`].
+/// [`Self::jacobian`] refills the values. A dense \(m \times n\) copy (tests,
+/// debugging) is available via [`BlockSparseMatrix::add_to_dense`].
 pub trait SystemEval {
     fn n_params(&self) -> usize;
     fn n_residuals(&self) -> usize;
@@ -120,15 +120,17 @@ impl SolverPort for LmSolver {
         let n = eval.n_params();
         let m = eval.n_residuals();
         if n == 0 || m == 0 {
-            return SolveOutcome::Success {
-                residual_norm: 0.0,
-            };
+            return SolveOutcome::Success { residual_norm: 0.0 };
         }
         assert_eq!(p.len(), n);
 
         let mut j = eval.new_jacobian();
         let mut normal = NormalSystem::new(&j);
-        let mut llt = SparseLlt::new(normal.n(), normal.col_ptr().to_vec(), normal.row_idx().to_vec());
+        let mut llt = SparseLlt::new(
+            normal.n(),
+            normal.col_ptr().to_vec(),
+            normal.row_idx().to_vec(),
+        );
         let mut damped = vec![0.0; normal.values().len()];
         let mut scale = vec![0.0; n];
         let mut delta = vec![0.0; n];
@@ -228,7 +230,6 @@ fn norm_sq(v: &Vector) -> f64 {
     v.iter().map(|x| x * x).sum()
 }
 
-pub mod ffi;
 mod normal;
 mod sparse_chol;
 

@@ -6,24 +6,22 @@ runtime (geometry IR, catalog, solve interaction, solver port).
 ## Requirements
 
 - Rust stable (`rustc`, `cargo`) — installed in the Dev Container image, or via [rustup](https://rustup.rs/).
-  The default build is pure Rust (sparse linear algebra via [`faer`](https://codeberg.org/sarah-quinones/faer), MIT).
-- **Optional: Ceres Solver** for the reference backend (`--features ceres`): Debian
-  package `libceres-dev` (pulls Eigen, glog, gflags). The Dev Container still
-  installs it via `.devcontainer/Dockerfile` (`libceres-dev`, `pkg-config`, `g++`)
-  so reference tests run there. Ceres is licensed under **BSD-3-Clause**
-  (compatible with this crate’s MIT OR Apache-2.0).
+  The solver is pure Rust (sparse linear algebra via [`faer`](https://codeberg.org/sarah-quinones/faer), MIT);
+  no native solver library is needed.
+- `sketch_ui` needs `pkg-config` and a C compiler for its windowing stack
+  (`wayland-sys`, `wayland-backend`); both are in the Dev Container image.
 
 ## Solvers
 
 | Backend | Role |
 |---------|------|
 | `LmSolver` | Default for `InteractiveSolve` / `sketch_ui`: owned sparse Levenberg–Marquardt (normal equations from the contribution-blocked Jacobian, sparse Cholesky) |
-| `CeresSolver` | Optional reference backend behind `--features ceres` (dense, via C++ bridge) |
 | `StubSolver` | Controllable success/failure for Interact tests |
 
 `SolverOptions::lm_lambda0` is `LmSolver`'s initial damping relative to
-`diag(JᵀJ)`; Ceres ignores it and maps `tol` / `max_iters` to function
-tolerance and `max_num_iterations`.
+`diag(JᵀJ)`. The former Ceres reference backend was removed (change
+`remove-ceres-backend`); its measured numbers stay in
+[`BENCHMARKS.md`](BENCHMARKS.md).
 
 ## Build & test
 
@@ -33,20 +31,13 @@ cargo test -p constraint_runtime
 cargo build -p sketch_ui
 ```
 
-With the Ceres reference backend (comparison tests in `tests/ceres_reference.rs`):
-
-```bash
-cargo test -p constraint_runtime --features ceres
-```
-
 Benchmarks (results in [`BENCHMARKS.md`](BENCHMARKS.md)):
 
 ```bash
-cargo bench -p constraint_runtime --bench solve                  # sparse LM
-cargo bench -p constraint_runtime --bench solve --features ceres # + Ceres
+cargo bench -p constraint_runtime --bench solve
 ```
 
-After Dockerfile dependency changes, rebuild the Dev Container so `libceres-dev` is present.
+After Dockerfile dependency changes, rebuild the Dev Container.
 
 ## Run UI
 

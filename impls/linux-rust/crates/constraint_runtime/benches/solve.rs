@@ -11,10 +11,7 @@ use constraint_runtime::{
 use staircase::staircase;
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
 
-/// Sparse path sizes; the dense Ceres reference stops at 100 (≈ n³ per solve).
 const SIZES: &[usize] = &[10, 30, 100, 500];
-#[cfg(feature = "ceres")]
-const DENSE_SIZES: &[usize] = &[10, 30, 100];
 
 fn interactive<S: SolverPort>(solver: S) -> InteractiveSolve<S> {
     InteractiveSolve {
@@ -39,10 +36,10 @@ fn bench_jacobian(c: &mut Criterion) {
     group.finish();
 }
 
-fn bench_structural<S: SolverPort + Clone>(c: &mut Criterion, name: &str, solver: S, sizes: &[usize]) {
+fn bench_structural<S: SolverPort + Clone>(c: &mut Criterion, name: &str, solver: S) {
     let mut group = c.benchmark_group(format!("structural/{name}"));
     group.sample_size(10);
-    for &n in sizes {
+    for &n in SIZES {
         let (doc, _) = staircase(n);
         group.bench_with_input(BenchmarkId::from_parameter(n), &n, |b, _| {
             b.iter_batched(
@@ -58,10 +55,10 @@ fn bench_structural<S: SolverPort + Clone>(c: &mut Criterion, name: &str, solver
     group.finish();
 }
 
-fn bench_drag<S: SolverPort + Clone>(c: &mut Criterion, name: &str, solver: S, sizes: &[usize]) {
+fn bench_drag<S: SolverPort + Clone>(c: &mut Criterion, name: &str, solver: S) {
     let mut group = c.benchmark_group(format!("drag/{name}"));
     group.sample_size(10);
-    for &n in sizes {
+    for &n in SIZES {
         let (mut doc, ids) = staircase(n);
         let mut interact = interactive(solver.clone());
         interact.structural_only(&mut doc).expect("initial solve");
@@ -84,18 +81,9 @@ fn bench_drag<S: SolverPort + Clone>(c: &mut Criterion, name: &str, solver: S, s
 }
 
 fn bench_lm(c: &mut Criterion) {
-    bench_structural(c, "lm", LmSolver, SIZES);
-    bench_drag(c, "lm", LmSolver, SIZES);
+    bench_structural(c, "lm", LmSolver);
+    bench_drag(c, "lm", LmSolver);
 }
 
-#[cfg(feature = "ceres")]
-fn bench_ceres(c: &mut Criterion) {
-    bench_structural(c, "ceres", constraint_runtime::CeresSolver, DENSE_SIZES);
-    bench_drag(c, "ceres", constraint_runtime::CeresSolver, DENSE_SIZES);
-}
-
-#[cfg(feature = "ceres")]
-criterion_group!(benches, bench_jacobian, bench_lm, bench_ceres);
-#[cfg(not(feature = "ceres"))]
 criterion_group!(benches, bench_jacobian, bench_lm);
 criterion_main!(benches);

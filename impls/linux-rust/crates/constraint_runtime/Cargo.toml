@@ -2,15 +2,8 @@
 name = "constraint_runtime"
 version = "0.1.0"
 edition = "2021"
-description = "Model E constraint IR and owned/external solvers for scientific illustration sketches"
+description = "Model E constraint IR and owned sparse solver for scientific illustration sketches"
 license = "MIT OR Apache-2.0"
-
-[features]
-# Optional Ceres reference backend (C++; needs libceres-dev, glog, gflags, Eigen).
-ceres = []
-
-[build-dependencies]
-cc = "1"
 
 [dev-dependencies]
 criterion = { version = "0.5", default-features = false, features = ["cargo_bench_support"] }
