@@ -1,5 +1,7 @@
 # Proposal
 
+> **Archive note (2026-10-20):** Abandoned (0/5 tasks). The implementation moved the other way, to a closed geometry kind sum (`GeometryKind` + `with_kind!`), which the main `geometry-ir` spec describes. Delta specs were **not synced**.
+
 ## Why
 
 Document geometry storage in the shared specs still describes a **closed sum of kinds** (kind discriminant + kind-specific payload on each record). The proven linux-rust design instead uses a **shared shell** (identity, role, State block) plus an **object-safe instance contract**, with kinds owning charts and formula catalogs. Specs must catch up so new kinds and parallel implementations follow the same contracts—without treating one language’s trait objects as the product.

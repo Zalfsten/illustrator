@@ -1,5 +1,7 @@
 # Proposal
 
+> **Archive note (2026-10-20):** Implemented (6/6 tasks), later superseded by the `IdMap` refactor (`IdGenerator` and `Mapper` no longer exist). Delta specs were **not synced**: the main specs evolved afterwards, and the "explicit identity is observed on import" rule conflicts with the later decision to renumber ids on load (compact-on-load).
+
 ## Why
 
 Document geometry storage already uses a shared shell and object-safe instances, but identity allocation, State↔chart mapping, and geometry lookup are still tangled: `DocumentStructure` owns `next_id`, unpack helpers take a `GeometryId` and look up again, and callers pass id+State separately. Clearer module boundaries are needed without ECS side-maps or nested type towers — so chart math stays free of registry concerns while evaluate/solve stays flat and readable.
