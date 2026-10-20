@@ -17,4 +17,16 @@ else
   openspec update --no-animation || true
 fi
 
+# Browser build of sketch_ui (WebAssembly + Trunk).
+echo "Installing wasm32 target and trunk..."
+rustup target add wasm32-unknown-unknown
+if ! command -v trunk >/dev/null 2>&1; then
+  if command -v cargo-binstall >/dev/null 2>&1; then
+    cargo binstall -y trunk || cargo install --locked trunk
+  else
+    cargo install --locked trunk
+  fi
+fi
+echo "trunk: $(trunk --version)"
+
 echo "Dev container ready. Use /opsx-propose (Cursor) or /opsx:propose (Claude Code)."

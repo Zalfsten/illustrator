@@ -1,0 +1,4 @@
+# Local browser build (`trunk serve` from this directory).
+[serve]
+# Uncommon port: 8080 is often taken on hosts (the Dev Container uses host networking).
+port = 8737

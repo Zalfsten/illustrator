@@ -90,6 +90,16 @@ context: |
   recorded parameter window. See openspec/specs/state-vector/spec.md
   (Contiguous parameter block per geometry; atomic structural edits).
 
+  Platform boundary:
+  The core (Document, evaluation, assembly, solver, Interact, Mesh, App
+  presentation logic) is platform-neutral and runs unchanged natively and in
+  the browser (WebAssembly). Host services (files, clipboard, time, sharing)
+  go through one replaceable host boundary with completion-based delivery
+  and runtime-discoverable optional capabilities (system-architecture spec).
+  linux-rust: `cfg(target_arch)` only in sketch_ui/src/main.rs and Cargo
+  target tables; scripts/check-wasm.sh guards the wasm32 build; the
+  `Platform` trait arrives with the first host-service feature.
+
   Rust module and unit-test layout (impls/linux-rust):
   constraint_runtime splits concerns as follows:
   - geom: shared affine / scalar DOF types (Point2, Vec2, HeadingAngle,

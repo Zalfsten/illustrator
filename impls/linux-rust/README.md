@@ -56,3 +56,37 @@ cargo run -p sketch_ui
 ```
 
 Tools: Select/Drag, Segment (two clicks), Join, Parallel, Orthogonal, FixPoint.
+
+## Browser build
+
+The same `App` runs in the browser (WebAssembly, eframe `WebRunner` on a canvas).
+The Dev Container installs the target and Trunk in `post-create.sh`; elsewhere:
+
+```bash
+rustup target add wasm32-unknown-unknown
+cargo install --locked trunk
+```
+
+Check that the core and the UI still build for the browser target:
+
+```bash
+impls/linux-rust/scripts/check-wasm.sh
+```
+
+Serve locally (http://localhost:8737, port set in `crates/sketch_ui/Trunk.toml`;
+reachable from the host because the Dev Container uses host networking):
+
+```bash
+cd impls/linux-rust/crates/sketch_ui
+trunk serve
+```
+
+### Platform boundary
+
+`constraint_runtime`, `app.rs` and `viewport.rs` stay platform-neutral: no
+host services (files, threads, wall-clock time, browser APIs) and no
+`cfg(target_arch = ...)`. Platform code lives only in `sketch_ui/src/main.rs`
+(one `main` per host) and in target-specific dependency tables. Host services
+(load/save, clipboard, sharing, ...) will go through the `Platform` trait
+described in the `platform-boundary` change design (D3), introduced with the
+first feature that needs one.

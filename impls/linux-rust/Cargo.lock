@@ -3335,6 +3335,9 @@ dependencies = [
  "constraint_runtime",
  "eframe",
  "egui",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "web-sys",
 ]
 
 [[package]]

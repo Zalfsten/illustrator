@@ -78,11 +78,11 @@ The README documents it. When CI is added later, it calls the same script.
 
 ### D6: Trunk for local browser serving
 
-`crates/sketch_ui/index.html` with `<link data-trunk rel="rust" />` and a full-window canvas `the_canvas_id`. Run with `trunk serve` (port 8080, reachable from the host thanks to `--network=host`). The Dev Container installs the `wasm32-unknown-unknown` target and `trunk` (via `cargo binstall trunk`, or `cargo install --locked trunk` as fallback) in `.devcontainer/post-create.sh`.
+`crates/sketch_ui/index.html` with `<link data-trunk rel="rust" />` and a full-window canvas `the_canvas_id`. Run with `trunk serve` (port 8737 from `crates/sketch_ui/Trunk.toml`, reachable from the host thanks to `--network=host`; an uncommon port because 8080 was already taken on the development host). The Dev Container installs the `wasm32-unknown-unknown` target and `trunk` (via `cargo binstall trunk`, or `cargo install --locked trunk` as fallback) in `.devcontainer/post-create.sh`.
 
 ## Risks / Trade-offs
 
-- [faer on wasm32: `std` feature or a transitive dependency (e.g. `rayon`, `getrandom`) may not compile for `wasm32-unknown-unknown`] → the first task is the build check. If it fails, adjust faer features (`default-features = false` is already set) or enable `getrandom/js`; record the outcome here.
+- [faer on wasm32: `std` feature or a transitive dependency (e.g. `rayon`, `getrandom`) may not compile for `wasm32-unknown-unknown`] → the first task is the build check. If it fails, adjust faer features (`default-features = false` is already set) or enable `getrandom/js`; record the outcome here. **Outcome (apply, 2026-10-20):** `constraint_runtime` builds for `wasm32-unknown-unknown` unchanged — faer 0.24.4 with `default-features = false` + `std`, `sparse-linalg` needs no extra features.
 - [Solver runs on the browser main thread; large sketches could drop frames] → acceptable for current sketch sizes (drag step at N = 100 is about 1.5 ms natively, maybe 2–5× slower in wasm without SIMD). Web Workers stay out of scope.
 - [eframe default features pull in winit/wgpu parts not needed on web, bigger binary] → acceptable for now; trimming features is a later optimization.
 - [`cfg` creeps into App code over time] → D2 rule plus review. The wasm check only catches compile breakage, not style.

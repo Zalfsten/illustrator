@@ -399,7 +399,11 @@ impl eframe::App for App {
 
             if self.tool == Tool::Select {
                 if response.drag_started() {
-                    if let Some(pos) = response.interact_pointer_pos() {
+                    // egui reports drag start only after the pointer moved past the
+                    // click threshold; hit-test where the button went down, not where
+                    // the pointer is now (coarse browser events can be > 12 px away).
+                    let press = ui.input(|i| i.pointer.press_origin());
+                    if let Some(pos) = press.or_else(|| response.interact_pointer_pos()) {
                         if let Some(expr) = self.hit_point(pos, 12.0) {
                             self.drag.pointer_down(&self.doc, expr);
                         }

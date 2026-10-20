@@ -1,6 +1,8 @@
 # Rust
 **/target/
 **/*.rs.bk
+# Trunk browser build output
+impls/linux-rust/crates/sketch_ui/dist/
 *.pdb
 
 # aider / local coder
