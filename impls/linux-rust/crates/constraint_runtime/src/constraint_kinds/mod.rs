@@ -6,12 +6,12 @@ pub mod catalog;
 pub mod congruence;
 pub mod equal_length;
 pub mod fix_point;
-pub mod orthogonal;
-pub mod parallel;
+pub mod vectors_orthogonal;
+pub mod vectors_parallel;
 
 pub use catalog::ConstraintInst;
 pub use congruence::Congruence;
 pub use equal_length::EqualLength;
 pub use fix_point::FixPoint;
-pub use orthogonal::Orthogonal;
-pub use parallel::Parallel;
+pub use vectors_orthogonal::VectorsOrthogonal;
+pub use vectors_parallel::VectorsParallel;

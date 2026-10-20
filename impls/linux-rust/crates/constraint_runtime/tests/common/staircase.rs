@@ -1,12 +1,12 @@
 //! Shared benchmark / test scene: open staircase chain of `n` segments.
 //!
-//! Congruence joints, Orthogonal between neighbours, Parallel every 5th pair,
+//! Congruence joints, VectorsOrthogonal between neighbours, VectorsParallel every 5th pair,
 //! EqualLength every 3rd pair, FixPoint on the first start; small deterministic
 //! perturbation so solves start near a consistent configuration.
 
 use constraint_runtime::{
-    Congruence, CurveExprs, CurveParam, Document, EndpointExprs, EqualLength, FixPoint,
-    GeometryId, GeometryRole, Orthogonal, Parallel, Point2, Segment,
+    Congruence, CurveExprs, Document, EndpointExprs, EqualLength, FixPoint, GeometryId, GeometryRole,
+    LineExprs, Point2, Segment, VectorsOrthogonal, VectorsParallel,
 };
 
 /// Deterministic pseudo-random offset in [-0.05, 0.05].
@@ -40,9 +40,9 @@ pub fn staircase(n: usize) -> (Document, Vec<GeometryId>) {
             a: Segment::end_expr(s),
             b: Segment::start_expr(t),
         });
-        doc.add_constraint(Orthogonal {
-            a: Segment::tangent_expr(s, CurveParam::Normalized(0.0)),
-            b: Segment::tangent_expr(t, CurveParam::Normalized(0.0)),
+        doc.add_constraint(VectorsOrthogonal {
+            a: Segment::direction_expr(s),
+            b: Segment::direction_expr(t),
         });
         if i % 3 == 0 {
             doc.add_constraint(EqualLength {
@@ -51,9 +51,9 @@ pub fn staircase(n: usize) -> (Document, Vec<GeometryId>) {
             });
         }
         if i % 5 == 0 && i + 2 < n {
-            doc.add_constraint(Parallel {
-                a: Segment::tangent_expr(s, CurveParam::Normalized(0.0)),
-                b: Segment::tangent_expr(ids[i + 2], CurveParam::Normalized(0.0)),
+            doc.add_constraint(VectorsParallel {
+                a: Segment::direction_expr(s),
+                b: Segment::direction_expr(ids[i + 2]),
             });
         }
     }

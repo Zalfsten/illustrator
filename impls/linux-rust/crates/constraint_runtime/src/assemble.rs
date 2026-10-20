@@ -52,7 +52,7 @@ impl SoftPointFollow {
 /// Soft one-sided floor on a length expression: \(\sqrt{w}\,\max(0,\ell_{\min}-L)\).
 ///
 /// Used during Interact to resist curve collapse without changing structural
-/// Parallel / Orthogonal geometry. Inactive when \(L \ge \ell_{\min}\).
+/// VectorsParallel / VectorsOrthogonal geometry. Inactive when \(L \ge \ell_{\min}\).
 #[derive(Clone, Debug)]
 pub struct SoftLengthFloor {
     pub length: LengthExpr,

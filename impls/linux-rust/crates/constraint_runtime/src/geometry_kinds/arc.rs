@@ -2,9 +2,9 @@
 
 use std::ops::Range;
 
-use crate::expr::{HeadingAngleExpr, LengthExpr, TurnAngleExpr};
+use crate::expr::{HeadingAngleExpr, TurnAngleExpr};
 use crate::geom::{HeadingAngle, Length, Point2, TurnAngle, Vec2};
-use crate::geometry::capabilities::{CurveExprs, EndpointExprs};
+use crate::geometry::capabilities::{CircularExprs, CurveExprs, EndpointExprs};
 use crate::geometry::chart::chart_atoms;
 use crate::geometry::{
     Geometry, GeometryId, HeadingFormula, LengthFormula, PointFormula, TurnFormula, VecFormula,
@@ -40,6 +40,7 @@ chart_atoms! {
 
 impl CurveExprs for Arc {}
 impl EndpointExprs for Arc {}
+impl CircularExprs for Arc {}
 
 impl Arc {
     /// Heading at the arc start (chart atom).
@@ -50,11 +51,6 @@ impl Arc {
     /// Signed sweep turn (chart atom).
     pub fn sweep_expr(id: GeometryId) -> TurnAngleExpr {
         TurnAngleExpr::new(id, TurnFormula::Sweep)
-    }
-
-    /// Circle radius \(|R|\) (non-negative; equals the chart atom once committed).
-    pub fn radius_expr(id: GeometryId) -> LengthExpr {
-        LengthExpr::new(id, LengthFormula::Radius)
     }
 
     #[inline]
@@ -69,6 +65,7 @@ impl Arc {
             PointFormula::OnCurve { param } => param.chart_t(),
             PointFormula::Start => 0.0,
             PointFormula::End => 1.0,
+            PointFormula::Center => unreachable!("center is not a curve location"),
         }
     }
 }
@@ -91,6 +88,9 @@ impl Geometry for Arc {
     }
 
     fn point(f: PointFormula, (center, radius, start, sweep): Self::Init) -> Point2 {
+        if let PointFormula::Center = f {
+            return center;
+        }
         let th = Self::theta(Self::point_t(f), start, sweep);
         let r = radius.value();
         Point2::new(center.x + r * th.cos(), center.y + r * th.sin())
@@ -103,6 +103,11 @@ impl Geometry for Arc {
         j: &mut DenseMatrix<'_>,
         scale: f64,
     ) {
+        if let PointFormula::Center = f {
+            // local cols: center.x, center.y
+            j.set_scaled(scale, [[1.0, 0.0], [0.0, 1.0]]);
+            return;
+        }
         let t = Self::point_t(f);
         let r = radius.value();
         let th = Self::theta(t, start, sweep);
@@ -122,6 +127,7 @@ impl Geometry for Arc {
                     ],
                 );
             }
+            PointFormula::Center => unreachable!("handled above"),
         }
     }
 
@@ -130,6 +136,7 @@ impl Geometry for Arc {
             // start independent of sweep at t=0
             PointFormula::Start => Self::center.span(Self::start),
             PointFormula::OnCurve { .. } | PointFormula::End => Self::center.span(Self::sweep),
+            PointFormula::Center => Self::center.range(),
         }
     }
 
@@ -147,6 +154,7 @@ impl Geometry for Arc {
                 // left_normal(tangent) = R Δθ (-cos θ, -sin θ)
                 Vec2::new(-r * dth * th.cos(), -r * dth * th.sin())
             }
+            VecFormula::Direction => unreachable!("arc has no straight carrier"),
         }
     }
 
@@ -186,6 +194,7 @@ impl Geometry for Arc {
                     ],
                 );
             }
+            VecFormula::Direction => unreachable!("arc has no straight carrier"),
         }
     }
 

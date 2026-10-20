@@ -1,6 +1,6 @@
 //! Closed [`ConstraintInst`] catalog (generated from the kind list).
 
-use super::{Congruence, EqualLength, FixPoint, Orthogonal, Parallel};
+use super::{Congruence, EqualLength, FixPoint, VectorsOrthogonal, VectorsParallel};
 use crate::constraint::ConstraintKind;
 use crate::geometry::GeometryId;
 use crate::document::Document;
@@ -74,8 +74,8 @@ macro_rules! constraint_catalog {
 
 constraint_catalog! {
     Congruence,
-    Parallel,
-    Orthogonal,
+    VectorsParallel,
+    VectorsOrthogonal,
     FixPoint,
     EqualLength,
 }

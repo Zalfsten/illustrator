@@ -3,7 +3,7 @@
 use std::ops::Range;
 
 use crate::geom::{Length, Point2, Vec2};
-use crate::geometry::capabilities::{CurveExprs, EndpointExprs};
+use crate::geometry::capabilities::{CurveExprs, EndpointExprs, LineExprs};
 use crate::geometry::chart::chart_atoms;
 use crate::geometry::{Geometry, LengthFormula, PointFormula, VecFormula};
 use crate::geometry_kinds::GeometryKind;
@@ -27,6 +27,7 @@ chart_atoms! {
 
 impl CurveExprs for Segment {}
 impl EndpointExprs for Segment {}
+impl LineExprs for Segment {}
 
 impl Geometry for Segment {
     const KIND: GeometryKind = GeometryKind::Segment;
@@ -39,6 +40,7 @@ impl Geometry for Segment {
             }
             PointFormula::Start => a,
             PointFormula::End => b,
+            PointFormula::Center => unreachable!("segment has no circular carrier"),
         }
     }
 
@@ -58,6 +60,7 @@ impl Geometry for Segment {
             PointFormula::Start | PointFormula::End => {
                 j.set_scaled(scale, [[1.0, 0.0], [0.0, 1.0]]);
             }
+            PointFormula::Center => unreachable!("segment has no circular carrier"),
         }
     }
 
@@ -66,20 +69,22 @@ impl Geometry for Segment {
             PointFormula::OnCurve { .. } => Self::start.span(Self::end),
             PointFormula::Start => Self::start.range(),
             PointFormula::End => Self::end.range(),
+            PointFormula::Center => unreachable!("segment has no circular carrier"),
         }
     }
 
     fn vec(f: VecFormula, (a, b): Self::Init) -> Vec2 {
         match f {
-            // γ'(t) = B - A (constant on a segment); length = segment length
-            VecFormula::TangentAt { .. } => b - a,
+            // γ'(t) = B - A (constant on a segment); length = segment length.
+            // Direction is the same vector, as a t-independent invariant.
+            VecFormula::TangentAt { .. } | VecFormula::Direction => b - a,
             VecFormula::NormalAt { .. } => (b - a).left_normal(),
         }
     }
 
     fn vec_jacobian(f: VecFormula, _c: Self::Init, j: &mut DenseMatrix<'_>, scale: f64) {
         match f {
-            VecFormula::TangentAt { .. } => {
+            VecFormula::TangentAt { .. } | VecFormula::Direction => {
                 // ∂(B-A)/∂(A,B) = -I | I
                 j.set_scaled(
                     scale,

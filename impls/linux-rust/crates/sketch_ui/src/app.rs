@@ -2,8 +2,9 @@
 
 use constraint_runtime::{
     Arc, Congruence, CurveExprs, CurveParam, Document, DragSession, EndpointExprs, EqualLength,
-    FixPoint, GeometryId, GeometryRole, HeadingAngle, InteractiveSolve, Length, Mesh, MeshFilter,
-    Orthogonal, Parallel, Point2, PointExpr, Segment, SolveError, TurnAngle,
+    FixPoint, GeometryId, GeometryRole, HeadingAngle, InteractiveSolve, Length, LineExprs, Mesh,
+    MeshFilter, Point2, PointExpr, Segment, SolveError, TurnAngle, VectorsOrthogonal,
+    VectorsParallel,
 };
 use eframe::egui::{self, Color32, Pos2, Rect, Sense, Stroke};
 
@@ -97,17 +98,17 @@ impl App {
             a: Arc::end_expr(fillet),
             b: Segment::start_expr(s1),
         });
-        doc.add_constraint(Parallel {
+        doc.add_constraint(VectorsParallel {
             a: Segment::tangent_expr(s0, CurveParam::Normalized(0.0)),
             b: Arc::tangent_expr(fillet, CurveParam::Normalized(0.0)),
         });
-        doc.add_constraint(Parallel {
+        doc.add_constraint(VectorsParallel {
             a: Segment::tangent_expr(s1, CurveParam::Normalized(0.0)),
             b: Arc::tangent_expr(fillet, CurveParam::Normalized(1.0)),
         });
-        doc.add_constraint(Orthogonal {
-            a: Segment::tangent_expr(s0, CurveParam::Normalized(0.0)),
-            b: Segment::tangent_expr(s1, CurveParam::Normalized(0.0)),
+        doc.add_constraint(VectorsOrthogonal {
+            a: Segment::direction_expr(s0),
+            b: Segment::direction_expr(s1),
         });
         doc.add_constraint(FixPoint {
             point: Segment::start_expr(s0),
@@ -239,20 +240,19 @@ impl App {
             }
             Tool::Parallel | Tool::Orthogonal => {
                 if let Some(id) = self.hit_edge(screen, 24.0) {
+                    // Lines only: the direction is a curve invariant; arcs have none.
+                    if !self.doc.expect_geometry(id).kind().has_line_exprs() {
+                        self.status = "Parallel/Orthogonal needs two line segments".into();
+                        return;
+                    }
                     self.pick_geoms.push(id);
                     if self.pick_geoms.len() >= 2 {
-                        let a = self.pick_geoms[0];
-                        let b = self.pick_geoms[1];
+                        let a = Segment::direction_expr(self.pick_geoms[0]);
+                        let b = Segment::direction_expr(self.pick_geoms[1]);
                         if self.tool == Tool::Parallel {
-                            self.doc.add_constraint(Parallel {
-                                a: Segment::tangent_expr(a, CurveParam::Normalized(0.0)),
-                                b: Segment::tangent_expr(b, CurveParam::Normalized(0.0)),
-                            });
+                            self.doc.add_constraint(VectorsParallel { a, b });
                         } else {
-                            self.doc.add_constraint(Orthogonal {
-                                a: Segment::tangent_expr(a, CurveParam::Normalized(0.0)),
-                                b: Segment::tangent_expr(b, CurveParam::Normalized(0.0)),
-                            });
+                            self.doc.add_constraint(VectorsOrthogonal { a, b });
                         }
                         self.pick_geoms.clear();
                         let r = self.interact.structural_only(&mut self.doc);

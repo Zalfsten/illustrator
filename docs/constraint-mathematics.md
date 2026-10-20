@@ -223,12 +223,38 @@ Examples from the v1 catalog:
 
 - **Congruence** of two point expressions $A(p), B(p)$:  
   $r = A(p) - B(p) \in \mathbb{R}^2$.
-- **Parallel** of two segment direction vectors $u,v$: one scalar measuring linear dependence (e.g. the 2D cross $u_x v_y - u_y v_x$).
-- **Orthogonal**: one scalar $u \cdot v$ (dot of free vectors).
+- **VectorsParallel** of two free vectors $u,v$: one scalar measuring linear dependence (the 2D cross $u_x v_y - u_y v_x$).
+- **VectorsOrthogonal** of two free vectors $u,v$: one scalar $u \cdot v$.
 - **FixPoint** of expression $A(p)$ to target $t$:  
   $r = A(p) - t \in \mathbb{R}^2$.
 - **EqualLength** of two scalar expressions $s_a(p), s_b(p)$:  
   $r = s_a(p) - s_b(p) \in \mathbb{R}$ (typically curve `length_expr`s).
+
+### Constraint scope: pointwise, existential, universal
+
+A relationship between curves can hold
+
+- **pointwise**: at stated curve locations, e.g. the tangent of an arc at
+  normalized $t = 0$ parallel to a segment (only that location is constrained);
+- **existential**: at *some* location found by the solve, e.g. "point lies
+  somewhere on a curve" (needs a free curve parameter as a DOF; not supported
+  yet);
+- **universal**: along the whole curve, e.g. parallel lines, concentric arcs.
+
+All catalog constraints are pointwise. Universal relations are expressed as
+pointwise constraints on **curve invariants**: quantities independent of the
+curve location and of the chart. For the simple families a whole curve is
+determined by a few of them, so "for all $t$" reduces to finitely many
+equations:
+
+| Family | Invariants (capability) | Universal relation as catalog constraint |
+|---|---|---|
+| straight line / segment | direction $d = B - A$ (`LineExprs::direction_expr`) | parallel / perpendicular lines: `VectorsParallel` / `VectorsOrthogonal` on $d_1, d_2$ |
+| circle / arc | center $C$, radius $|R|$ (`CircularExprs::center_expr`, `radius_expr`) | concentric: `Congruence` of centers; equal radius: `EqualLength` of radii |
+
+Mixed families (line "parallel" to an arc) have no universal meaning; tools
+reject them. General curves (splines, function graphs) have no such carrier
+invariants; only pointwise or existential relations apply there.
 
 Each contribution also exposes derivatives equivalent to a contribution
 Jacobian $J_N = \partial r_N / \partial p_{\mathrm{loc}}$ whose columns follow

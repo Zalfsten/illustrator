@@ -61,10 +61,10 @@ context: |
   resolved once per call through a closed kind catalog. Point and
   free-vector Jacobians are both 2×n; length / heading / turn Jacobians are
   1×n, written into a DenseMatrix window with formula-local columns (sparse vs
-  full geometry block). Parallel/Orthogonal contract \(g^\top J_v\) from a
+  full geometry block). VectorsParallel/VectorsOrthogonal contract \(g^\top J_v\) from a
   vector jet. Typed scalar families stay separate (LengthExpr,
   HeadingAngleExpr, TurnAngleExpr — no untyped ScalarExpr / single
-  AngleExpr). Parallel/Orthogonal take two opaque vector expressions;
+  AngleExpr). VectorsParallel/VectorsOrthogonal take two opaque vector expressions;
   EqualLength takes two LengthExprs. Geometries construct expressions via
   capability factories (CurveExprs / EndpointExprs); constraints, Mesh, and
   Interact only evaluate them. See docs/constraint-mathematics.md (Design
@@ -107,7 +107,9 @@ context: |
       triple), formula_family!
     - capabilities.rs: kind-agnostic formula tags (PointFormula,
       VecFormula, LengthFormula, HeadingFormula, TurnFormula) and opt-in
-      factories CurveExprs / EndpointExprs
+      factories CurveExprs / EndpointExprs, plus invariant capabilities
+      LineExprs (direction) and CircularExprs (center, radius |R|);
+      GeometryKind::has_line_exprs / has_circular_exprs for dynamic ids
   - id.rs: IdMap<Id, T> (typed id → value storage; shared by geometry and
     constraint namespaces)
   - geometry_kinds/: catalog.rs (data-less GeometryKind enum, GeometryInst,

@@ -1,4 +1,4 @@
-use crate::constraint_kinds::{Congruence, ConstraintInst, EqualLength, FixPoint, Orthogonal, Parallel};
+use crate::constraint_kinds::{Congruence, ConstraintInst, EqualLength, FixPoint, VectorsOrthogonal, VectorsParallel};
 use crate::document::Document;
 use crate::geom::{CurveParam, Point2};
 use crate::geometry_kinds::{GeometryInst, Segment};
@@ -32,12 +32,12 @@ fn jacobian_matches_fd_for_catalog() {
             b: Segment::start_expr(GeometryId(1)),
         }
         .into(),
-        Parallel {
+        VectorsParallel {
             a: Segment::tangent_expr(GeometryId(0), CurveParam::Normalized(0.0)),
             b: Segment::tangent_expr(GeometryId(1), CurveParam::Normalized(0.0)),
         }
         .into(),
-        Orthogonal {
+        VectorsOrthogonal {
             a: Segment::tangent_expr(GeometryId(0), CurveParam::Normalized(0.0)),
             b: Segment::tangent_expr(GeometryId(1), CurveParam::Normalized(0.0)),
         }

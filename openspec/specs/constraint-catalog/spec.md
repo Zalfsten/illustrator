@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Defines the persistent v1 constraint catalog — Congruence, Parallel, Orthogonal, FixPoint, and EqualLength — including residual meaning and the rule that satisfied structural constraints are document invariants.
+Defines the persistent v1 constraint catalog — Congruence, VectorsParallel, VectorsOrthogonal, FixPoint, and EqualLength — including residual meaning, constraint scope (pointwise, existential, universal), and the rule that satisfied structural constraints are document invariants.
 
 ## Requirements
 

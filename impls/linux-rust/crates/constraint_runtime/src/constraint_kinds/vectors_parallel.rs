@@ -1,4 +1,4 @@
-//! Orthogonal free vectors (one residual: dot product).
+//! Two free vectors are parallel or anti-parallel (one residual: 2D cross).
 
 use crate::constraint::{pair_connectivity, unique_geometry_ids, ConstraintKind};
 use crate::document::Document;
@@ -8,12 +8,12 @@ use crate::matrix::DenseMatrix;
 use crate::vector::Vector;
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct Orthogonal {
+pub struct VectorsParallel {
     pub a: VecExpr,
     pub b: VecExpr,
 }
 
-impl ConstraintKind for Orthogonal {
+impl ConstraintKind for VectorsParallel {
     const RESIDUAL_ARITY: usize = 1;
 
     fn param_connectivity(&self, doc: &Document) -> Vec<usize> {
@@ -23,15 +23,15 @@ impl ConstraintKind for Orthogonal {
     fn eval_residual(&self, doc: &Document, p: &Vector, out: &mut [f64]) {
         let va = self.a.evaluate(doc, p);
         let vb = self.b.evaluate(doc, p);
-        out[0] = va.dot(vb);
+        out[0] = va.cross(vb);
     }
 
     fn accumulate_jacobian(&self, doc: &Document, p: &Vector, j: &mut DenseMatrix<'_>) {
-        // r = va · vb; ∂r/∂va = vb, ∂r/∂vb = va
+        // r = va × vb; ∂r/∂va = vb.right_normal(), ∂r/∂vb = va.left_normal()
         let ja = self.a.jet(doc, p);
         let jb = self.b.jet(doc, p);
-        ja.contract_into(j, 0, jb.value, 1.0);
-        jb.contract_into(j, ja.cols(), ja.value, 1.0);
+        ja.contract_into(j, 0, jb.value.right_normal(), 1.0);
+        jb.contract_into(j, ja.cols(), ja.value.left_normal(), 1.0);
     }
 
     fn referenced_geometries(&self) -> Vec<GeometryId> {

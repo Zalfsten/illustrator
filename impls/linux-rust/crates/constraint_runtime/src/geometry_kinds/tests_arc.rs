@@ -3,6 +3,7 @@ use crate::document::Document;
 use crate::geometry_kinds::GeometryInst;
 use crate::geom::{CurveParam, HeadingAngle, Length, Point2, TurnAngle};
 use crate::geometry::{Chart, CurveExprs, EndpointExprs, GeometryId, GeometryRole, GeometryShell};
+use crate::geometry::CircularExprs;
 use crate::matrix::DenseMatrix;
 use crate::vector::Vector;
 
@@ -136,6 +137,53 @@ fn on_curve_jacobian_matches_fd() {
             pt.y
         }
     });
+    for (a, b) in buf.iter().zip(fd.iter()) {
+        assert!((a - b).abs() < 1e-5, "jac {a} vs fd {b}");
+    }
+}
+
+#[test]
+fn center_expr_matches_chart_and_is_sparse() {
+    let store = store_with(arc_geom(0, 0));
+    let id = GeometryId(0);
+    let p = Vector::from(vec![0.5, -0.25, 2.0, 0.3, 1.1]);
+    let c = Arc::center_expr(id).evaluate(&store, &p);
+    assert_eq!(c.x, 0.5);
+    assert_eq!(c.y, -0.25);
+    assert_eq!(Arc::center_expr(id).param_indices(&store), vec![0, 1]);
+
+    for t in [0.0, 0.3, 0.7, 1.0] {
+        let q = Arc::on_curve_expr(id, CurveParam::Normalized(t)).evaluate(&store, &p);
+        let distance = ((q.x - c.x).powi(2) + (q.y - c.y).powi(2)).sqrt();
+        assert!((distance - Arc::radius_expr(id).evaluate(&store, &p).value()).abs() < 1e-12);
+    }
+}
+
+#[test]
+fn center_jacobian_matches_fd() {
+    let store = store_with(arc_geom(0, 0));
+    let id = GeometryId(0);
+    let p = Vector::from(vec![0.5, -0.25, 2.0, 0.3, 1.1]);
+
+    // Analytic Jacobian of center expression (2x2 matrix)
+    let n = 2; // center has 2 parameters: x and y
+    let mut buf = vec![0.0; 2 * n];
+    {
+        let mut j = DenseMatrix::packed(&mut buf, 2, n);
+        let expr = Arc::center_expr(id);
+        expr.accumulate_jacobian(&store, &p, &mut j, 1.0);
+    }
+
+    // Finite-difference reference using only center columns (0 and 1)
+    let fd = fd_jac_rows(&p, 2, 2, |q, row| {
+        let c = Arc::center_expr(id).evaluate(&store, q);
+        if row == 0 {
+            c.x
+        } else {
+            c.y
+        }
+    });
+
     for (a, b) in buf.iter().zip(fd.iter()) {
         assert!((a - b).abs() < 1e-5, "jac {a} vs fd {b}");
     }

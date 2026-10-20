@@ -2,8 +2,8 @@
 
 use constraint_runtime::{
     AssembledSystem, Congruence, CurveExprs, CurveParam, Document, DragSession, EndpointExprs,
-    EqualLength, FixPoint, GeometryRole, InteractiveSolve, Orthogonal, Parallel, Point2,
-    SoftContribution, SystemEval, Segment, Vector, SOLVE_TOL,
+    EqualLength, FixPoint, GeometryRole, InteractiveSolve, LineExprs, Point2, Segment,
+    SoftContribution, SystemEval, Vector, VectorsOrthogonal, VectorsParallel, SOLVE_TOL,
 };
 
 fn residual_ok(doc: &Document) -> bool {
@@ -23,7 +23,9 @@ fn right_angle_soft_drag_keeps_orthogonal_and_congruence() {
         a: Segment::end_expr(s0),
         b: Segment::start_expr(s1),
     });
-    doc.add_constraint(Orthogonal {
+    // Pointwise form on purpose: segment tangents at a stated t (constant along a
+    // segment); the other scenes use the t-independent direction expressions.
+    doc.add_constraint(VectorsOrthogonal {
         a: Segment::tangent_expr(s0, CurveParam::Normalized(0.0)),
         b: Segment::tangent_expr(s1, CurveParam::Normalized(0.0)),
     });
@@ -75,17 +77,17 @@ fn rectangle_drag_keeps_structure_and_stays_near() {
         b: Segment::start_expr(ab),
     });
 
-    doc.add_constraint(Parallel {
-        a: Segment::tangent_expr(ab, CurveParam::Normalized(0.0)),
-        b: Segment::tangent_expr(cd, CurveParam::Normalized(0.0)),
+    doc.add_constraint(VectorsParallel {
+        a: Segment::direction_expr(ab),
+        b: Segment::direction_expr(cd),
     });
-    doc.add_constraint(Parallel {
-        a: Segment::tangent_expr(da, CurveParam::Normalized(0.0)),
-        b: Segment::tangent_expr(bc, CurveParam::Normalized(0.0)),
+    doc.add_constraint(VectorsParallel {
+        a: Segment::direction_expr(da),
+        b: Segment::direction_expr(bc),
     });
-    doc.add_constraint(Orthogonal {
-        a: Segment::tangent_expr(ab, CurveParam::Normalized(0.0)),
-        b: Segment::tangent_expr(da, CurveParam::Normalized(0.0)),
+    doc.add_constraint(VectorsOrthogonal {
+        a: Segment::direction_expr(ab),
+        b: Segment::direction_expr(da),
     });
     doc.add_constraint(FixPoint {
         point: Segment::start_expr(ab),
@@ -120,7 +122,7 @@ fn rectangle_drag_keeps_structure_and_stays_near() {
 
 #[test]
 fn right_angle_horizontal_drag_moves_x() {
-    // Regression: stay+mouse on the same DOFs + Orthogonal trapped the free
+    // Regression: stay+mouse on the same DOFs + VectorsOrthogonal trapped the free
     // end on a vertical line (axis-aligned right angle). Stay must skip mouse
     // indices so the joint can rotate under the hard constraint.
     let mut doc = Document::new();
@@ -130,9 +132,9 @@ fn right_angle_horizontal_drag_moves_x() {
         a: Segment::end_expr(s0),
         b: Segment::start_expr(s1),
     });
-    doc.add_constraint(Orthogonal {
-        a: Segment::tangent_expr(s0, CurveParam::Normalized(0.0)),
-        b: Segment::tangent_expr(s1, CurveParam::Normalized(0.0)),
+    doc.add_constraint(VectorsOrthogonal {
+        a: Segment::direction_expr(s0),
+        b: Segment::direction_expr(s1),
     });
     doc.add_constraint(FixPoint {
         point: Segment::start_expr(s0),

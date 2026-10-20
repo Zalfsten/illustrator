@@ -34,6 +34,19 @@ macro_rules! with_kind {
 }
 pub(crate) use with_kind;
 
+impl GeometryKind {
+    /// Runtime check for [`LineExprs`](crate::geometry::LineExprs) (tools working on
+    /// dynamic ids; statically typed code uses the trait).
+    pub fn has_line_exprs(self) -> bool {
+        matches!(self, GeometryKind::Segment)
+    }
+
+    /// Runtime check for [`CircularExprs`](crate::geometry::CircularExprs).
+    pub fn has_circular_exprs(self) -> bool {
+        matches!(self, GeometryKind::Arc)
+    }
+}
+
 /// Document-held geometry: shared shell plus kind tag.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct GeometryInst {
@@ -106,3 +119,7 @@ impl GeometryInst {
         (o + local.start..o + local.end).collect()
     }
 }
+
+#[cfg(test)]
+#[path = "tests_catalog.rs"]
+mod tests_catalog;

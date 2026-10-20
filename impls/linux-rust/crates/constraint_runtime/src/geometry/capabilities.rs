@@ -2,6 +2,13 @@
 //!
 //! - [`CurveExprs`]: on-curve / tangent / normal / length.
 //! - [`EndpointExprs`]: start / end (open/join curves only).
+//! - [`LineExprs`]: direction (curves with a straight carrier).
+//! - [`CircularExprs`]: center / radius (curves with a circular carrier).
+//!
+//! Direction, center and radius are **curve invariants**: independent of the
+//! curve location `t` and of the chart. Universal relations between curves
+//! (parallel lines, concentric arcs, equal radii) are pointwise constraints on
+//! them.
 //!
 //! Tags name *what* to evaluate; the geometry kind behind an expression's
 //! [`GeometryId`] decides *how* (see [`crate::geometry::Geometry`]). Factory
@@ -20,6 +27,8 @@ pub enum PointFormula {
     Start,
     /// Kind-efficient end point.
     End,
+    /// Center of a circular carrier (invariant; [`CircularExprs`]).
+    Center,
 }
 
 /// Free-vector formulas for the curve frame.
@@ -27,6 +36,8 @@ pub enum PointFormula {
 pub enum VecFormula {
     TangentAt { param: CurveParam },
     NormalAt { param: CurveParam },
+    /// Direction of a straight carrier, independent of `t` (invariant; [`LineExprs`]).
+    Direction,
 }
 
 /// Length formulas.
@@ -66,6 +77,25 @@ pub trait CurveExprs: Geometry {
 
     fn length_expr(id: GeometryId) -> LengthExpr {
         LengthExpr::new(id, LengthFormula::Length)
+    }
+}
+
+/// Curves with a straight carrier: line direction (invariant along the curve).
+pub trait LineExprs: CurveExprs {
+    fn direction_expr(id: GeometryId) -> VecExpr {
+        VecExpr::new(id, VecFormula::Direction)
+    }
+}
+
+/// Curves with a circular carrier: center and radius (invariants of the circle).
+pub trait CircularExprs: CurveExprs {
+    fn center_expr(id: GeometryId) -> PointExpr {
+        PointExpr::new(id, PointFormula::Center)
+    }
+
+    /// Circle radius \(|R|\) (non-negative).
+    fn radius_expr(id: GeometryId) -> LengthExpr {
+        LengthExpr::new(id, LengthFormula::Radius)
     }
 }
 

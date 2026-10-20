@@ -25,7 +25,7 @@ pub use assemble::{
 };
 pub use constraint::{ConstraintEntry, ConstraintId, ConstraintKind};
 pub use constraint_kinds::{
-    Congruence, ConstraintInst, EqualLength, FixPoint, Orthogonal, Parallel,
+    Congruence, ConstraintInst, EqualLength, FixPoint, VectorsOrthogonal, VectorsParallel,
 };
 pub use document::Document;
 pub use expr::{
@@ -34,8 +34,8 @@ pub use expr::{
 };
 pub use geom::{CurveParam, HeadingAngle, Length, Point2, TurnAngle, Vec2};
 pub use geometry::{
-    Chart, ChartSlot, CurveExprs, EndpointExprs, Geometry, GeometryId, GeometryRole, GeometryShell,
-    StateAtom,
+    Chart, ChartSlot, CircularExprs, CurveExprs, EndpointExprs, Geometry, GeometryId,
+    GeometryRole, GeometryShell, LineExprs, StateAtom,
 };
 pub use geometry_kinds::{Arc, GeometryInst, GeometryKind, Segment};
 pub use id::IdMap;

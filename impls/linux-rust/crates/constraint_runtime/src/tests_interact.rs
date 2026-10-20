@@ -1,5 +1,5 @@
 use super::*;
-use crate::constraint_kinds::{Congruence, EqualLength, FixPoint, Orthogonal, Parallel};
+use crate::constraint_kinds::{Congruence, EqualLength, FixPoint, VectorsOrthogonal, VectorsParallel};
 use crate::geom::{CurveParam, HeadingAngle, Length, Point2, TurnAngle};
 use crate::geometry_kinds::{Arc, Segment};
 use crate::geometry::{CurveExprs, EndpointExprs, GeometryRole};
@@ -62,7 +62,7 @@ fn atomic_drag_undo() {
         a: Segment::end_expr(s0),
         b: Segment::start_expr(s1),
     });
-    doc.add_constraint(Orthogonal {
+    doc.add_constraint(VectorsOrthogonal {
         a: Segment::tangent_expr(s0, CurveParam::Normalized(0.0)),
         b: Segment::tangent_expr(s1, CurveParam::Normalized(0.0)),
     });
@@ -111,15 +111,15 @@ fn fillet_doc_without_length_pin(r: f64) -> (Document, crate::geometry::Geometry
         a: Arc::end_expr(fillet),
         b: Segment::start_expr(s1),
     });
-    doc.add_constraint(Parallel {
+    doc.add_constraint(VectorsParallel {
         a: Segment::tangent_expr(s0, CurveParam::Normalized(0.0)),
         b: Arc::tangent_expr(fillet, CurveParam::Normalized(0.0)),
     });
-    doc.add_constraint(Parallel {
+    doc.add_constraint(VectorsParallel {
         a: Segment::tangent_expr(s1, CurveParam::Normalized(0.0)),
         b: Arc::tangent_expr(fillet, CurveParam::Normalized(1.0)),
     });
-    doc.add_constraint(Orthogonal {
+    doc.add_constraint(VectorsOrthogonal {
         a: Segment::tangent_expr(s0, CurveParam::Normalized(0.0)),
         b: Segment::tangent_expr(s1, CurveParam::Normalized(0.0)),
     });

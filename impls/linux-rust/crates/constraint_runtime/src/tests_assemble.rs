@@ -1,5 +1,5 @@
 use super::*;
-use crate::constraint_kinds::{Congruence, EqualLength, FixPoint, Orthogonal, Parallel};
+use crate::constraint_kinds::{Congruence, EqualLength, FixPoint, VectorsOrthogonal, VectorsParallel};
 use crate::geom::{CurveParam, HeadingAngle, Length, Point2, TurnAngle};
 use crate::geometry_kinds::{Arc, Segment};
 use crate::geometry::{CurveExprs, EndpointExprs, GeometryId, GeometryRole};
@@ -14,11 +14,11 @@ fn residual_arity_stacks() {
         a: Segment::end_expr(s0),
         b: Segment::start_expr(s1),
     });
-    doc.add_constraint(Parallel {
+    doc.add_constraint(VectorsParallel {
         a: Segment::tangent_expr(s0, CurveParam::Normalized(0.0)),
         b: Segment::tangent_expr(s1, CurveParam::Normalized(0.0)),
     });
-    doc.add_constraint(Orthogonal {
+    doc.add_constraint(VectorsOrthogonal {
         a: Segment::tangent_expr(s0, CurveParam::Normalized(0.0)),
         b: Segment::tangent_expr(s1, CurveParam::Normalized(0.0)),
     });
@@ -130,11 +130,11 @@ fn blocked_jacobian_matches_fd_for_all_contribution_kinds() {
     );
     doc.add_constraint(FixPoint { point: Segment::start_expr(seg), target: Point2::new(0.1, -0.2) });
     doc.add_constraint(Congruence { a: Segment::end_expr(seg), b: Arc::start_expr(arc) });
-    doc.add_constraint(Parallel {
+    doc.add_constraint(VectorsParallel {
         a: Segment::tangent_expr(seg, CurveParam::Normalized(0.0)),
         b: Arc::tangent_expr(arc, CurveParam::Normalized(0.0)),
     });
-    doc.add_constraint(Orthogonal {
+    doc.add_constraint(VectorsOrthogonal {
         a: Arc::tangent_expr(arc, CurveParam::Normalized(0.2)),
         b: Arc::normal_expr(arc, CurveParam::Normalized(0.9)),
     });

@@ -3,7 +3,7 @@ use crate::document::Document;
 use crate::geom::{CurveParam, Point2, Vec2};
 use crate::geometry::StateAtom;
 use crate::geometry::{
-    Chart, CurveExprs, EndpointExprs, GeometryId, GeometryRole, GeometryShell,
+    Chart, CurveExprs, EndpointExprs, GeometryId, GeometryRole, GeometryShell, LineExprs,
 };
 use crate::geometry_kinds::GeometryInst;
 use crate::matrix::DenseMatrix;
@@ -151,4 +151,57 @@ fn vec_expr_tangent_and_normal() {
 fn segment_canonical_is_identity() {
     let init = (Point2::new(1.0, -2.0), Point2::new(-3.0, 0.5));
     assert_eq!(<Segment as Geometry>::canonical(init), init);
+}
+
+#[test]
+fn direction_expr_is_end_minus_start_and_matches_tangent() {
+    let store = store_with(segment_geom(0, 0));
+    let id = GeometryId(0);
+    let p = Vector::from(vec![1.0, 2.0, 4.0, -2.0]);
+    let d = Segment::direction_expr(id).evaluate(&store, &p);
+    assert_eq!(d.x, 3.0);
+    assert_eq!(d.y, -4.0);
+
+    for t in [0.0, 0.5, 1.0] {
+        let tangent = Segment::tangent_expr(id, CurveParam::Normalized(t)).evaluate(&store, &p);
+        assert_eq!(tangent.x, d.x);
+        assert_eq!(tangent.y, d.y);
+    }
+
+    assert_eq!(Segment::direction_expr(id).param_indices(&store), vec![0, 1, 2, 3]);
+}
+
+#[test]
+fn direction_jacobian_matches_fd() {
+    let store = store_with(segment_geom(0, 0));
+    let id = GeometryId(0);
+    let p = Vector::from(vec![0.5, -1.0, 2.0, 3.5]);
+
+    // Compute analytic Jacobian
+    let mut buf = vec![0.0; 8]; // 2x4 matrix
+    {
+        let mut jac = DenseMatrix::packed(&mut buf, 2, 4);
+        Segment::direction_expr(id).accumulate_jacobian(&store, &p, &mut jac, 1.0);
+    }
+
+    // Compute finite differences
+    let eps = 1e-6;
+    let mut fd_buf = vec![0.0; 8];
+    for k in 0..4 {
+        let mut pp = p.clone();
+        let mut pm = p.clone();
+        pp[k] += eps;
+        pm[k] -= eps;
+
+        let dp = Segment::direction_expr(id).evaluate(&store, &pp);
+        let dm = Segment::direction_expr(id).evaluate(&store, &pm);
+
+        fd_buf[k] = (dp.x - dm.x) / (2.0 * eps);
+        fd_buf[4 + k] = (dp.y - dm.y) / (2.0 * eps);
+    }
+
+    // Compare results
+    for (idx, (a, f)) in buf.iter().zip(&fd_buf).enumerate() {
+        assert!((a - f).abs() < 1e-6, "Jacobian mismatch at {idx}: analytic={a}, fd={f}");
+    }
 }

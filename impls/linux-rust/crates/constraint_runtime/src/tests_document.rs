@@ -1,5 +1,5 @@
 use super::*;
-use crate::constraint_kinds::{Congruence, FixPoint, Orthogonal};
+use crate::constraint_kinds::{Congruence, FixPoint, VectorsOrthogonal};
 use crate::geom::{CurveParam, HeadingAngle, Length, Point2, TurnAngle};
 use crate::geometry_kinds::{Arc, Segment};
 use crate::geometry::{Chart, CurveExprs, EndpointExprs, GeometryRole};
@@ -87,7 +87,7 @@ fn remove_geometry_compacts_state_and_drops_orphans() {
         a: Segment::end_expr(s0),
         b: Segment::start_expr(s1),
     });
-    doc.add_constraint(Orthogonal {
+    doc.add_constraint(VectorsOrthogonal {
         a: Segment::tangent_expr(s0, CurveParam::Normalized(0.0)),
         b: Segment::tangent_expr(s1, CurveParam::Normalized(0.0)),
     });
