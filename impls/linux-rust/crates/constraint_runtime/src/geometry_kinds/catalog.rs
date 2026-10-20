@@ -7,7 +7,7 @@ use crate::vector::Vector;
 
 /// Closed set of geometry kinds (discriminant only; kinds carry no data).
 ///
-/// Adding a kind: one variant here and one arm in [`with_kind!`].
+/// Adding a kind: one variant here and one arm in `with_kind!`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum GeometryKind {
     Segment,

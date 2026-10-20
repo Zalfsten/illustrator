@@ -3,9 +3,9 @@
 //! Affine distinction: [`Vec2`] is a free vector (displacement / direction);
 //! [`Point2`] is a location. Prefer `b - a` over constructing components by hand.
 //!
-//! Curve addressing: [`CurveParam::Normalized`] is the canonical chart \(t \in [0,1]\)
+//! Curve addressing: [`CurveParam::Normalized`] is the canonical chart \(t \in \[0,1\]\)
 //! (native formula domain affinely mapped). [`CurveParam::Uniform`] is constant-speed
-//! / arc-length fraction on \([0,1]\). For line segments the two coincide.
+//! / arc-length fraction on \(\[0,1\]\). For line segments the two coincide.
 //!
 //! Scalar chart parameters: [`HeadingAngle`] / [`TurnAngle`] (radians; absolute vs
 //! free, analogous to [`Point2`] / [`Vec2`]) and [`Length`] (signed Vector DOF).
@@ -269,9 +269,9 @@ impl Sub<Vec2> for Point2 {
 /// Parameter addressing a location on a curve.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum CurveParam {
-    /// Canonical chart \(t \in [0,1]\) (normalized native domain).
+    /// Canonical chart \(t \in \[0,1\]\) (normalized native domain).
     Normalized(f64),
-    /// Constant-speed / arc-length fraction \(u \in [0,1]\).
+    /// Constant-speed / arc-length fraction \(u \in \[0,1\]\).
     Uniform(f64),
 }
 

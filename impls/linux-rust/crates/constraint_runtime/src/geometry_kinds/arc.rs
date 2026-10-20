@@ -15,7 +15,7 @@ use crate::matrix::DenseMatrix;
 /// Circular-arc kind (type-level marker; instances live in
 /// [`crate::geometry_kinds::GeometryInst`]).
 ///
-/// Layout via [`chart_atoms!`]: [`Self::center`], [`Self::radius`] (signed Length),
+/// Layout via `chart_atoms!`: [`Self::center`], [`Self::radius`] (signed Length),
 /// [`Self::start`] (heading), [`Self::sweep`] (turn). Position uses \(R\) as stored
 /// (signed radius flips the point through the center). Length uses magnitudes:
 /// \(L = |R|\,|\Delta\theta|\).

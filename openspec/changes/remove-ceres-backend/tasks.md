@@ -10,7 +10,7 @@ Paths relative to `impls/linux-rust/crates/constraint_runtime` unless noted. Tes
 ## 2. Remove the FFI evaluation layer
 
 - [x] 2.1 Delete `src/solver/ffi.rs` and `src/solver/tests_ffi.rs`; remove `pub mod ffi` from `src/solver.rs` and `ffi` from the `src/lib.rs` re-exports. Verify `cargo test -p constraint_runtime` is green and `grep -rn "unsafe\|extern \"C\"\|EvalHandle\|trampoline\|dyn SystemEval" src` returns nothing (except the test-only counting allocator in `src/test_alloc.rs`, whose `unsafe impl GlobalAlloc` is required).
-- [ ] 2.2 Reword docs left over from Ceres/FFI: `SolverOptions::lm_lambda0` ("LM backends only"), `SystemEval` and `BlockSparseMatrix::add_to_dense` docs (dense materialisation for tests/debugging), `src/lib.rs` crate doc. Verify `cargo doc -p constraint_runtime --no-deps` has no broken intra-doc links (no warnings).
+- [x] 2.2 Reword docs left over from Ceres/FFI: `SolverOptions::lm_lambda0` ("LM backends only"), `SystemEval` and `BlockSparseMatrix::add_to_dense` docs (dense materialisation for tests/debugging), `src/lib.rs` crate doc. Verify `cargo doc -p constraint_runtime --no-deps` has no broken intra-doc links (no warnings). (Also fixed 7 pre-existing rustdoc warnings in untouched files, by user decision: escaped `[0,1]` intervals in `src/geom.rs`; links to the private macros `chart_atoms!` / `with_kind!` in `geometry_kinds/{arc,segment,catalog}.rs` turned into plain code text.)
 
 ## 3. Dev Container and documentation
 

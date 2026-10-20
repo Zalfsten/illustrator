@@ -12,7 +12,7 @@ use crate::matrix::DenseMatrix;
 /// Line-segment kind (type-level marker; instances live in
 /// [`crate::geometry_kinds::GeometryInst`]).
 ///
-/// Layout: [`Point2`] atoms [`Self::start`] / [`Self::end`] via [`chart_atoms!`].
+/// Layout: [`Point2`] atoms [`Self::start`] / [`Self::end`] via `chart_atoms!`.
 /// Full-chart Jacobian columns are formula-local `0..4` (start.x, start.y,
 /// end.x, end.y). Endpoint formulas use only their own [`Point2`] slot.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
