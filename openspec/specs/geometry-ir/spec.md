@@ -121,7 +121,7 @@ The system SHALL provide point expressions that refer to a point on a named geom
 
 #### Scenario: Parallel uses tangent free-vector expressions on segments
 
-- **WHEN** Parallel is applied to tangent vector expressions of two line segments
+- **WHEN** VectorsParallel is applied to tangent vector expressions of two line segments
 - **THEN** those expressions are valid free-vector expressions under this capability
 - **AND** no separate direction-expression factory is required
 
@@ -362,3 +362,40 @@ Each geometry in Document SHALL have a stable geometry identity. Document (or an
 - **WHEN** a geometry is removed from Document
 - **THEN** its identity is no longer resolvable
 - **AND** structural constraints that referenced that identity are no longer present in the structure
+
+### Requirement: Line capability exposes a direction expression
+
+Curves whose carrier is a straight line SHALL be able to expose a line capability. That capability SHALL provide an opaque free-vector **direction** expression that does not depend on a curve parameter. For a line segment it SHALL evaluate to end minus start. Curves without a straight carrier (for example circular arcs) SHALL NOT expose it, so a direction expression cannot be built for them. The direction expression SHALL provide analytical derivatives like other vector expressions.
+
+#### Scenario: Segment direction is end minus start
+
+- **WHEN** the direction expression of a line segment is evaluated at a State
+- **THEN** it equals the segment's end point minus its start point
+- **AND** it equals the segment's tangent expression at every normalized \(t\)
+
+#### Scenario: Arcs offer no direction expression
+
+- **WHEN** a circular arc is queried for the line capability
+- **THEN** no direction expression is available for it
+
+### Requirement: Circular capability exposes center and radius expressions
+
+Curves whose carrier is a circle SHALL be able to expose a circular capability. That capability SHALL provide an opaque **center** point expression and an opaque **radius** length expression, both independent of a curve parameter. For a circular arc, the center SHALL evaluate to the arc's chart center and the radius to the non-negative radius \(|R|\). Curves without a circular carrier (for example line segments) SHALL NOT expose it. Both expressions SHALL provide analytical derivatives.
+
+#### Scenario: Arc center and radius match the chart
+
+- **WHEN** the center and radius expressions of a circular arc are evaluated at a State
+- **THEN** the center equals the arc's chart center location
+- **AND** the radius equals the magnitude of the arc's radius parameter
+- **AND** every on-curve sample of the arc lies at that radius from that center
+
+#### Scenario: Segments offer no center or radius expression
+
+- **WHEN** a line segment is queried for the circular capability
+- **THEN** no center or radius expression is available for it
+
+#### Scenario: Equal radii via EqualLength on radius expressions
+
+- **WHEN** EqualLength is applied to the radius expressions of two arcs
+- **AND** the document is edited through a successful solve
+- **THEN** both arcs have equal radius within solve tolerance

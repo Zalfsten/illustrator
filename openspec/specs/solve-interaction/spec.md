@@ -22,7 +22,7 @@ While the user drags a logical UI point toward a pointer position, the system SH
 
 #### Scenario: Orthogonal figure stays orthogonal while a free point is dragged
 
-- **WHEN** a document has Orthogonal (and any other structural constraints) satisfied
+- **WHEN** a document has VectorsOrthogonal (and any other structural constraints) satisfied
 - **AND** the user drags a logical UI point that is not fixed
 - **THEN** after each successful interactive solve during the drag, structural constraints remain satisfied
 - **AND** the dragged point's location moves toward the pointer to the extent the structural constraints allow
@@ -39,7 +39,7 @@ When multiple structurally consistent solutions exist, interactive solves during
 
 ### Requirement: Soft length floor resists curve collapse during drag
 
-During an interactive drag, the system SHALL include a soft, one-sided floor on each curve geometry's length expression so that collapse to zero length is not a soft minimum under mouse-follow. For each such curve, the floor \(\ell_{\min}\) SHALL be a configured fraction \(f\) of that curve's length \(L_0\) evaluated at the drag-start State (the stay-near snapshot), \(\ell_{\min} = f\,L_0\), and SHALL NOT be a fixed absolute length independent of the sketch scale. The floor residual SHALL be inactive when the current length \(L \ge \ell_{\min}\) and SHALL NOT become a persistent structural constraint. Soft length floors SHALL NOT alter Parallel, Orthogonal, or other catalog constraint semantics.
+During an interactive drag, the system SHALL include a soft, one-sided floor on each curve geometry's length expression so that collapse to zero length is not a soft minimum under mouse-follow. For each such curve, the floor \(\ell_{\min}\) SHALL be a configured fraction \(f\) of that curve's length \(L_0\) evaluated at the drag-start State (the stay-near snapshot), \(\ell_{\min} = f\,L_0\), and SHALL NOT be a fixed absolute length independent of the sketch scale. The floor residual SHALL be inactive when the current length \(L \ge \ell_{\min}\) and SHALL NOT become a persistent structural constraint. Soft length floors SHALL NOT alter VectorsParallel, VectorsOrthogonal, or other catalog constraint semantics.
 
 #### Scenario: Drag toward a degenerate attractor keeps positive curve length
 
