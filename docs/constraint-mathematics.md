@@ -195,8 +195,12 @@ E_{\mathrm{end}}(p_{\mathrm{loc}}) &= (x_b, y_b).
 $$
 
 Example (circular arc): local parameters
-$(c_x,c_y,R,\theta_0,\Delta\theta)$ with signed radius $R$, start heading
-$\theta_0$, and sweep turn $\Delta\theta$. Chart:
+$(c_x,c_y,R,\theta_0,\Delta\theta)$ with radius $R$, start heading
+$\theta_0$, and sweep turn $\Delta\theta$. $R \ge 0$ in committed State: the
+solver may produce $R < 0$ in iterates (the parameter is unconstrained, and the
+chart below is smooth through $R = 0$), and committing rewrites such an arc to
+the identical curve $(c_x, c_y, -R, \theta_0 + \pi, \Delta\theta)$. The radius
+expression evaluates to $|R|$. Chart:
 
 $$
 \begin{aligned}

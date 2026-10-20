@@ -39,6 +39,14 @@ fn unsupported(kind: GeometryKind, family: &str) -> ! {
 pub trait Geometry: Chart + Sized + 'static {
     const KIND: GeometryKind;
 
+    /// Canonical chart values describing the same curve (identity by default).
+    ///
+    /// Applied to committed State and to initial values on add; solver iterates
+    /// may hold non-canonical values (e.g. a negative arc radius).
+    fn canonical(init: Self::Init) -> Self::Init {
+        init
+    }
+
     fn point(f: PointFormula, c: Self::Init) -> Point2;
     fn point_jacobian(f: PointFormula, c: Self::Init, j: &mut DenseMatrix<'_>, scale: f64);
     fn point_params(f: PointFormula) -> Range<usize> {

@@ -9,8 +9,8 @@ use std::collections::HashMap;
 use crate::constraint::{ConstraintEntry, ConstraintId};
 use crate::constraint_kinds::ConstraintInst;
 use crate::expr::PointExpr;
-use crate::geometry::{Geometry, GeometryId, GeometryRole, GeometryShell};
-use crate::geometry_kinds::GeometryInst;
+use crate::geometry::{Chart, Geometry, GeometryId, GeometryRole, GeometryShell};
+use crate::geometry_kinds::{with_kind, GeometryInst};
 use crate::id::IdMap;
 use crate::vector::Vector;
 
@@ -118,7 +118,7 @@ impl Document {
     /// Chart pack receives only kind init (no identity). Id and Vector offset are
     /// assigned here from [`IdMap::next_id`] and the current Vector length.
     pub fn add_geometry<K: Geometry>(&mut self, role: GeometryRole, init: K::Init) -> GeometryId {
-        let packed = K::pack(init);
+        let packed = K::pack(K::canonical(init));
         debug_assert_eq!(packed.as_ref().len(), K::PARAMETER_COUNT);
         let id = self.geometries.next_id();
         let param_offset = self.vector.len();
@@ -200,6 +200,18 @@ impl Document {
 
     pub fn restore_vector(&mut self, p: &Vector) {
         self.vector.copy_from(p);
+    }
+
+    /// Rewrite every geometry block of `p` to its canonical chart values
+    /// ([`Geometry::canonical`]); the curves are unchanged.
+    pub fn canonicalize(&self, p: &mut Vector) {
+        for g in self.geometries.values() {
+            let block = g.param_block();
+            with_kind!(g.kind(), K => {
+                let canonical = K::canonical(g.unpack::<K>(p));
+                p[block].copy_from_slice(K::pack(canonical).as_ref());
+            });
+        }
     }
 
     pub fn commit_vector(&mut self, p: &Vector) {

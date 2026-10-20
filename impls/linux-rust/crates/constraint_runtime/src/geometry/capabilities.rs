@@ -34,7 +34,7 @@ pub enum VecFormula {
 pub enum LengthFormula {
     /// Total curve arc length (`length_expr`).
     Length,
-    /// Signed radius Length chart atom (circular arc).
+    /// Circle radius magnitude \(|R|\) (circular arc).
     Radius,
 }
 

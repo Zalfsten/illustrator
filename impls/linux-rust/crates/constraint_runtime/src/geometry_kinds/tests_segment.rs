@@ -146,3 +146,9 @@ fn vec_expr_tangent_and_normal() {
     assert_eq!(t, Vec2::new(3.0, 4.0));
     assert_eq!(n, t.left_normal());
 }
+
+#[test]
+fn segment_canonical_is_identity() {
+    let init = (Point2::new(1.0, -2.0), Point2::new(-3.0, 0.5));
+    assert_eq!(<Segment as Geometry>::canonical(init), init);
+}

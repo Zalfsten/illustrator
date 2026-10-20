@@ -185,6 +185,8 @@ impl<S: SolverPort> InteractiveSolve<S> {
         let sys = AssembledSystem::with_soft(doc, soft, soft_points, soft_lengths);
         let _ = self.solver.solve(&sys, &mut working, &self.opts);
 
+        // Gate and commit the canonical State (e.g. non-negative arc radius).
+        doc.canonicalize(&mut working);
         if self.structural_ok(doc, &working) {
             doc.commit_vector(&working);
             return Ok(());
@@ -195,6 +197,7 @@ impl<S: SolverPort> InteractiveSolve<S> {
             let soft0: [SoftContribution; 0] = [];
             let sys0 = AssembledSystem::new(doc, &soft0);
             let _ = self.solver.solve(&sys0, &mut working, &self.opts);
+            doc.canonicalize(&mut working);
             if self.structural_ok(doc, &working) {
                 doc.commit_vector(&working);
                 return Ok(());

@@ -210,3 +210,30 @@ fn drag_arc_endpoint_keeps_fillet_radius() {
         "arc endpoints merged into a corner (dist={join_dist})"
     );
 }
+
+#[test]
+fn commit_canonicalizes_negative_arc_radius() {
+    let mut doc = Document::new();
+    let arc = doc.add_geometry::<Arc>(
+        GeometryRole::Result,
+        (Point2::new(0.0, 0.0), Length::new(2.0), HeadingAngle::new(0.5), TurnAngle::new(1.0)),
+    );
+    let start_before = Arc::start_expr(arc).evaluate(&doc, doc.vector());
+    let end_before = Arc::end_expr(arc).evaluate(&doc, doc.vector());
+    // Same curve, non-canonical chart (as a solver iterate could leave it).
+    doc.vector[2] = -2.0;
+    doc.vector[3] = 0.5 + std::f64::consts::PI;
+    let mut interact = InteractiveSolve {
+        solver: StubSolver { succeed: true },
+        soft_weights: SoftTerms::default(),
+        opts: SolverOptions::default(),
+    };
+    interact.structural_only(&mut doc).expect("commit");
+    assert_eq!(doc.vector()[2], 2.0, "committed radius non-negative");
+    // (0.5 + π) + π: headings are not wrapped.
+    assert!((doc.vector()[3] - (0.5 + 2.0 * std::f64::consts::PI)).abs() < 1e-12);
+    let start = Arc::start_expr(arc).evaluate(&doc, doc.vector());
+    let end = Arc::end_expr(arc).evaluate(&doc, doc.vector());
+    assert!((start.x - start_before.x).abs() < 1e-12 && (start.y - start_before.y).abs() < 1e-12);
+    assert!((end.x - end_before.x).abs() < 1e-12 && (end.y - end_before.y).abs() < 1e-12);
+}

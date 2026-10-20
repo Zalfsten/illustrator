@@ -15,10 +15,14 @@ use crate::matrix::DenseMatrix;
 /// Circular-arc kind (type-level marker; instances live in
 /// [`crate::geometry_kinds::GeometryInst`]).
 ///
-/// Layout via `chart_atoms!`: [`Self::center`], [`Self::radius`] (signed Length),
-/// [`Self::start`] (heading), [`Self::sweep`] (turn). Position uses \(R\) as stored
-/// (signed radius flips the point through the center). Length uses magnitudes:
-/// \(L = |R|\,|\Delta\theta|\).
+/// Layout via `chart_atoms!`: [`Self::center`], [`Self::radius`] (Length),
+/// [`Self::start`] (heading), [`Self::sweep`] (turn). The radius is non-negative
+/// in committed State ([`Geometry::canonical`] rewrites `R < 0` to
+/// `(−R, θ₀ + π)` on commit / add). Solver iterates may hold `R < 0`: position
+/// uses \(R\) as stored (smooth through 0; a negative radius flips the point
+/// through the center), so the start heading equals the start point's polar
+/// angle only for `R ≥ 0`. Length and radius use magnitudes:
+/// \(L = |R|\,|\Delta\theta|\), radius \(= |R|\).
 ///
 /// Chart: \(\theta(t)=\theta_0 + t\,\Delta\theta\),
 /// \(\gamma(t)=C + R\,(\cos\theta,\sin\theta)\).
@@ -48,7 +52,7 @@ impl Arc {
         TurnAngleExpr::new(id, TurnFormula::Sweep)
     }
 
-    /// Signed radius Length chart atom.
+    /// Circle radius \(|R|\) (non-negative; equals the chart atom once committed).
     pub fn radius_expr(id: GeometryId) -> LengthExpr {
         LengthExpr::new(id, LengthFormula::Radius)
     }
@@ -71,6 +75,20 @@ impl Arc {
 
 impl Geometry for Arc {
     const KIND: GeometryKind = GeometryKind::Arc;
+
+    /// `R < 0` → `(C, −R, θ₀ + π, Δθ)`: same curve, non-negative radius.
+    fn canonical((center, radius, start, sweep): Self::Init) -> Self::Init {
+        if radius.value() < 0.0 {
+            (
+                center,
+                Length::new(-radius.value()),
+                HeadingAngle::new(start.radians() + std::f64::consts::PI),
+                sweep,
+            )
+        } else {
+            (center, radius, start, sweep)
+        }
+    }
 
     fn point(f: PointFormula, (center, radius, start, sweep): Self::Init) -> Point2 {
         let th = Self::theta(Self::point_t(f), start, sweep);
@@ -174,7 +192,7 @@ impl Geometry for Arc {
     fn length(f: LengthFormula, (_center, radius, _start, sweep): Self::Init) -> Length {
         match f {
             LengthFormula::Length => Length::new(radius.value().abs() * sweep.radians().abs()),
-            LengthFormula::Radius => radius,
+            LengthFormula::Radius => Length::new(radius.value().abs()),
         }
     }
 
@@ -194,7 +212,9 @@ impl Geometry for Arc {
                 j.set_scaled(scale, [[0.0, 0.0, d_r, 0.0, d_s]]);
             }
             LengthFormula::Radius => {
-                j.set_scaled(scale, [[0.0, 0.0, 1.0, 0.0, 0.0]]);
+                let r = radius.value();
+                let d_r = if r != 0.0 { r.signum() } else { 0.0 };
+                j.set_scaled(scale, [[0.0, 0.0, d_r, 0.0, 0.0]]);
             }
         }
     }

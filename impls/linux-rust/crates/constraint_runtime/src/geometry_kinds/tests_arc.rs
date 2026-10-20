@@ -142,6 +142,27 @@ fn on_curve_jacobian_matches_fd() {
 }
 
 #[test]
+fn radius_is_magnitude_and_jacobian_matches_fd() {
+    let store = store_with(arc_geom(0, 0));
+    let id = GeometryId(0);
+    let expr = Arc::radius_expr(id);
+    let n = Arc::PARAMETER_COUNT;
+    for r in [1.5, -1.5] {
+        let p = Vector::from(vec![0.2, -0.1, r, 0.3, 0.8]);
+        assert_eq!(expr.evaluate(&store, &p).value(), 1.5);
+        let mut buf = vec![0.0; n];
+        {
+            let mut j = DenseMatrix::packed(&mut buf, 1, n);
+            expr.accumulate_jacobian(&store, &p, &mut j, 1.0);
+        }
+        let fd = fd_jac_rows(&p, 1, n, |q, _| expr.evaluate(&store, q).value());
+        for (a, b) in buf.iter().zip(fd.iter()) {
+            assert!((a - b).abs() < 1e-5, "r={r}: jac {a} vs fd {b}");
+        }
+    }
+}
+
+#[test]
 fn length_jacobian_matches_fd() {
     let store = store_with(arc_geom(0, 0));
     let p = Vector::from(vec![0.0, 0.0, 1.5, 0.0, 0.8]);
@@ -195,4 +216,80 @@ fn endpoint_start_sparser_than_full_chart() {
     assert_eq!(start.param_indices(&store), vec![0, 1, 2, 3]);
     assert_eq!(at0.param_indices(&store), vec![0, 1, 2, 3, 4]);
     assert_eq!(start.param_count(&store), 4);
+}
+
+#[test]
+fn canonical_flips_negative_radius() {
+    let init = (
+        Point2::new(0.3, -0.2),
+        Length::new(-1.5),
+        HeadingAngle::new(0.4),
+        TurnAngle::new(2.0),
+    );
+    let c = <Arc as Geometry>::canonical(init);
+    assert!((c.1.value() - 1.5).abs() < 1e-12);
+    assert!((c.2.radians() - (0.4 + std::f64::consts::PI)).abs() < 1e-12);
+    assert_eq!(c.0, init.0);
+    assert_eq!(c.3, init.3);
+}
+
+#[test]
+fn canonical_preserves_curve() {
+    let init = (
+        Point2::new(0.3, -0.2),
+        Length::new(-1.5),
+        HeadingAngle::new(0.4),
+        TurnAngle::new(2.0),
+    );
+    let c = <Arc as Geometry>::canonical(init);
+
+    // Test points
+    for t in [0.0, 0.25, 0.5, 1.0] {
+        let pt_init = Arc::point(PointFormula::OnCurve { param: CurveParam::Normalized(t) }, init);
+        let pt_canonical = Arc::point(PointFormula::OnCurve { param: CurveParam::Normalized(t) }, c);
+        assert!((pt_init.x - pt_canonical.x).abs() < 1e-12);
+        assert!((pt_init.y - pt_canonical.y).abs() < 1e-12);
+    }
+
+    // Test start and end points
+    let start_init = Arc::point(PointFormula::Start, init);
+    let start_canonical = Arc::point(PointFormula::Start, c);
+    assert!((start_init.x - start_canonical.x).abs() < 1e-12);
+    assert!((start_init.y - start_canonical.y).abs() < 1e-12);
+
+    let end_init = Arc::point(PointFormula::End, init);
+    let end_canonical = Arc::point(PointFormula::End, c);
+    assert!((end_init.x - end_canonical.x).abs() < 1e-12);
+    assert!((end_init.y - end_canonical.y).abs() < 1e-12);
+
+    // Test vectors
+    for t in [0.0, 0.25, 0.5, 1.0] {
+        let tan_init = Arc::vec(VecFormula::TangentAt { param: CurveParam::Normalized(t) }, init);
+        let tan_canonical = Arc::vec(VecFormula::TangentAt { param: CurveParam::Normalized(t) }, c);
+        assert!((tan_init.x - tan_canonical.x).abs() < 1e-12);
+        assert!((tan_init.y - tan_canonical.y).abs() < 1e-12);
+
+        let norm_init = Arc::vec(VecFormula::NormalAt { param: CurveParam::Normalized(t) }, init);
+        let norm_canonical = Arc::vec(VecFormula::NormalAt { param: CurveParam::Normalized(t) }, c);
+        assert!((norm_init.x - norm_canonical.x).abs() < 1e-12);
+        assert!((norm_init.y - norm_canonical.y).abs() < 1e-12);
+    }
+
+    // Test length
+    let len_init = Arc::length(LengthFormula::Length, init).value();
+    let len_canonical = Arc::length(LengthFormula::Length, c).value();
+    assert!((len_init - len_canonical).abs() < 1e-12);
+}
+
+#[test]
+fn canonical_keeps_non_negative_radius() {
+    for radius in [1.5, 0.0] {
+        let init = (
+            Point2::new(1.0, 2.0),
+            Length::new(radius),
+            HeadingAngle::new(0.7),
+            TurnAngle::new(-1.1),
+        );
+        assert_eq!(<Arc as Geometry>::canonical(init), init);
+    }
 }

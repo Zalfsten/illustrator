@@ -113,8 +113,9 @@ context: |
   - geometry_kinds/: catalog.rs (data-less GeometryKind enum, GeometryInst,
     with_kind! dispatch); per kind file: chart_atoms! layout + impl
     Geometry (Jacobians via set_scaled) + opt-in factory traits. Kinds
-    today: Segment (2×Point2), Arc (center Point2, signed Length radius,
-    HeadingAngle start, TurnAngle sweep).
+    today: Segment (2×Point2), Arc (center Point2, Length radius ≥ 0 in
+    committed State via Geometry::canonical on add / commit, HeadingAngle
+    start, TurnAngle sweep).
   - mesh.rs: Display Mesh from Document+State; open curves tessellated via
     on_curve + adaptive subdivision until tangent turn per interval ≤
     MAX_CHORD_TURN (π/8), max 64 samples; endpoint hits use geometric

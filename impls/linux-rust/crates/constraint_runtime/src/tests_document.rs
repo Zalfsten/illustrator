@@ -1,7 +1,7 @@
 use super::*;
 use crate::constraint_kinds::{Congruence, FixPoint, Orthogonal};
-use crate::geom::{CurveParam, Point2};
-use crate::geometry_kinds::Segment;
+use crate::geom::{CurveParam, HeadingAngle, Length, Point2, TurnAngle};
+use crate::geometry_kinds::{Arc, Segment};
 use crate::geometry::{Chart, CurveExprs, EndpointExprs, GeometryRole};
 
 #[test]
@@ -202,4 +202,47 @@ fn add_geometry_assigns_sequential_ids_without_chart_id() {
     assert_eq!(s1, crate::geometry::GeometryId(1));
     assert_eq!(doc.geometry(s0).unwrap().id(), s0);
     assert_eq!(doc.geometry(s1).unwrap().id(), s1);
+}
+
+fn flipped_arc_init() -> (Point2, Length, HeadingAngle, TurnAngle) {
+    (Point2::new(0.5, 1.0), Length::new(-2.0), HeadingAngle::new(0.3), TurnAngle::new(1.2))
+}
+
+#[test]
+fn add_geometry_stores_canonical_arc() {
+    let init = flipped_arc_init();
+    let mut doc = Document::new();
+    let id = doc.add_geometry::<Arc>(GeometryRole::Result, init);
+    let p = doc.vector();
+    assert_eq!(p[2], 2.0, "radius stored non-negative");
+    assert!((p[3] - (0.3 + std::f64::consts::PI)).abs() < 1e-12);
+    // Same curve as the given (non-canonical) values.
+    let start = Arc::start_expr(id).evaluate(&doc, p);
+    let want = <Arc as Geometry>::point(crate::geometry::PointFormula::Start, init);
+    assert!((start.x - want.x).abs() < 1e-12 && (start.y - want.y).abs() < 1e-12);
+    let end = Arc::end_expr(id).evaluate(&doc, p);
+    let want = <Arc as Geometry>::point(crate::geometry::PointFormula::End, init);
+    assert!((end.x - want.x).abs() < 1e-12 && (end.y - want.y).abs() < 1e-12);
+}
+
+#[test]
+fn canonicalize_rewrites_only_negative_radius_arc() {
+    let mut doc = Document::new();
+    doc.add_geometry::<Segment>(GeometryRole::Result, (Point2::new(0.0, 0.0), Point2::new(1.0, 0.0)));
+    let arc = doc.add_geometry::<Arc>(
+        GeometryRole::Result,
+        (Point2::new(0.0, 0.0), Length::new(1.0), HeadingAngle::new(0.0), TurnAngle::new(1.0)),
+    );
+    let mut p = doc.clone_vector();
+    // Arc block starts after the 4 segment params: negate R, shift heading by π (same curve).
+    p[6] = -1.0;
+    p[7] = std::f64::consts::PI;
+    let before = p.clone();
+    let end_before = Arc::end_expr(arc).evaluate(&doc, &p);
+    doc.canonicalize(&mut p);
+    assert_eq!(&p[0..4], &before[0..4], "segment block untouched");
+    assert_eq!(p[6], 1.0);
+    assert!((p[7] - 2.0 * std::f64::consts::PI).abs() < 1e-12);
+    let end_after = Arc::end_expr(arc).evaluate(&doc, &p);
+    assert!((end_after.x - end_before.x).abs() < 1e-12 && (end_after.y - end_before.y).abs() < 1e-12);
 }
