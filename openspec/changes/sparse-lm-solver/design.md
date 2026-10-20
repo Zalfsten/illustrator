@@ -30,34 +30,30 @@ See proposal.md (Why). Current state in linux-rust:
 
 ## Decisions
 
-### 1. Contribution-blocked Jacobian (`BlockPattern` + `BlockJacobian`)
+### 1. Contribution-blocked Jacobian (`BlockSparseMatrix`)
 
-New types in `matrix.rs`:
+*Revised after review: the first implementation split structure (`BlockPattern`) and values (`BlockJacobian`), so neither looked like a matrix and every access needed both. Replaced by one self-contained type.*
 
-- `BlockPattern`: built once per `AssembledSystem`. For each block `b`: `row0`, `nrows`, `ncols`, `val_off` (offset into the values array) and `col_off` (offset into a flat `cols: Vec<usize>`). Plus `n_rows`, `n_cols` and the flat `cols` (the contribution connectivities, concatenated).
-- `BlockJacobian`: `values: Vec<f64>` of length \(\sum_b m_b k_b\). `block_mut(&pattern, b) -> DenseMatrix<'_>` returns `DenseMatrix::packed(&mut values[off..off + m*k], m, k)`. It provides `to_dense(&pattern) -> Matrix`, which **adds** duplicates.
-- `SystemEval` becomes:
-  ```rust
-  fn jacobian_pattern(&self) -> &BlockPattern;
-  fn jacobian(&self, p: &Vector, j: &mut BlockJacobian);
-  ```
-  The caller allocates `BlockJacobian::zeros(eval.jacobian_pattern())` once per solve.
-- `AssembledSystem` replaces `structural_conn` / `soft_point_conn` / `soft_length_conn` (`Vec<Vec<usize>>`) with one `BlockPattern`. Block order: structural constraints, then `SoftContribution`, `SoftPointFollow`, `SoftLengthFloor`. Each contribution, including a single-slot `SoftContribution`, is one block. Before calling the contribution, `jacobian()` zeroes the block (`fill(0.0)`). This keeps `+=` writers such as `contract_into` correct. An inactive `SoftLengthFloor` leaves its block zero but keeps it in the pattern.
-- `cols` is the **solver column mapping** (spec: assembly-owned column mapping). Today it equals the State indices from connectivity. A later Congruence elimination only rewrites `cols` and `n_cols`.
+`BlockSparseMatrix` in `matrix.rs`: an \(m \times n\) sparse matrix made of dense **row blocks**. Block `b` covers rows `row0..row0+m_b` and the columns listed in its own column map (`cols_b`, length \(k_b\)); its values are stored contiguously, row-major. Each row belongs to exactly one block. The global \(J\) is the **sum** of all blocks placed at their rows / mapped columns.
 
-Because every local column has its own storage slot, the duplicate-column overwrite cannot happen any more. The Jacobian is correct by construction, matching the system-assembly spec "Duplicate connectivity columns accumulate".
+- Structure is built with `BlockSparseMatrix::new(ncols)` + `push_block(nrows, cols) -> b`; rows grow in push order. Structure is private; values start at zero.
+- `block_mut(b) -> DenseMatrix` is the dense submatrix \(J[\text{rows}_b, \text{cols}_b]\) (packed slice, no scatter on write). `blocks()` iterates read-only `Block` views (`rows()`, `cols()`, `values()`, and matrix-style reads `blk[(i, k)]`). `DenseMatrix` is the writable local window (no knowledge of its place in \(J\)); `Block` is the read-only view that also knows its rows and column map — the two roles are kept separate on purpose.
+- Matrix operations: `nrows()`, `ncols()`, `fill(v)`, `transpose_mul(&r, &mut g)` (\(g = J^\top r\)), `add_to_dense(&mut [f64])` (row-major \(m \times n\) buffer, duplicates summed; there is no owned dense matrix type).
+- `SystemEval` becomes `n_params()`, `n_residuals()`, `residual(p, r)`, `new_jacobian() -> BlockSparseMatrix` (structure built, zero values) and `jacobian(p, &mut BlockSparseMatrix)`. The solver calls `new_jacobian()` once per solve.
+- `AssembledSystem` no longer stores connectivity: the constructor only sums residual arities; `new_jacobian()` builds the structure (block order: structural, soft slots, soft point follows, soft length floors) — once per solve, as before, because Interact builds one `AssembledSystem` per solve. `residual()` uses a running row offset. `jacobian()` zeroes each block before its contribution writes; an inactive `SoftLengthFloor` stays zero.
+- The column map is the **solver column mapping** (spec: assembly-owned column mapping); today it equals the State indices. A later Congruence elimination only rewrites the maps and `ncols`.
 
-*Alternatives:*
+Because every local column has its own storage slot, duplicate columns cannot overwrite each other (system-assembly: "Duplicate connectivity columns accumulate").
 
-- Keep the dense `Matrix`. Rejected: \(O(mn)\) memory and \(O(mn^2)\) per step.
-- Standard CSR/CSC with sorted, deduplicated columns plus a per-block slot table (`SparseScatter`). Rejected: it keeps scatter on write, needs \(m \times k\) slot tables, and duplicates need explicit `+=` everywhere.
-- Hand the blocks to a factor-graph library. Rejected: the library would own the structure, and our assembly would become redundant.
+*Alternatives:* keep the dense `Matrix` (rejected: \(O(mn)\) memory, \(O(mn^2)\) per step); standard CSR/CSC with deduplicated columns plus slot tables (rejected: scatter on write); factor-graph library (rejected: it would own the structure). `BlockSparseMatrix` deliberately does **not** offer mutable global element access `J[(i, j)]`: a structural zero has no storage and a duplicate column is a sum of two slots, so no `&mut f64` exists — writes go through the dense block submatrices.
 
-### 2. `ScatterMatrix` removed, `MatrixAccess` kept
+### 2. `ScatterMatrix` and the `MatrixAccess` trait removed
 
-After decision 1 every writer receives a `DenseMatrix`. Delete `ScatterMatrix`, `DenseMatrix::scatter_slice` and their tests. Keep the `MatrixAccess` trait so formula and constraint signatures stay unchanged. Collapsing it to `DenseMatrix` is a possible follow-up, not part of this change. Update the module docs in `matrix.rs` and the `lib.rs` re-exports.
+After decision 1 every writer receives a dense block, so `ScatterMatrix` and `DenseMatrix::scatter_slice` are deleted. With `DenseMatrix` as the only implementor, the `MatrixAccess` trait (with its `BlockSlice<'a>` GAT) no longer abstracts anything: formula / constraint signatures take `&mut DenseMatrix<'_>` instead of `J: MatrixAccess`, and `nrows`, `ncols`, `block_slice`, `set_scaled`, `fill` become inherent `DenseMatrix` methods. Generated code is unchanged (the trait was only ever instantiated with `DenseMatrix`). Matrix types are then: `DenseMatrix` (borrowed dense window, also over plain `Vec<f64>` buffers) and `BlockSparseMatrix` (sparse; its blocks are `DenseMatrix`).
 
 ### 3. Normal-equation assembly (`NormalSystem`)
+
+*(Uses `BlockSparseMatrix::blocks()` for \(J^\top J\) and `transpose_mul` for \(g = J^\top r\).)*
 
 The solver forms \(G = J^\top J\) and \(g = J^\top r\) itself. It does not hand \(J\) to a library: the block columns are unsorted and may repeat.
 
@@ -74,8 +70,9 @@ Algorithm: Levenberg–Marquardt with Marquardt scaling and Nielsen damping upda
   - If \(\rho > 10^{-3}\): accept, \(\lambda \leftarrow \lambda \cdot \max(\tfrac13,\, 1-(2\rho-1)^3)\), \(\nu \leftarrow 2\).
   - Otherwise: reject, \(\lambda \leftarrow \lambda\nu\), \(\nu \leftarrow 2\nu\).
 - If the factorisation fails (not positive definite numerically), treat it as a rejected step: raise \(\lambda\).
-- Start: \(\lambda_0 = \) `opts.lm_lambda0` \(\cdot \max_i D_{ii}\) (relative, Nielsen's \(\tau\)). Document this in the `SolverOptions` docs.
-- Stop with **Success** when \(\|r\| \le\) `opts.tol`. Also Success (usable) when \(\|g\|_\infty \le 10^{-12}\) or \(\|\delta\| \le 10^{-12}(\|p\| + 10^{-12})\), so that soft and hard optima are not reported as failures. This matches the current Ceres rc≥0 semantics. **Failure** when `max_iters` is reached without a usable step, or \(\lambda > 10^{16}\). The best \(p\) seen is always written back, as before.
+- Start: \(\lambda_0 = \) `opts.lm_lambda0`. With Marquardt scaling \(D = \mathrm{diag}(G)\) the damping is already relative, so no extra \(\max_i D_{ii}\) factor (Ceres equivalently starts at \(\lambda = 1/\text{radius}_0\)). Document this in the `SolverOptions` docs.
+- Stop early when \(\|r\| \le\) `opts.tol`, when \(\|g\|_\infty \le 10^{-12}\) (stationary), when \(\|\delta\| \le 10^{-12}(\|p\| + 10^{-12})\), when \(\lambda > 10^{16}\), or after `max_iters`.
+- Outcome: **Success** iff the final \(\|r\| \le\) `opts.tol` (solver-port: a successful solve reports satisfaction within the configured tolerance). Otherwise **Failure** with the stop reason in the message (stationary least-squares optimum, step too small, damping overflow, iteration limit). Interact ignores the outcome and gates commits on the structural norm, so soft-phase "failures" do not change interaction. Only descending steps are accepted, so the written-back \(p\) is always the best iterate.
 - Scratch allocated once per solve: `BlockJacobian`, `r`, `r_trial`, `p_trial`, \(G\), \(g\), \(\delta\), factorisation memory.
 
 The name `LmSolver` stays. Its existing tests (`lm_solves_fixpoint_analytically`, `lm_solves_congruence`) remain as the minimal regression tests.
@@ -101,13 +98,14 @@ The name `LmSolver` stays. Its existing tests (`lm_solves_fixpoint_analytically`
 - `Cargo.toml`: `[features] ceres = []`, not in `default`. `cc` stays a build dependency (cheap). `build.rs` returns early unless `CARGO_FEATURE_CERES` is set.
 - `ceres_solver.rs`, `tests_ceres_solver.rs`, the jacobian part of `solver/ffi.rs` and the `CeresSolver` re-export are under `#[cfg(feature = "ceres")]`. The residual trampoline stays unconditional. It is plain Rust and keeps the FFI contract tested.
 - `EvalHandle` keeps a `BlockJacobian` and a dense `Matrix` scratch. The jacobian trampoline fills the blocks and writes them densely into the Ceres pointer (zero, then `+=` per block). There is no extra `to_dense` allocation per callback.
+- Outcome semantics aligned with the solver-port spec (fixed after apply): `CeresSolver` reports Success iff the final \(\|r\| \le\) `tol`; a usable but unconverged Ceres result is still written back to \(p\) but reported as Failure with Ceres' summary message. Previously any usable result counted as Success.
 - Comparison test (feature `ceres`): the same scenarios through `LmSolver` and `CeresSolver` reach structural satisfaction, and their final structural norms are both ≤ `tol*10`.
 - `InteractiveSolve<S: SolverPort = LmSolver>`; `Default`/`new()` use `LmSolver`. The doc comment on `lib.rs` is updated.
 - The Dev Container keeps the Ceres packages. `impls/linux-rust/README.md` documents `cargo test --features ceres`.
 
 ### 7. Hot-path benchmark and allocation check
 
-- `criterion` as a dev-dependency, `benches/solve.rs`. Scenarios: a closed polygon of `N ∈ {10, 100, 500}` segments with endpoint Congruence, alternating Orthogonal/Parallel, EqualLength, and one FixPoint; plus a drag step on one vertex (soft point follow + length floors).
+- `criterion` as a dev-dependency, `benches/solve.rs`. Scenarios: an open staircase chain of `N` segments (Congruence joints, Orthogonal neighbours, Parallel every 5th pair, EqualLength every 3rd pair, one FixPoint, small deterministic perturbation so the start is near-consistent); plus a drag step on the last endpoint (soft point follow + length floors). `N ∈ {10, 30, 100}` for the dense baseline (dense \(O(mn^2)\) makes larger sizes impractical); `N = 500` is added once the sparse path exists. A closed all-right-angle polygon was dropped: from arbitrary start positions it does not reliably close, which would benchmark failures.
 - Measured separately: `jacobian()`, normal-equation assembly, and a full `solve_commit_soft`.
 - The baseline (current dense `LmSolver` and `CeresSolver`) is recorded **before** the refactor in `impls/linux-rust/BENCHMARKS.md`, and compared after it.
 - Allocation freedom: an integration test `tests/alloc_free.rs` with a counting `#[global_allocator]` asserts zero allocations for repeated `jacobian()` and normal-equation assembly calls on a pre-sized system. If faer can run the numeric factorisation without allocation, include it as well; otherwise record that exception in this design.
@@ -134,5 +132,7 @@ Rollback: steps 2–3 are independent of the solver. Reverting steps 4–5 resto
 
 ## Open Questions
 
-- Exact faer version and API for the symbolic/numeric LLT and for scratch sizing. Resolve this when adding the dependency. It does not change the approach.
-- Whether faer's numeric LLT can run allocation-free with a caller-provided stack. If not, document it as an exception in the allocation test.
+Resolved during apply:
+
+- faer version: pinned `=0.24.4` (`default-features = false`, features `std`, `sparse-linalg`; no rayon). API used: `factorize_symbolic_cholesky` (AMD ordering, `Side::Upper`) once per solve; `SymbolicCholesky::factorize_numeric_llt` + `LltRef::solve_in_place_with_conj` per iteration with one `MemBuffer` sized from `factorize_numeric_llt_scratch` ∪ `solve_in_place_scratch`. Dynamic regularisation is disabled so non-positive-definite systems surface as errors (LM raises λ).
+- Allocation freedom: verified by `solver/tests_normal.rs::assemble_and_factor_solve_do_not_allocate` — normal assembly, numeric LLT and solve perform zero heap allocations after setup. No exception needed.

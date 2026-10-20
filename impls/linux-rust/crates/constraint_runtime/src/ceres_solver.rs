@@ -37,7 +37,9 @@ extern "C" {
     ) -> i32;
 }
 
-/// External Ceres backend. `SolverOptions::lm_lambda0` is ignored (LmSolver-only).
+/// External Ceres backend (dense reference). `SolverOptions::lm_lambda0` is
+/// ignored (LmSolver-only). Success iff the final residual norm is within
+/// `SolverOptions::tol`; otherwise Failure with Ceres' summary message.
 #[derive(Clone, Debug, Default)]
 pub struct CeresSolver;
 
@@ -61,7 +63,7 @@ impl SolverPort for CeresSolver {
             eval: eval as &dyn SystemEval,
             state: p as *mut Vector,
             residual_buf: Vector::zeros(m),
-            jacobian_buf: crate::matrix::Matrix::zeros(m, n),
+            jacobian_buf: eval.new_jacobian(),
         };
         let c_opts = CrCeresOptions {
             function_tolerance: opts.tol,
@@ -90,21 +92,26 @@ impl SolverPort for CeresSolver {
             .trim()
             .to_string();
 
-        // Soft + hard residuals are often not driven to opts.tol together (soft is
-        // best-effort). A usable Ceres step is Success; Interact gates on structural.
-        if rc < 0 {
+        // Success iff the configured tolerance is met (solver-port contract).
+        // A usable but unconverged Ceres result is still written back to `p`;
+        // Interact gates commits on structural residuals, not on this outcome.
+        if rc >= 0 && norm <= opts.tol {
+            SolveOutcome::Success {
+                residual_norm: norm,
+            }
+        } else {
+            let reason = if rc < 0 {
+                "Ceres solve failed"
+            } else {
+                "Ceres did not reach tolerance"
+            };
             SolveOutcome::Failure {
                 residual_norm: norm,
                 message: if message.is_empty() {
-                    format!("Ceres solve failed (rc={rc}, norm={norm})")
+                    format!("{reason} (rc={rc}, norm={norm})")
                 } else {
-                    message
+                    format!("{reason}: {message} (rc={rc}, norm={norm})")
                 },
-            }
-        } else {
-            let _ = message;
-            SolveOutcome::Success {
-                residual_norm: norm,
             }
         }
     }

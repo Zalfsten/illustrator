@@ -42,14 +42,14 @@ impl Viewport {
         Self::new(scale, Pos2::new(origin_x as f32, origin_y as f32))
     }
 
-    pub fn to_screen(&self, p: Point2) -> Pos2 {
+    pub fn to_screen(self, p: Point2) -> Pos2 {
         Pos2::new(
             (self.origin_screen.x as f64 + self.scale * p.x) as f32,
             (self.origin_screen.y as f64 - self.scale * p.y) as f32,
         )
     }
 
-    pub fn to_world(&self, s: Pos2) -> Point2 {
+    pub fn to_world(self, s: Pos2) -> Point2 {
         Point2::new(
             (s.x as f64 - self.origin_screen.x as f64) / self.scale,
             (self.origin_screen.y as f64 - s.y as f64) / self.scale,

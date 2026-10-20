@@ -1,13 +1,12 @@
 //! Interactive solve: soft drag, stay-near-previous, commit/fail, atomic drag.
 
 use crate::assemble::{AssembledSystem, SoftContribution, SoftLengthFloor, SoftPointFollow};
-use crate::ceres_solver::CeresSolver;
 use crate::document::Document;
 use crate::expr::{LengthExpr, PointExpr};
 use crate::geom::Point2;
 use crate::geometry::CurveExprs;
 use crate::geometry_kinds::with_kind;
-use crate::solver::{SolverOptions, SolverPort, SystemEval};
+use crate::solver::{LmSolver, SolverOptions, SolverPort, SystemEval};
 use crate::vector::Vector;
 
 #[derive(Clone, Debug, PartialEq)]
@@ -127,22 +126,22 @@ fn soft_for_drag(
     }
 }
 
-pub struct InteractiveSolve<S: SolverPort = CeresSolver> {
+pub struct InteractiveSolve<S: SolverPort = LmSolver> {
     pub solver: S,
     pub soft_weights: SoftTerms,
     pub opts: SolverOptions,
 }
 
-impl InteractiveSolve<CeresSolver> {
+impl InteractiveSolve<LmSolver> {
     pub fn new() -> Self {
         Self::default()
     }
 }
 
-impl Default for InteractiveSolve<CeresSolver> {
+impl Default for InteractiveSolve<LmSolver> {
     fn default() -> Self {
         Self {
-            solver: CeresSolver,
+            solver: LmSolver,
             soft_weights: SoftTerms::default(),
             opts: SolverOptions::default(),
         }

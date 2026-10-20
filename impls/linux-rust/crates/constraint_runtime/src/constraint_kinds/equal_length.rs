@@ -4,7 +4,7 @@ use crate::constraint::{pair_connectivity, unique_geometry_ids, ConstraintKind};
 use crate::document::Document;
 use crate::expr::LengthExpr;
 use crate::geometry::GeometryId;
-use crate::matrix::MatrixAccess;
+use crate::matrix::DenseMatrix;
 use crate::vector::Vector;
 
 #[derive(Clone, Debug, PartialEq)]
@@ -24,7 +24,7 @@ impl ConstraintKind for EqualLength {
         out[0] = self.a.evaluate(doc, p).value() - self.b.evaluate(doc, p).value();
     }
 
-    fn accumulate_jacobian<J: MatrixAccess>(&self, doc: &Document, p: &Vector, j: &mut J) {
+    fn accumulate_jacobian(&self, doc: &Document, p: &Vector, j: &mut DenseMatrix<'_>) {
         // r = ℓ_a - ℓ_b ⇒ ∂r/∂a = Ja, ∂r/∂b = -Jb
         let na = self.a.accumulate_jacobian(doc, p, j, 1.0);
         let mut jb = j.block_slice(0, na, j.nrows(), j.ncols() - na);

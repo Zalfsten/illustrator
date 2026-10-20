@@ -5,7 +5,7 @@
 
 use std::ops::{Deref, DerefMut};
 
-/// Owned contiguous `f64` vector (counterpart to [`crate::matrix::Matrix`]).
+/// Owned contiguous `f64` vector.
 ///
 /// Used for the sketch parameter state \(p\), assembled residuals \(r\), and
 /// other 1-D buffers. Indexing via [`Deref`] to `[f64]`.

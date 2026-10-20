@@ -3,7 +3,7 @@ use crate::document::Document;
 use crate::geom::{CurveParam, Point2};
 use crate::geometry_kinds::{GeometryInst, Segment};
 use crate::geometry::{Chart, CurveExprs, EndpointExprs, GeometryId, GeometryRole, GeometryShell};
-use crate::matrix::Matrix;
+use crate::matrix::BlockSparseMatrix;
 use crate::vector::Vector;
 
 fn two_segs() -> (Document, Vector) {
@@ -64,12 +64,12 @@ fn jacobian_matches_fd_for_catalog() {
     for c in &constraints {
         let conn = c.param_connectivity(&doc);
         let m = c.residual_arity();
-        let mut mat = Matrix::zeros(m, n_global);
-        {
-            let mut view = mat.as_dense();
-            let mut jac = view.scatter_slice(0, m, &conn);
-            c.accumulate_jacobian(&doc, &p, &mut jac);
-        }
+        let mut jb = BlockSparseMatrix::new(n_global);
+        let b = jb.push_block(m, &conn);
+        c.accumulate_jacobian(&doc, &p, &mut jb.block_mut(b));
+        let n = jb.ncols();
+        let mut mat = vec![0.0; jb.nrows() * n];
+        jb.add_to_dense(&mut mat);
 
         let mut r0 = vec![0.0; m];
         c.eval_residual(&doc, &p, &mut r0);
@@ -81,7 +81,7 @@ fn jacobian_matches_fd_for_catalog() {
             c.eval_residual(&doc, &p2, &mut rp);
             for i in 0..m {
                 let fd = (rp[i] - r0[i]) / eps;
-                let analytic = mat[(i, g)];
+                    let analytic = mat[i * n + g];
                 assert!(
                     (analytic - fd).abs() < 1e-5,
                     "constraint {c:?} col {g} row {i}: analytic={analytic} fd={fd}"

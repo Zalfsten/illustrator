@@ -11,7 +11,7 @@ use crate::geometry::{
     Formula, GeometryId, HeadingFormula, LengthFormula, PointFormula, TurnFormula, VecFormula,
 };
 use crate::geometry_kinds::with_kind;
-use crate::matrix::{DenseMatrix, MatrixAccess};
+use crate::matrix::DenseMatrix;
 use crate::vector::Vector;
 
 /// Upper bound on formula-local parameter count for expression Jacobians.
@@ -67,16 +67,16 @@ impl<F: Formula> Expr<F> {
 
     /// Write the formula Jacobian into `j` (formula-local columns), scaled by
     /// `scale`. Returns the number of columns written ([`Self::param_count`]).
-    pub fn accumulate_jacobian<J: MatrixAccess>(
+    pub fn accumulate_jacobian(
         &self,
         doc: &Document,
         p: &Vector,
-        j: &mut J,
+        j: &mut DenseMatrix<'_>,
         scale: f64,
     ) -> usize {
         let g = doc.expect_geometry(self.geometry);
         with_kind!(g.kind(), K => {
-            self.formula.jacobian::<K, _>(g.unpack::<K>(p), j, scale);
+            self.formula.jacobian::<K>(g.unpack::<K>(p), j, scale);
             self.formula.params::<K>().len()
         })
     }
@@ -97,7 +97,7 @@ impl VecJet {
 
     /// Contract with `g` into residual row 0 of `j`, starting at column `col0`:
     /// `j[0, col0 + i] += scale * g · col_i(J_v)`.
-    pub fn contract_into<J: MatrixAccess>(&self, j: &mut J, col0: usize, g: Vec2, scale: f64) {
+    pub fn contract_into(&self, j: &mut DenseMatrix<'_>, col0: usize, g: Vec2, scale: f64) {
         let n = self.cols;
         debug_assert!(j.ncols() >= col0 + n);
         let (row_x, row_y) = self.jac[..2 * n].split_at(n);
@@ -121,7 +121,7 @@ impl VecExpr {
             );
             let mut jac = [0.0; 2 * MAX_FORMULA_LOCAL_DOF];
             self.formula
-                .jacobian::<K, _>(chart, &mut DenseMatrix::packed(&mut jac[..2 * n], 2, n), 1.0);
+                .jacobian::<K>(chart, &mut DenseMatrix::packed(&mut jac[..2 * n], 2, n), 1.0);
             VecJet {
                 value: self.formula.eval::<K>(chart),
                 cols: n,

@@ -3,7 +3,7 @@
 use crate::document::Document;
 use crate::expr::{LengthExpr, PointExpr};
 use crate::geom::Point2;
-use crate::matrix::Matrix;
+use crate::matrix::BlockSparseMatrix;
 use crate::solver::SystemEval;
 use crate::vector::Vector;
 use crate::SOLVE_TOL;
@@ -71,23 +71,17 @@ impl SoftLengthFloor {
 /// Holds `&Document` for the discrete graph; evaluates against an explicit
 /// Vector (committed or working copy) passed to residual/jacobian.
 ///
-/// Parameter connectivity is cached at construction — it depends only on the
-/// document graph, not on `p`, so Jacobian assembly does not rebuild index lists.
+/// Contributions are stacked in order: structural constraints, soft slots,
+/// soft point follows, soft length floors — one residual-row range and one
+/// Jacobian block each. Parameter connectivity depends only on the document
+/// graph; it is gathered once into the block structure of
+/// [`SystemEval::new_jacobian`] (columns = State indices, no reduction).
 pub struct AssembledSystem<'a> {
     pub doc: &'a Document,
     pub soft: &'a [SoftContribution],
     pub soft_points: &'a [SoftPointFollow],
     pub soft_lengths: &'a [SoftLengthFloor],
     n_res: usize,
-    /// Starting residual row for each structural constraint.
-    structural_row0: Vec<usize>,
-    /// Cached [`Constraint::param_connectivity`] per structural constraint.
-    structural_conn: Vec<Vec<usize>>,
-    soft_row0: usize,
-    soft_point_row0: Vec<usize>,
-    soft_point_conn: Vec<Vec<usize>>,
-    soft_length_row0: Vec<usize>,
-    soft_length_conn: Vec<Vec<usize>>,
 }
 
 impl<'a> AssembledSystem<'a> {
@@ -102,48 +96,20 @@ impl<'a> AssembledSystem<'a> {
         soft_lengths: &'a [SoftLengthFloor],
     ) -> Self {
         debug_assert_eq!(doc.vector().len(), doc.parameter_count());
-        let n_c = doc.constraints().len();
-        let mut structural_row0 = Vec::with_capacity(n_c);
-        let mut structural_conn = Vec::with_capacity(n_c);
-        let mut row = 0usize;
-        for c in doc.constraints().values() {
-            let body = c.body();
-            structural_row0.push(row);
-            row += body.residual_arity();
-            structural_conn.push(body.param_connectivity(doc));
-        }
-        let soft_row0 = row;
-        row += soft
-            .iter()
-            .map(SoftContribution::residual_arity)
-            .sum::<usize>();
-        let mut soft_point_row0 = Vec::with_capacity(soft_points.len());
-        let mut soft_point_conn = Vec::with_capacity(soft_points.len());
-        for sp in soft_points {
-            soft_point_row0.push(row);
-            row += sp.residual_arity();
-            soft_point_conn.push(sp.point.param_indices(doc));
-        }
-        let mut soft_length_row0 = Vec::with_capacity(soft_lengths.len());
-        let mut soft_length_conn = Vec::with_capacity(soft_lengths.len());
-        for sl in soft_lengths {
-            soft_length_row0.push(row);
-            row += sl.residual_arity();
-            soft_length_conn.push(sl.length.param_indices(doc));
-        }
+        let n_res = doc
+            .constraints()
+            .values()
+            .map(|c| c.body().residual_arity())
+            .sum::<usize>()
+            + soft.iter().map(SoftContribution::residual_arity).sum::<usize>()
+            + soft_points.iter().map(SoftPointFollow::residual_arity).sum::<usize>()
+            + soft_lengths.iter().map(SoftLengthFloor::residual_arity).sum::<usize>();
         Self {
             doc,
             soft,
             soft_points,
             soft_lengths,
-            n_res: row,
-            structural_row0,
-            structural_conn,
-            soft_row0,
-            soft_point_row0,
-            soft_point_conn,
-            soft_length_row0,
-            soft_length_conn,
+            n_res,
         }
     }
 
@@ -161,72 +127,85 @@ impl SystemEval for AssembledSystem<'_> {
         self.n_res
     }
 
+    fn new_jacobian(&self) -> BlockSparseMatrix {
+        let doc = self.doc;
+        let mut j = BlockSparseMatrix::new(doc.parameter_count());
+        for c in doc.constraints().values() {
+            let body = c.body();
+            j.push_block(body.residual_arity(), &body.param_connectivity(doc));
+        }
+        for s in self.soft {
+            j.push_block(s.residual_arity(), &[s.param_index()]);
+        }
+        for sp in self.soft_points {
+            j.push_block(sp.residual_arity(), &sp.point.param_indices(doc));
+        }
+        for sl in self.soft_lengths {
+            j.push_block(sl.residual_arity(), &sl.length.param_indices(doc));
+        }
+        debug_assert_eq!(j.nrows(), self.n_res);
+        j
+    }
+
     fn residual(&self, p: &Vector, r: &mut Vector) {
         assert_eq!(r.len(), self.n_res);
-        r.fill(0.0);
-        for (ci, entry) in self.doc.constraints().values().enumerate() {
+        let mut row = 0;
+        let mut rows = |m: usize| {
+            row += m;
+            row - m..row
+        };
+        for entry in self.doc.constraints().values() {
             let c = entry.body();
-            let m = c.residual_arity();
-            let row0 = self.structural_row0[ci];
-            c.eval_residual(self.doc, p, &mut r[row0..row0 + m]);
+            c.eval_residual(self.doc, p, &mut r[rows(c.residual_arity())]);
         }
-        for (si, s) in self.soft.iter().enumerate() {
-            let row = self.soft_row0 + si;
-            s.eval_residual(p, &mut r[row..row + 1]);
+        for s in self.soft {
+            s.eval_residual(p, &mut r[rows(1)]);
         }
-        for (si, sp) in self.soft_points.iter().enumerate() {
-            let row0 = self.soft_point_row0[si];
-            let out = &mut r[row0..row0 + 2];
+        for sp in self.soft_points {
+            let out = &mut r[rows(2)];
             let pt = sp.point.evaluate(self.doc, p);
             let s = sp.weight.sqrt();
             out[0] = s * (pt.x - sp.target.x);
             out[1] = s * (pt.y - sp.target.y);
         }
-        for (si, sl) in self.soft_lengths.iter().enumerate() {
-            let row0 = self.soft_length_row0[si];
-            let out = &mut r[row0..row0 + 1];
+        for sl in self.soft_lengths {
             let len = sl.length.evaluate(self.doc, p).value();
             let deficit = (sl.min_length - len).max(0.0);
-            out[0] = sl.weight.sqrt() * deficit;
+            r[rows(1)][0] = sl.weight.sqrt() * deficit;
         }
     }
 
-    fn jacobian(&self, p: &Vector, j: &mut Matrix) {
+    /// Each block is zeroed before its contribution writes, so `+=` writers
+    /// (e.g. contracted vector Jacobians) start clean and inactive one-sided
+    /// terms stay zero.
+    fn jacobian(&self, p: &Vector, j: &mut BlockSparseMatrix) {
         assert_eq!(j.nrows(), self.n_res);
-        assert_eq!(j.ncols(), self.n_params());
-        j.fill(0.0);
-        let mut mat = j.as_dense();
+        let mut blocks = 0..j.num_blocks();
+        let mut next = || blocks.next().expect("Jacobian from new_jacobian()");
 
-        for (ci, entry) in self.doc.constraints().values().enumerate() {
-            let c = entry.body();
-            let conn = &self.structural_conn[ci];
-            let m_local = c.residual_arity();
-            let row0 = self.structural_row0[ci];
-            let mut jac = mat.scatter_slice(row0, m_local, conn);
-            c.accumulate_jacobian(self.doc, p, &mut jac);
+        for entry in self.doc.constraints().values() {
+            let mut jac = j.block_mut(next());
+            jac.fill(0.0);
+            entry.body().accumulate_jacobian(self.doc, p, &mut jac);
         }
 
-        for (si, s) in self.soft.iter().enumerate() {
-            let row = self.soft_row0 + si;
-            let conn = [s.param_index()];
-            let mut jac = mat.scatter_slice(row, 1, &conn);
+        for s in self.soft {
+            let mut jac = j.block_mut(next());
             jac[(0, 0)] = s.weight.sqrt();
         }
 
-        for (si, sp) in self.soft_points.iter().enumerate() {
-            let row0 = self.soft_point_row0[si];
-            let conn = &self.soft_point_conn[si];
-            let mut jac = mat.scatter_slice(row0, 2, conn);
+        for sp in self.soft_points {
+            let mut jac = j.block_mut(next());
+            jac.fill(0.0);
             sp.point
                 .accumulate_jacobian(self.doc, p, &mut jac, sp.weight.sqrt());
         }
 
-        for (si, sl) in self.soft_lengths.iter().enumerate() {
-            let row0 = self.soft_length_row0[si];
-            let conn = &self.soft_length_conn[si];
+        for sl in self.soft_lengths {
+            let mut jac = j.block_mut(next());
+            jac.fill(0.0);
             let len = sl.length.evaluate(self.doc, p).value();
             if len < sl.min_length {
-                let mut jac = mat.scatter_slice(row0, 1, conn);
                 // r = √w (ℓ_min − L) ⇒ ∂r/∂p = −√w ∂L/∂p
                 sl.length
                     .accumulate_jacobian(self.doc, p, &mut jac, -sl.weight.sqrt());

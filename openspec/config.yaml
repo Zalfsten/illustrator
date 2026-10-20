@@ -52,30 +52,31 @@ context: |
   the type level (arc conventions come with kinds that use them).
 
   Point / vector / length / angle expressions (opaque, Model B):
-  A point, free-vector, or typed scalar expression is an opaque handle to a
-  geometry-kind-owned formula that maps parameter State \(p\) to a Point2, Vec2,
-  Length, HeadingAngle, or TurnAngle (plus connectivity / MatrixAccess). Do
-  not expose formula-kind variants on the public expression type (no
-  formula-kind match in the constraint path). Internally shared capability
-  formula tags are keyed by geometry kind in a closed sum for dispatch. Point
-  and free-vector Jacobians are both 2×n; length / heading / turn Jacobians
-  are 1×n, written into MatrixView with formula-local columns (sparse vs full
-  geometry block). Parallel/Orthogonal may write \(g^\top J_v\) via
-  accumulate_contracted. Typed scalar families stay separate (LengthExpr,
-  HeadingAngleExpr, TurnAngleExpr — no untyped ScalarExpr / single AngleExpr).
-  Parallel/Orthogonal take two opaque vector expressions; EqualLength takes
-  two LengthExprs. Geometries construct expressions via capability factories
-  (CurveExprs / EndpointExprs); constraints, Mesh, and Interact only evaluate
-  them. See docs/constraint-mathematics.md (Design decision: opaque
-  expressions).
+  A point, free-vector, or typed scalar expression is an opaque handle (a
+  geometry id plus a kind-agnostic formula tag) to a geometry-kind-owned
+  formula that maps parameter State \(p\) to a Point2, Vec2, Length,
+  HeadingAngle, or TurnAngle (plus connectivity / Jacobian). Do not
+  expose formula-kind variants on the public expression type (no
+  formula-kind match in the constraint path). The kind behind the id is
+  resolved once per call through a closed kind catalog. Point and
+  free-vector Jacobians are both 2×n; length / heading / turn Jacobians are
+  1×n, written into a DenseMatrix window with formula-local columns (sparse vs
+  full geometry block). Parallel/Orthogonal contract \(g^\top J_v\) from a
+  vector jet. Typed scalar families stay separate (LengthExpr,
+  HeadingAngleExpr, TurnAngleExpr — no untyped ScalarExpr / single
+  AngleExpr). Parallel/Orthogonal take two opaque vector expressions;
+  EqualLength takes two LengthExprs. Geometries construct expressions via
+  capability factories (CurveExprs / EndpointExprs); constraints, Mesh, and
+  Interact only evaluate them. See docs/constraint-mathematics.md (Design
+  decision: opaque expressions).
 
   Geometry identity and resolution:
   One stable GeometryId for all kinds (no segment-only id type). Document
-  owns IdGenerator<GeometryId> / IdGenerator<ConstraintId> (allocate on add;
-  observe on register/import).
-  Expression evaluation resolves ids through a read-only geometry port
-  (linux-rust: GeometryStore → &GeometryInst), then unpacks charts via
-  InGeometryCatalog (no second id lookup inside unpack).
+  owns IdMap<GeometryId, GeometryInst> / IdMap<ConstraintId,
+  ConstraintEntry> (id allocated on add; id order fixes assembly row
+  order). Expression evaluation resolves the id to &GeometryInst once, then
+  dispatches on its GeometryKind (with_kind!) and unpacks the chart from the
+  geometry's parameter window (no second id lookup).
 
   State layout (contiguous blocks):
   Each geometry owns a contiguous parameter block in the global State vector
@@ -90,64 +91,73 @@ context: |
   (Contiguous parameter block per geometry; atomic structural edits).
 
   Rust module and unit-test layout (impls/linux-rust):
-  constraint_runtime splits geometry concerns as follows:
+  constraint_runtime splits concerns as follows:
   - geom: shared affine / scalar DOF types (Point2, Vec2, HeadingAngle,
-    TurnAngle, Length, CurveParam); formula Jacobians accumulate into
-    MatrixView
-  - expr.rs: opaque PointExpr / VecExpr / LengthExpr / HeadingAngleExpr /
-    TurnAngleExpr; VecExpr::accumulate_contracted (stack scratch, gᵀJᵥ)
+    TurnAngle, Length, CurveParam)
+  - expr.rs: generic opaque Expr<F> with aliases PointExpr / VecExpr /
+    LengthExpr / HeadingAngleExpr / TurnAngleExpr; evaluate /
+    param_indices / param_count / accumulate_jacobian; VecExpr::jet +
+    VecJet::contract_into (stack scratch, gᵀJᵥ)
   - geometry/:
-    - shell.rs: GeometryShell, GeometryId, roles, AsShell,
-      geometry_shell_instance!
-    - chart.rs: StateAtom, ChartSlot, PackAtoms, Chart, GeometryKind
-      (marker: Chart + AsShell + From), chart_atoms! (named slots +
+    - shell.rs: GeometryShell, GeometryId, GeometryRole
+    - chart.rs: StateAtom, ChartSlot, Chart, chart_atoms! (named slots +
       pack/unpack from Init tuples)
-    - capabilities.rs: CurveExprs / EndpointExprs; shared formula tags;
-      CurveFormulaKey / EndpointFormulaKey with blankets (factories)
-    - expr.rs: register_expr_kinds! (kind-keyed formula enums, evaluate /
-      param_indices / param_count / jacobian dispatch, CurveFormulaKey /
-      EndpointFormulaKey for listed kinds)
-  - id.rs: IdGenerator<Id> (shared by geometry + constraint namespaces)
-  - geometry_kinds/: catalog.rs (GeometryInst + InGeometryCatalog);
-    per kind file: shell + chart_atoms!; eval_* + accumulate_*_jacobian
-    (set_scaled); optional sparse endpoint / heading / turn helpers;
-    register_expr_kinds! entry. Kinds today: Segment (2×Point2), Arc
-    (center Point2, signed Length radius, HeadingAngle start, TurnAngle
-    sweep). Document: HashMap<GeometryId, GeometryInst>;
-    add_geometry: GeometryKind + Into<GeometryInst>.
+    - formula.rs: Geometry (what a kind implements: value / Jacobian /
+      connectivity per formula family) and Formula (tag family → that
+      triple), formula_family!
+    - capabilities.rs: kind-agnostic formula tags (PointFormula,
+      VecFormula, LengthFormula, HeadingFormula, TurnFormula) and opt-in
+      factories CurveExprs / EndpointExprs
+  - id.rs: IdMap<Id, T> (typed id → value storage; shared by geometry and
+    constraint namespaces)
+  - geometry_kinds/: catalog.rs (data-less GeometryKind enum, GeometryInst,
+    with_kind! dispatch); per kind file: chart_atoms! layout + impl
+    Geometry (Jacobians via set_scaled) + opt-in factory traits. Kinds
+    today: Segment (2×Point2), Arc (center Point2, signed Length radius,
+    HeadingAngle start, TurnAngle sweep).
   - mesh.rs: Display Mesh from Document+State; open curves tessellated via
     on_curve + adaptive subdivision until tangent turn per interval ≤
     MAX_CHORD_TURN (π/8), max 64 samples; endpoint hits use geometric
     start/end expressions only.
-  - constraint.rs: ConstraintKind (generic over GeometryStore / VecAccess /
-    MatrixAccess); referenced_geometries is a deduplicated GeometryId list.
-    ConstraintId + ConstraintEntry (ConstraintInst body).
-  - constraint_kinds/: catalog.rs (ConstraintInst) + per-kind files;
-    add_constraint: Into<ConstraintInst>.
-  - matrix.rs: owned Matrix; borrowed DenseMatrix / ScatterMatrix (conn
-    borrowed); MatrixView / MatrixAccess (block_slice, set_scaled). Scatter
-    via inherent DenseMatrix::scatter_slice.
-  - vector.rs: owned Vector (p and r); borrowed DenseVec / ScatterVec;
-    VecView / VecAccess (as_dense / block_slice / scatter_slice)
-  - assemble: AssembledSystem(&'a Document, soft, soft_points, soft_lengths);
-    caches structural / soft-point / soft-length param_connectivity at
-    construction (graph-only; not p-dependent). SoftContribution,
-    SoftPointFollow, SoftLengthFloor are session-only; soft-vs-hard
-    strength is in SoftTerms / per-term weight (sqrt(w) in residual),
-    not a separate structural rescale in assembly. SoftLengthFloor is
-    one-sided max(0, ℓ_min − L). SystemEval fills Vector r and Matrix J.
+  - constraint.rs: ConstraintKind (RESIDUAL_ARITY, param_connectivity,
+    eval_residual, accumulate_jacobian(&mut DenseMatrix),
+    referenced_geometries as a deduplicated GeometryId list); ConstraintId
+    + ConstraintEntry (ConstraintInst body).
+  - constraint_kinds/: catalog.rs (closed ConstraintInst, generated from
+    the kind list) + per-kind files; add_constraint: Into<ConstraintInst>.
+  - matrix.rs: borrowed DenseMatrix (packed or window, also over plain
+    Vec<f64> buffers);
+    block_slice / set_scaled / fill (no matrix trait: DenseMatrix is the
+    only writable window); BlockSparseMatrix: sparse m×n matrix of dense
+    row blocks, one per contribution with its own column map (block_mut =
+    dense submatrix, no scatter on write; blocks(), transpose_mul,
+    add_to_dense sum duplicate columns; no mutable global (i, j) access).
+  - vector.rs: owned Vector (p and r); borrowed windows are plain slices.
+  - assemble: AssembledSystem(&'a Document, soft, soft_points,
+    soft_lengths): new_jacobian builds the BlockSparseMatrix structure
+    from contribution connectivity (graph-only; not p-dependent; once per
+    solve); block order structural, soft slots, soft point follows, soft
+    length floors; residual uses a running row offset. SoftContribution, SoftPointFollow, SoftLengthFloor
+    are session-only; soft-vs-hard strength is in SoftTerms / per-term
+    weight (sqrt(w) in residual), not a separate structural rescale.
+    SoftLengthFloor is one-sided max(0, ℓ_min − L). SystemEval fills
+    Vector r and BlockSparseMatrix J.
   - interact: SoftTerms (mouse/stay weights + min_curve_length_fraction);
     soft_for_drag builds SoftContribution / SoftPointFollow /
     SoftLengthFloor (ℓ_min = fraction × L0 at drag-start snapshot);
-    InteractiveSolve commits working Vector
-  - store: GeometryStore port (id → &GeometryInst); implemented by Document
-  - mapper: column maps (geometry_indices / local_indices / join_indices);
-    unpack_chart on &impl Chart+AsShell; chart_param_block Range for slices
-  - document: discrete graph + committed Vector; HashMaps by id; incidence /
-    Congruence identification indexes
-  - solver: SolverPort::solve<E: SystemEval>; SystemEval fills Vector r /
-    Matrix J; LM reuses scratch; FFI EvalHandle uses &dyn SystemEval only
-    for the C trampoline + residual/jacobian scratch reuse
+    InteractiveSolve (default backend LmSolver) commits the working Vector
+    only if structural residuals pass.
+  - document: discrete graph + committed Vector; IdMap stores; incidence /
+    Congruence identification indexes.
+  - solver: SolverPort::solve<E: SystemEval>; SystemEval exposes
+    n_params / n_residuals, residual, new_jacobian (structure, once per
+    solve) and jacobian (values). LmSolver: owned sparse
+    Levenberg–Marquardt (normal.rs assembles JᵀJ / Jᵀr from blocks with
+    precomputed slots; sparse_chol.rs wraps faer sparse Cholesky, symbolic
+    once per solve, numeric per iteration; hot path allocation-free).
+    ffi.rs: EvalHandle + C trampolines (&dyn SystemEval only at the C
+    boundary); CeresSolver (ceres_solver.rs) is an optional dense reference
+    backend behind the `ceres` Cargo feature.
   Prefer sibling files once a module has unit tests: src/<module>.rs for
   production code and src/tests_<module>.rs for that module's unit tests,
   declared with `#[cfg(test)] #[path = "tests_<module>.rs"] mod tests_<module>;`
@@ -167,7 +177,7 @@ rules:
     - Include an explicit Non-goals (or equivalent deferrals) section relative to the long-term product vision when scope is a slice.
     - Do not treat a single implementation stack as the product; note that specs stay shared across implementations.
   specs:
-    - Keep requirements implementation-agnostic: no mandated programming language, OS, GUI toolkit, or library.
+    - "Keep requirements implementation-agnostic: no mandated programming language, OS, GUI toolkit, or library."
     - Do not require a specific solver algorithm by name; specify observable solve/interaction behavior and replaceable backends instead.
     - Express overarching architecture as domain contracts (e.g. Model E, hard vs soft conditions), not as code module layouts of one impl.
     - Keep points and free vectors distinct in domain language; do not treat directions or displacements as points.
@@ -177,14 +187,14 @@ rules:
   tasks:
     - Scope tasks to the implementation(s) named in design.md; do not invent parallel impls unless the change asks for them.
     - Prefer proving the shared runtime contracts with tests before expanding illustration UI features.
-    - For linux-rust: place new unit tests in src/tests_<module>.rs (sibling of <module>.rs), not inline at the bottom of a monolithic .rs file; create a module directory only for real nested submodules.
+    - "For linux-rust: place new unit tests in src/tests_<module>.rs (sibling of <module>.rs), not inline at the bottom of a monolithic .rs file; create a module directory only for real nested submodules."
 
 # Per-operation guidance
 operations:
   apply:
     guidance:
       - Implement against the shared specs; keep impl-specific choices aligned with design.md.
-      - For linux-rust Rust code: keep unit tests as src/<module>.rs + src/tests_<module>.rs (#[path]); module directories only for nested submodules; do not reintroduce large inline #[cfg(test)] blocks or anonymous mod.rs/tests.rs pairs.
+      - "For linux-rust Rust code: keep unit tests as src/<module>.rs + src/tests_<module>.rs (#[path]); module directories only for nested submodules; do not reintroduce large inline #[cfg(test)] blocks or anonymous mod.rs/tests.rs pairs."
   archive:
     guidance:
       - Summarize what became shared capability truth versus what remained impl-specific design.

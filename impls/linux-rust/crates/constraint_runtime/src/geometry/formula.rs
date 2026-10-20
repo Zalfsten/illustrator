@@ -17,7 +17,7 @@ use super::capabilities::{HeadingFormula, LengthFormula, PointFormula, TurnFormu
 use super::chart::Chart;
 use crate::geom::{HeadingAngle, Length, Point2, TurnAngle, Vec2};
 use crate::geometry_kinds::GeometryKind;
-use crate::matrix::MatrixAccess;
+use crate::matrix::DenseMatrix;
 
 /// Formula-local columns covering the whole chart block.
 pub fn all_params<K: Chart>() -> Range<usize> {
@@ -40,21 +40,21 @@ pub trait Geometry: Chart + Sized + 'static {
     const KIND: GeometryKind;
 
     fn point(f: PointFormula, c: Self::Init) -> Point2;
-    fn point_jacobian<J: MatrixAccess>(f: PointFormula, c: Self::Init, j: &mut J, scale: f64);
+    fn point_jacobian(f: PointFormula, c: Self::Init, j: &mut DenseMatrix<'_>, scale: f64);
     fn point_params(f: PointFormula) -> Range<usize> {
         let _ = f;
         all_params::<Self>()
     }
 
     fn vec(f: VecFormula, c: Self::Init) -> Vec2;
-    fn vec_jacobian<J: MatrixAccess>(f: VecFormula, c: Self::Init, j: &mut J, scale: f64);
+    fn vec_jacobian(f: VecFormula, c: Self::Init, j: &mut DenseMatrix<'_>, scale: f64);
     fn vec_params(f: VecFormula) -> Range<usize> {
         let _ = f;
         all_params::<Self>()
     }
 
     fn length(f: LengthFormula, c: Self::Init) -> Length;
-    fn length_jacobian<J: MatrixAccess>(f: LengthFormula, c: Self::Init, j: &mut J, scale: f64);
+    fn length_jacobian(f: LengthFormula, c: Self::Init, j: &mut DenseMatrix<'_>, scale: f64);
     fn length_params(f: LengthFormula) -> Range<usize> {
         let _ = f;
         all_params::<Self>()
@@ -64,7 +64,7 @@ pub trait Geometry: Chart + Sized + 'static {
         let _ = (f, c);
         unsupported(Self::KIND, "heading")
     }
-    fn heading_jacobian<J: MatrixAccess>(f: HeadingFormula, c: Self::Init, j: &mut J, scale: f64) {
+    fn heading_jacobian(f: HeadingFormula, c: Self::Init, j: &mut DenseMatrix<'_>, scale: f64) {
         let _ = (f, c, j, scale);
         unsupported(Self::KIND, "heading")
     }
@@ -77,7 +77,7 @@ pub trait Geometry: Chart + Sized + 'static {
         let _ = (f, c);
         unsupported(Self::KIND, "turn")
     }
-    fn turn_jacobian<J: MatrixAccess>(f: TurnFormula, c: Self::Init, j: &mut J, scale: f64) {
+    fn turn_jacobian(f: TurnFormula, c: Self::Init, j: &mut DenseMatrix<'_>, scale: f64) {
         let _ = (f, c, j, scale);
         unsupported(Self::KIND, "turn")
     }
@@ -91,7 +91,7 @@ pub trait Geometry: Chart + Sized + 'static {
 pub trait Formula: Copy + std::fmt::Debug + PartialEq {
     type Value;
     fn eval<K: Geometry>(self, c: K::Init) -> Self::Value;
-    fn jacobian<K: Geometry, J: MatrixAccess>(self, c: K::Init, j: &mut J, scale: f64);
+    fn jacobian<K: Geometry>(self, c: K::Init, j: &mut DenseMatrix<'_>, scale: f64);
     fn params<K: Geometry>(self) -> Range<usize>;
 }
 
@@ -106,7 +106,7 @@ macro_rules! formula_family {
             }
 
             #[inline]
-            fn jacobian<K: Geometry, J: MatrixAccess>(self, c: K::Init, j: &mut J, scale: f64) {
+            fn jacobian<K: Geometry>(self, c: K::Init, j: &mut DenseMatrix<'_>, scale: f64) {
                 K::$jac(self, c, j, scale)
             }
 

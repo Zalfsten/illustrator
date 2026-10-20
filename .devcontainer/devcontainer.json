@@ -13,7 +13,8 @@
         "rust-analyzer.linkedProjects": [
           "impls/linux-rust/Cargo.toml"
         ],
-        "rust-analyzer.testExplorer": true
+        "rust-analyzer.testExplorer": true,
+        "rust-analyzer.check.command": "clippy"
       },
       "extensions": [
         "rust-lang.rust-analyzer",

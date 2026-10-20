@@ -10,7 +10,7 @@
 //! Scalar chart parameters: [`HeadingAngle`] / [`TurnAngle`] (radians; absolute vs
 //! free, analogous to [`Point2`] / [`Vec2`]) and [`Length`] (signed Vector DOF).
 //! Vector packing of all of these lives in [`crate::geometry::StateAtom`].
-//! Formula Jacobians write into [`crate::matrix::MatrixAccess`] (see expressions /
+//! Formula Jacobians write into [`crate::matrix::DenseMatrix`] (see expressions /
 //! geometry kinds).
 
 use std::ops::{Add, Mul, Neg, Sub};

@@ -1,74 +1,13 @@
-//! Row-major matrices and dense / scatter matrix views.
+//! Dense matrix views and the block-sparse Jacobian.
 //!
-//! [`Matrix`] owns matrix storage. Borrowed windows are [`DenseMatrix`]
-//! (contiguous) or [`ScatterMatrix`] (local column index → connectivity; not CSR).
-//! Formula / constraint Jacobians write through the shared [`MatrixAccess`].
+//! [`DenseMatrix`] is a borrowed dense window (contiguous rows). The global
+//! Jacobian is a [`BlockSparseMatrix`]: one dense row block per contribution,
+//! each with its own column map. Formula / constraint Jacobians write into a
+//! block's dense submatrix (no scatter on write).
 //!
 //! For the parameter / residual vector see [`crate::vector`].
 
 use std::ops::{Index, IndexMut};
-
-/// Owned row-major matrix.
-#[derive(Clone, Debug)]
-pub struct Matrix {
-    data: Vec<f64>,
-    nrows: usize,
-    ncols: usize,
-}
-
-impl Matrix {
-    pub fn zeros(nrows: usize, ncols: usize) -> Self {
-        Self {
-            data: vec![0.0; nrows * ncols],
-            nrows,
-            ncols,
-        }
-    }
-
-    pub fn nrows(&self) -> usize {
-        self.nrows
-    }
-
-    pub fn ncols(&self) -> usize {
-        self.ncols
-    }
-
-    pub fn as_slice(&self) -> &[f64] {
-        &self.data
-    }
-
-    pub fn as_mut_slice(&mut self) -> &mut [f64] {
-        &mut self.data
-    }
-
-    pub fn fill(&mut self, value: f64) {
-        self.data.fill(value);
-    }
-
-    /// Borrow the whole matrix as a dense view.
-    pub fn as_dense(&mut self) -> DenseMatrix<'_> {
-        DenseMatrix::packed(&mut self.data, self.nrows, self.ncols)
-    }
-
-    fn flat(&self, i: usize, j: usize) -> usize {
-        debug_assert!(i < self.nrows && j < self.ncols);
-        i * self.ncols + j
-    }
-}
-
-impl Index<(usize, usize)> for Matrix {
-    type Output = f64;
-    fn index(&self, (i, j): (usize, usize)) -> &f64 {
-        &self.data[self.flat(i, j)]
-    }
-}
-
-impl IndexMut<(usize, usize)> for Matrix {
-    fn index_mut(&mut self, (i, j): (usize, usize)) -> &mut f64 {
-        let idx = self.flat(i, j);
-        &mut self.data[idx]
-    }
-}
 
 /// Dense local index space over a contiguous rectangular window of a parent
 /// buffer (or a packed standalone matrix when offsets are zero and
@@ -96,22 +35,55 @@ impl<'a> DenseMatrix<'a> {
         }
     }
 
-    /// Scatter view: local columns map through borrowed `conn` into this window.
-    pub fn scatter_slice<'c>(
+    pub fn nrows(&self) -> usize {
+        self.nrows
+    }
+
+    pub fn ncols(&self) -> usize {
+        self.ncols
+    }
+
+    /// Sub-window with local indices starting at `(row0, col0)`.
+    pub fn block_slice(
         &mut self,
         row0: usize,
-        nrows: usize,
-        conn: &'c [usize],
-    ) -> ScatterMatrix<'_, 'c> {
-        debug_assert!(row0 + nrows <= self.nrows);
-        debug_assert!(conn.iter().all(|&c| c < self.ncols));
-        ScatterMatrix {
+        col0: usize,
+        block_rows: usize,
+        block_cols: usize,
+    ) -> DenseMatrix<'_> {
+        debug_assert!(row0 + block_rows <= self.nrows);
+        debug_assert!(col0 + block_cols <= self.ncols);
+        DenseMatrix {
             data: self.data,
             stride: self.stride,
             row0: self.row0 + row0,
-            col0: self.col0,
-            nrows,
-            conn,
+            col0: self.col0 + col0,
+            nrows: block_rows,
+            ncols: block_cols,
+        }
+    }
+
+    /// Write a dense \(R \times C\) block at `(0,0)`, times `scale`.
+    ///
+    /// `vals` is row-major: `vals[i][k]` → `self[(i, k)]`. The window may be
+    /// larger than \(R \times C\) (e.g. left half of a joined contribution).
+    /// Const generics compile to direct stores — no heap, no dynamic dispatch.
+    #[inline]
+    pub fn set_scaled<const R: usize, const C: usize>(&mut self, scale: f64, vals: [[f64; C]; R]) {
+        debug_assert!(self.nrows >= R);
+        debug_assert!(self.ncols >= C);
+        for (i, row) in vals.into_iter().enumerate() {
+            for (k, v) in row.into_iter().enumerate() {
+                self[(i, k)] = scale * v;
+            }
+        }
+    }
+
+    /// Set every entry of this window to `value`.
+    pub fn fill(&mut self, value: f64) {
+        for i in 0..self.nrows {
+            let start = (self.row0 + i) * self.stride + self.col0;
+            self.data[start..start + self.ncols].fill(value);
         }
     }
 
@@ -135,151 +107,189 @@ impl IndexMut<(usize, usize)> for DenseMatrix<'_> {
     }
 }
 
-/// Scatter local \((i,j)\) into parent rows / columns `col0 + conn[j]`.
-///
-/// `conn` is borrowed from the cached assembly connectivity. Column windows use
-/// [`MatrixAccess::block_slice`] (subslice of `conn`, no alloc).
-pub struct ScatterMatrix<'d, 'c> {
-    data: &'d mut [f64],
-    stride: usize,
+/// Placement of one row block inside a [`BlockSparseMatrix`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct BlockMeta {
     row0: usize,
-    col0: usize,
     nrows: usize,
-    conn: &'c [usize],
+    ncols: usize,
+    /// Offset of the block's values in the matrix's value storage.
+    val_off: usize,
+    /// Offset of the block's column map in the matrix's column storage.
+    col_off: usize,
 }
 
-impl ScatterMatrix<'_, '_> {
-    fn flat(&self, i: usize, j: usize) -> usize {
-        debug_assert!(i < self.nrows && j < self.conn.len());
-        (self.row0 + i) * self.stride + (self.col0 + self.conn[j])
-    }
-}
-
-impl Index<(usize, usize)> for ScatterMatrix<'_, '_> {
-    type Output = f64;
-    fn index(&self, (i, j): (usize, usize)) -> &f64 {
-        &self.data[self.flat(i, j)]
-    }
-}
-
-impl IndexMut<(usize, usize)> for ScatterMatrix<'_, '_> {
-    fn index_mut(&mut self, (i, j): (usize, usize)) -> &mut f64 {
-        let idx = self.flat(i, j);
-        &mut self.data[idx]
-    }
-}
-
-/// Writable matrix window on a dense local \((i, j)\) index space: `m[(i, k)]`
-/// plus same-kind block slices.
+/// Sparse \(m \times n\) matrix made of dense **row blocks**.
 ///
-/// Backends: [`DenseMatrix`], [`ScatterMatrix`]. Used via generics
-/// (`J: MatrixAccess`) so every access monomorphizes. Scatter views are opened
-/// with inherent [`DenseMatrix::scatter_slice`].
-pub trait MatrixAccess:
-    Index<(usize, usize), Output = f64> + IndexMut<(usize, usize), Output = f64>
-{
-    type BlockSlice<'a>: MatrixAccess
-    where
-        Self: 'a;
-
-    fn nrows(&self) -> usize;
-    fn ncols(&self) -> usize;
-
-    /// Sub-window with local indices starting at `(row0, col0)`.
-    fn block_slice(
-        &mut self,
-        row0: usize,
-        col0: usize,
-        block_rows: usize,
-        block_cols: usize,
-    ) -> Self::BlockSlice<'_>;
-
-    /// Write a dense \(R \times C\) block at `(0,0)`, times `scale`.
-    ///
-    /// `vals` is row-major: `vals[i][k]` → `j[(i, k)]`. The view may be larger
-    /// than \(R \times C\) (e.g. left half of a joined contribution). Const
-    /// generics monomorphize to direct stores — no heap, no dynamic dispatch.
-    #[inline]
-    fn set_scaled<const R: usize, const C: usize>(
-        &mut self,
-        scale: f64,
-        vals: [[f64; C]; R],
-    ) {
-        debug_assert!(self.nrows() >= R);
-        debug_assert!(self.ncols() >= C);
-        for (i, row) in vals.into_iter().enumerate() {
-            for (k, v) in row.into_iter().enumerate() {
-                self[(i, k)] = scale * v;
-            }
-        }
-    }
+/// Block `b` covers rows `row0..row0 + nrows` (each row belongs to exactly one
+/// block) and the columns listed in its column map; its values are stored
+/// contiguously, row-major. The matrix is the **sum** of all blocks placed at
+/// their rows / mapped columns, so a column listed twice in one block
+/// accumulates both local columns.
+///
+/// Write a block through [`Self::block_mut`], the dense submatrix
+/// \(J[\text{rows}_b, \text{cols}_b]\). There is deliberately no mutable
+/// global `(i, j)` access: a structural zero has no storage and a duplicate
+/// column is a sum of two slots.
+#[derive(Clone, Debug, Default)]
+pub struct BlockSparseMatrix {
+    nrows: usize,
+    ncols: usize,
+    blocks: Vec<BlockMeta>,
+    cols: Vec<usize>,
+    values: Vec<f64>,
 }
 
-impl MatrixAccess for DenseMatrix<'_> {
-    type BlockSlice<'a>
-        = DenseMatrix<'a>
-    where
-        Self: 'a;
+/// Read-only view of one row block of a [`BlockSparseMatrix`].
+#[derive(Clone, Copy, Debug)]
+pub struct Block<'a> {
+    row0: usize,
+    nrows: usize,
+    cols: &'a [usize],
+    values: &'a [f64],
+}
 
-    fn nrows(&self) -> usize {
+impl<'a> Block<'a> {
+    /// Global rows covered by this block.
+    pub fn rows(&self) -> std::ops::Range<usize> {
+        self.row0..self.row0 + self.nrows
+    }
+
+    /// Global column of each local column.
+    pub fn cols(&self) -> &'a [usize] {
+        self.cols
+    }
+
+    /// Local row count (`rows().len()`).
+    pub fn nrows(&self) -> usize {
         self.nrows
     }
 
-    fn ncols(&self) -> usize {
+    /// Local column count (`cols().len()`).
+    pub fn ncols(&self) -> usize {
+        self.cols.len()
+    }
+
+    /// Row-major `nrows × ncols` values.
+    pub fn values(&self) -> &'a [f64] {
+        self.values
+    }
+
+    /// Values of each local row (`ncols` entries each), in row order.
+    /// Empty for a block without columns.
+    pub fn row_values(&self) -> std::slice::ChunksExact<'a, f64> {
+        self.values.chunks_exact(self.ncols().max(1))
+    }
+}
+
+/// Read block entry `(i, k)`: local row `i`, local column `k`.
+impl Index<(usize, usize)> for Block<'_> {
+    type Output = f64;
+    #[inline]
+    fn index(&self, (i, k): (usize, usize)) -> &f64 {
+        debug_assert!(i < self.nrows && k < self.ncols());
+        &self.values[i * self.ncols() + k]
+    }
+}
+
+impl BlockSparseMatrix {
+    /// Empty matrix with `ncols` columns; rows grow with [`Self::push_block`].
+    pub fn new(ncols: usize) -> Self {
+        Self {
+            ncols,
+            ..Self::default()
+        }
+    }
+
+    /// Append a zero block covering the next `nrows` rows; `cols` maps its
+    /// local columns to matrix columns. Returns the block index.
+    pub fn push_block(&mut self, nrows: usize, cols: &[usize]) -> usize {
+        debug_assert!(cols.iter().all(|&c| c < self.ncols));
+        self.blocks.push(BlockMeta {
+            row0: self.nrows,
+            nrows,
+            ncols: cols.len(),
+            val_off: self.values.len(),
+            col_off: self.cols.len(),
+        });
+        self.cols.extend_from_slice(cols);
+        self.values.resize(self.values.len() + nrows * cols.len(), 0.0);
+        self.nrows += nrows;
+        self.blocks.len() - 1
+    }
+
+    pub fn nrows(&self) -> usize {
+        self.nrows
+    }
+
+    pub fn ncols(&self) -> usize {
         self.ncols
     }
 
-    fn block_slice(
-        &mut self,
-        row0: usize,
-        col0: usize,
-        block_rows: usize,
-        block_cols: usize,
-    ) -> DenseMatrix<'_> {
-        debug_assert!(row0 + block_rows <= self.nrows);
-        debug_assert!(col0 + block_cols <= self.ncols);
-        DenseMatrix {
-            data: self.data,
-            stride: self.stride,
-            row0: self.row0 + row0,
-            col0: self.col0 + col0,
-            nrows: block_rows,
-            ncols: block_cols,
+    pub fn num_blocks(&self) -> usize {
+        self.blocks.len()
+    }
+
+    /// Read-only view of block `b`.
+    pub fn block(&self, b: usize) -> Block<'_> {
+        self.view(&self.blocks[b])
+    }
+
+    /// All blocks in row order.
+    pub fn blocks(&self) -> impl ExactSizeIterator<Item = Block<'_>> + '_ {
+        self.blocks.iter().map(|m| self.view(m))
+    }
+
+    /// Dense submatrix of block `b` (local rows / columns).
+    pub fn block_mut(&mut self, b: usize) -> DenseMatrix<'_> {
+        let m = self.blocks[b];
+        DenseMatrix::packed(
+            &mut self.values[m.val_off..m.val_off + m.nrows * m.ncols],
+            m.nrows,
+            m.ncols,
+        )
+    }
+
+    /// Set every stored entry to `value`.
+    pub fn fill(&mut self, value: f64) {
+        self.values.fill(value);
+    }
+
+    /// \(g = J^\top r\) (overwrites `g`).
+    pub fn transpose_mul(&self, r: &[f64], g: &mut [f64]) {
+        debug_assert_eq!(r.len(), self.nrows);
+        debug_assert_eq!(g.len(), self.ncols);
+        g.fill(0.0);
+        for b in self.blocks() {
+            for (vals, row) in b.row_values().zip(b.rows()) {
+                let ri = r[row];
+                for (&v, &c) in vals.iter().zip(b.cols) {
+                    g[c] += v * ri;
+                }
+            }
         }
     }
-}
 
-impl<'c> MatrixAccess for ScatterMatrix<'_, 'c> {
-    type BlockSlice<'a>
-        = ScatterMatrix<'a, 'c>
-    where
-        Self: 'a;
-
-    fn nrows(&self) -> usize {
-        self.nrows
+    /// Add the matrix into a row-major `nrows × ncols` buffer (caller zeroes it).
+    pub fn add_to_dense(&self, out: &mut [f64]) {
+        let n = self.ncols;
+        debug_assert_eq!(out.len(), self.nrows * n);
+        for b in self.blocks() {
+            for (vals, row) in b.row_values().zip(b.rows()) {
+                let dst = &mut out[row * n..(row + 1) * n];
+                for (&v, &c) in vals.iter().zip(b.cols) {
+                    dst[c] += v;
+                }
+            }
+        }
     }
 
-    fn ncols(&self) -> usize {
-        self.conn.len()
-    }
-
-    /// Row window plus `conn` subslice (still scattering into the parent).
-    fn block_slice(
-        &mut self,
-        row0: usize,
-        col0: usize,
-        block_rows: usize,
-        block_cols: usize,
-    ) -> ScatterMatrix<'_, 'c> {
-        debug_assert!(row0 + block_rows <= self.nrows);
-        debug_assert!(col0 + block_cols <= self.conn.len());
-        ScatterMatrix {
-            data: self.data,
-            stride: self.stride,
-            row0: self.row0 + row0,
-            col0: self.col0,
-            nrows: block_rows,
-            conn: &self.conn[col0..col0 + block_cols],
+    fn view(&self, m: &BlockMeta) -> Block<'_> {
+        Block {
+            row0: m.row0,
+            nrows: m.nrows,
+            cols: &self.cols[m.col_off..m.col_off + m.ncols],
+            values: &self.values[m.val_off..m.val_off + m.nrows * m.ncols],
         }
     }
 }

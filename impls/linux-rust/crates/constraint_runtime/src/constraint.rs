@@ -9,7 +9,7 @@ use std::fmt::Debug;
 use crate::document::Document;
 use crate::expr::Expr;
 use crate::geometry::{Formula, GeometryId};
-use crate::matrix::MatrixAccess;
+use crate::matrix::DenseMatrix;
 use crate::vector::Vector;
 
 /// Deduplicate geometry ids while preserving first-seen order.
@@ -73,14 +73,14 @@ pub trait ConstraintKind: Clone + Debug + 'static {
     /// Residual row count for this contribution.
     const RESIDUAL_ARITY: usize;
 
-    /// Global Vector columns involved in this contribution (assembly scatter map).
+    /// Global Vector columns involved in this contribution (assembly column map).
     fn param_connectivity(&self, doc: &Document) -> Vec<usize>;
 
     /// Local residual `r_N` in contribution order (length = [`Self::RESIDUAL_ARITY`]).
     fn eval_residual(&self, doc: &Document, p: &Vector, out: &mut [f64]);
 
-    /// Write this contribution's Jacobian into `j` (dense or scatter local indices).
-    fn accumulate_jacobian<J: MatrixAccess>(&self, doc: &Document, p: &Vector, j: &mut J);
+    /// Write this contribution's Jacobian into `j` (local indices, connectivity order).
+    fn accumulate_jacobian(&self, doc: &Document, p: &Vector, j: &mut DenseMatrix<'_>);
 
     /// Geometry instances this constraint depends on (incidence / reverse index).
     fn referenced_geometries(&self) -> Vec<GeometryId>;

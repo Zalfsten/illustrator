@@ -185,7 +185,7 @@ impl App {
             let d = (p.x - query.x).hypot(p.y - query.y);
             if d < best_d {
                 best_d = d;
-                best = Some(expr.clone());
+                best = Some(*expr);
             }
         }
         best

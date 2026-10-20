@@ -7,7 +7,7 @@ use crate::geometry::capabilities::{CurveExprs, EndpointExprs};
 use crate::geometry::chart::chart_atoms;
 use crate::geometry::{Geometry, LengthFormula, PointFormula, VecFormula};
 use crate::geometry_kinds::GeometryKind;
-use crate::matrix::MatrixAccess;
+use crate::matrix::DenseMatrix;
 
 /// Line-segment kind (type-level marker; instances live in
 /// [`crate::geometry_kinds::GeometryInst`]).
@@ -42,7 +42,7 @@ impl Geometry for Segment {
         }
     }
 
-    fn point_jacobian<J: MatrixAccess>(f: PointFormula, _c: Self::Init, j: &mut J, scale: f64) {
+    fn point_jacobian(f: PointFormula, _c: Self::Init, j: &mut DenseMatrix<'_>, scale: f64) {
         match f {
             PointFormula::OnCurve { param } => {
                 let t = param.chart_t();
@@ -77,7 +77,7 @@ impl Geometry for Segment {
         }
     }
 
-    fn vec_jacobian<J: MatrixAccess>(f: VecFormula, _c: Self::Init, j: &mut J, scale: f64) {
+    fn vec_jacobian(f: VecFormula, _c: Self::Init, j: &mut DenseMatrix<'_>, scale: f64) {
         match f {
             VecFormula::TangentAt { .. } => {
                 // ∂(B-A)/∂(A,B) = -I | I
@@ -103,10 +103,10 @@ impl Geometry for Segment {
         }
     }
 
-    fn length_jacobian<J: MatrixAccess>(
+    fn length_jacobian(
         f: LengthFormula,
         (a, b): Self::Init,
-        j: &mut J,
+        j: &mut DenseMatrix<'_>,
         scale: f64,
     ) {
         match f {

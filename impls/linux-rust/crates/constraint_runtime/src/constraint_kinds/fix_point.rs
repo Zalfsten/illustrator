@@ -5,7 +5,7 @@ use crate::document::Document;
 use crate::expr::PointExpr;
 use crate::geom::Point2;
 use crate::geometry::GeometryId;
-use crate::matrix::MatrixAccess;
+use crate::matrix::DenseMatrix;
 use crate::vector::Vector;
 
 #[derive(Clone, Debug, PartialEq)]
@@ -27,7 +27,7 @@ impl ConstraintKind for FixPoint {
         out[1] = q.y - self.target.y;
     }
 
-    fn accumulate_jacobian<J: MatrixAccess>(&self, doc: &Document, p: &Vector, j: &mut J) {
+    fn accumulate_jacobian(&self, doc: &Document, p: &Vector, j: &mut DenseMatrix<'_>) {
         self.point.accumulate_jacobian(doc, p, j, 1.0);
     }
 

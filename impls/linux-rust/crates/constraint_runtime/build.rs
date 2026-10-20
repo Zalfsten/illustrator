@@ -2,6 +2,11 @@ fn main() {
     println!("cargo:rerun-if-changed=cpp/ceres_bridge.cpp");
     println!("cargo:rerun-if-changed=cpp/ceres_bridge.h");
 
+    // The Ceres bridge is only built for the optional `ceres` reference backend.
+    if std::env::var_os("CARGO_FEATURE_CERES").is_none() {
+        return;
+    }
+
     cc::Build::new()
         .cpp(true)
         .std("c++17")

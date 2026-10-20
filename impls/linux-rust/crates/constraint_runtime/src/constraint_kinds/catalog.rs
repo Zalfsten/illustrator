@@ -4,7 +4,7 @@ use super::{Congruence, EqualLength, FixPoint, Orthogonal, Parallel};
 use crate::constraint::ConstraintKind;
 use crate::geometry::GeometryId;
 use crate::document::Document;
-use crate::matrix::MatrixAccess;
+use crate::matrix::DenseMatrix;
 use crate::vector::Vector;
 
 /// Build [`ConstraintInst`] + `From` + dispatch from the closed kind list.
@@ -51,7 +51,7 @@ macro_rules! constraint_catalog {
                 }
             }
 
-            pub fn accumulate_jacobian<J: MatrixAccess>(&self, doc: &Document, p: &Vector, j: &mut J) {
+            pub fn accumulate_jacobian(&self, doc: &Document, p: &Vector, j: &mut DenseMatrix<'_>) {
                 match self {
                     $(Self::$kind(c) => c.accumulate_jacobian(doc, p, j),)+
                 }

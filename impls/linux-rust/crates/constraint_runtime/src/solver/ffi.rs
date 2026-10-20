@@ -4,10 +4,11 @@
 //! [`Vector`] storage. Trampolines sync that buffer into [`EvalHandle::state`]
 //! before calling [`SystemEval`] (O(n) only when the pointers differ).
 //! Residual / Jacobian scratch buffers live on the handle and are reused across
-//! callbacks; results are copied into the Ceres-provided output pointers.
+//! callbacks; results are copied into the Ceres-provided output pointers (the
+//! contribution-blocked Jacobian is densified row-major, duplicates summed).
 
 use super::SystemEval;
-use crate::matrix::Matrix;
+use crate::matrix::BlockSparseMatrix;
 use crate::vector::Vector;
 use std::os::raw::c_void;
 
@@ -18,11 +19,17 @@ pub struct EvalHandle<'a> {
     pub state: *mut Vector,
     /// Reused across residual trampoline calls (sized at solve start).
     pub residual_buf: Vector,
-    /// Reused across jacobian trampoline calls (sized at solve start).
-    pub jacobian_buf: Matrix,
+    /// Reused across jacobian trampoline calls (sized at solve start from
+    /// [`SystemEval::new_jacobian`]); densified into the foreign buffer.
+    pub jacobian_buf: BlockSparseMatrix,
 }
 
-/// `# Safety`: `user` must point to a live [`EvalHandle`].
+/// Fill the foreign residual buffer `r` at `p`.
+///
+/// # Safety
+///
+/// `user` must point to a live [`EvalHandle`]; `p` / `r` must be valid for
+/// `n_params` / `n_res` elements.
 pub unsafe extern "C" fn residual_trampoline(
     user: *mut c_void,
     n_params: usize,
@@ -52,7 +59,15 @@ pub unsafe extern "C" fn residual_trampoline(
     0
 }
 
-/// `# Safety`: `user` must point to a live [`EvalHandle`].
+/// Fill the foreign row-major dense Jacobian buffer `j` at `p`.
+///
+/// Only built with the `ceres` feature (the sole dense foreign consumer).
+///
+/// # Safety
+///
+/// `user` must point to a live [`EvalHandle`]; `p` / `j` must be valid for
+/// `n_params` / `n_res * n_params` elements.
+#[cfg(feature = "ceres")]
 pub unsafe extern "C" fn jacobian_trampoline(
     user: *mut c_void,
     n_params: usize,
@@ -76,11 +91,10 @@ pub unsafe extern "C" fn jacobian_trampoline(
     if state.as_ptr() != p {
         state.copy_from_slice(incoming);
     }
-    debug_assert_eq!(handle.jacobian_buf.nrows(), n_res);
-    debug_assert_eq!(handle.jacobian_buf.ncols(), n_params);
     handle.eval.jacobian(state, &mut handle.jacobian_buf);
-    std::slice::from_raw_parts_mut(j, n_res * n_params)
-        .copy_from_slice(handle.jacobian_buf.as_slice());
+    let out = std::slice::from_raw_parts_mut(j, n_res * n_params);
+    out.fill(0.0);
+    handle.jacobian_buf.add_to_dense(out);
     0
 }
 

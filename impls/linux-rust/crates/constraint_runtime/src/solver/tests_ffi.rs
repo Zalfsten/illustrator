@@ -23,12 +23,11 @@ fn c_calling_pattern_fills_residual() {
     let sys = AssembledSystem::from_document(&doc, &soft);
     let mut p = doc.vector().clone();
     let m = sys.n_residuals();
-    let n = sys.n_params();
     let mut handle = EvalHandle {
         eval: &sys,
         state: &mut p as *mut Vector,
         residual_buf: Vector::zeros(m),
-        jacobian_buf: crate::matrix::Matrix::zeros(m, n),
+        jacobian_buf: sys.new_jacobian(),
     };
     let mut r = vec![0.0; m];
     let rc = unsafe {

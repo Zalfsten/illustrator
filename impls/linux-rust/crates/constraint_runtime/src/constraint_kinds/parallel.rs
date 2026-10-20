@@ -4,7 +4,7 @@ use crate::constraint::{pair_connectivity, unique_geometry_ids, ConstraintKind};
 use crate::document::Document;
 use crate::expr::VecExpr;
 use crate::geometry::GeometryId;
-use crate::matrix::MatrixAccess;
+use crate::matrix::DenseMatrix;
 use crate::vector::Vector;
 
 #[derive(Clone, Debug, PartialEq)]
@@ -26,7 +26,7 @@ impl ConstraintKind for Parallel {
         out[0] = va.cross(vb);
     }
 
-    fn accumulate_jacobian<J: MatrixAccess>(&self, doc: &Document, p: &Vector, j: &mut J) {
+    fn accumulate_jacobian(&self, doc: &Document, p: &Vector, j: &mut DenseMatrix<'_>) {
         // r = va × vb; ∂r/∂va = vb.right_normal(), ∂r/∂vb = va.left_normal()
         let ja = self.a.jet(doc, p);
         let jb = self.b.jet(doc, p);

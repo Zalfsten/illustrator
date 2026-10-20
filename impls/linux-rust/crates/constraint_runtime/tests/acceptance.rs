@@ -38,7 +38,7 @@ fn right_angle_soft_drag_keeps_orthogonal_and_congruence() {
 
     let mut drag = DragSession::new();
     let free = Segment::end_expr(s1);
-    drag.pointer_down(&doc, free.clone());
+    drag.pointer_down(&doc, free);
     drag.pointer_move(&mut interact, &mut doc, (0.2, 1.5))
         .expect("move");
     drag.pointer_up(&mut interact, &mut doc, (0.2, 1.5))
@@ -99,7 +99,7 @@ fn rectangle_drag_keeps_structure_and_stays_near() {
 
     let mut drag = DragSession::new();
     let corner = Segment::end_expr(bc);
-    drag.pointer_down(&doc, corner.clone());
+    drag.pointer_down(&doc, corner);
     let mouse = (2.15, -0.1);
     drag.pointer_move(&mut interact, &mut doc, mouse)
         .expect("rect move");
@@ -145,7 +145,7 @@ fn right_angle_horizontal_drag_moves_x() {
     let before = free.evaluate(&doc, doc.vector());
 
     let mut drag = DragSession::new();
-    drag.pointer_down(&doc, free.clone());
+    drag.pointer_down(&doc, free);
     drag.pointer_move(&mut interact, &mut doc, (200.0, 140.0))
         .expect("move");
     let after = free.evaluate(&doc, doc.vector());

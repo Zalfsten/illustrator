@@ -10,7 +10,7 @@ use crate::geometry::{
     Geometry, GeometryId, HeadingFormula, LengthFormula, PointFormula, TurnFormula, VecFormula,
 };
 use crate::geometry_kinds::GeometryKind;
-use crate::matrix::MatrixAccess;
+use crate::matrix::DenseMatrix;
 
 /// Circular-arc kind (type-level marker; instances live in
 /// [`crate::geometry_kinds::GeometryInst`]).
@@ -79,10 +79,10 @@ impl Geometry for Arc {
     }
 
     /// \(2 \times 5\) (or \(2 \times 4\) for `Start`, which is independent of sweep).
-    fn point_jacobian<J: MatrixAccess>(
+    fn point_jacobian(
         f: PointFormula,
         (_center, radius, start, sweep): Self::Init,
-        j: &mut J,
+        j: &mut DenseMatrix<'_>,
         scale: f64,
     ) {
         let t = Self::point_t(f);
@@ -133,10 +133,10 @@ impl Geometry for Arc {
     }
 
     /// \(2 \times 5\) free-vector Jacobian.
-    fn vec_jacobian<J: MatrixAccess>(
+    fn vec_jacobian(
         f: VecFormula,
         (_center, radius, start, sweep): Self::Init,
-        j: &mut J,
+        j: &mut DenseMatrix<'_>,
         scale: f64,
     ) {
         let r = radius.value();
@@ -179,10 +179,10 @@ impl Geometry for Arc {
     }
 
     /// \(1 \times 5\) length Jacobian.
-    fn length_jacobian<J: MatrixAccess>(
+    fn length_jacobian(
         f: LengthFormula,
         (_center, radius, _start, sweep): Self::Init,
-        j: &mut J,
+        j: &mut DenseMatrix<'_>,
         scale: f64,
     ) {
         match f {
@@ -205,7 +205,7 @@ impl Geometry for Arc {
         }
     }
 
-    fn heading_jacobian<J: MatrixAccess>(f: HeadingFormula, _c: Self::Init, j: &mut J, scale: f64) {
+    fn heading_jacobian(f: HeadingFormula, _c: Self::Init, j: &mut DenseMatrix<'_>, scale: f64) {
         match f {
             HeadingFormula::StartHeading => j.set_scaled(scale, [[1.0]]),
         }
@@ -223,7 +223,7 @@ impl Geometry for Arc {
         }
     }
 
-    fn turn_jacobian<J: MatrixAccess>(f: TurnFormula, _c: Self::Init, j: &mut J, scale: f64) {
+    fn turn_jacobian(f: TurnFormula, _c: Self::Init, j: &mut DenseMatrix<'_>, scale: f64) {
         match f {
             TurnFormula::Sweep => j.set_scaled(scale, [[1.0]]),
         }
