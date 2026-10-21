@@ -35,7 +35,7 @@ Current state (2026-10-21):
 `.github/workflows/pages.yml`:
 
 ```
-on: push (all branches), pull_request, workflow_dispatch
+on: push (main only), pull_request, workflow_dispatch
 
   test ----------+
                  +--> build-pages --> deploy
@@ -46,6 +46,8 @@ on: push (all branches), pull_request, workflow_dispatch
 - `wasm-check`: `impls/rust/scripts/check-wasm.sh`.
 - `build-pages` (`needs: [test, wasm-check]`, only for `refs/heads/main`): Trunk release build, then `actions/upload-pages-artifact` with `impls/rust/crates/sketch_ui/dist`.
 - `deploy` (`needs: build-pages`, `environment: github-pages`): `actions/deploy-pages`.
+
+`push` is limited to `main`: with `push` on all branches, a branch with an open pull request ran every check twice (once per event). Trade-off: a push to a branch without a pull request runs no CI. Open a (draft) PR or use `workflow_dispatch` to check such a branch.
 
 Permissions: `contents: read` at workflow level, and `pages: write` plus `id-token: write` only on `deploy`. `concurrency: { group: pages, cancel-in-progress: false }` on the deploy path, so a running deployment is never cut off. `test` and `wasm-check` run in parallel.
 
@@ -73,7 +75,9 @@ CI runs `trunk build --release --public-url "/${{ github.event.repository.name }
 
 ### D5: wasm-opt in index.html
 
-`<link data-trunk rel="rust" data-bin="sketch_ui" data-wasm-opt="z" />`. Trunk runs `wasm-opt` only for release builds, so `trunk serve` (debug) stays fast and unchanged. Level `z` (size) is chosen because download size dominates startup for a demo page. A CPU-heavy drag profile would favour `3` or `s`, so the apply step measures `z` against `s` once and records both sizes and a quick drag smoke test here.
+`<link data-trunk rel="rust" data-bin="sketch_ui" data-wasm-opt="z" />`. Trunk runs `wasm-opt` only for release builds, so `trunk serve` (debug) stays fast and unchanged. Level `z` (size) is chosen because download size dominates startup for a demo page. A CPU-heavy drag profile would favour `3` or `s`, so the apply step checks `z` with a drag smoke test.
+
+**Outcome (apply, 2026-10-21):** the deployed release build (`main` at `57404dd`, `wasm-opt version_131 -Oz`) has a 2.76 MB `.wasm` (1.31 MB transferred with gzip), down from 13.6 MB debug and 4.6 MB raw release. `z` stays. A comparison with `s` was dropped: at 1.3 MB transferred the difference does not matter for a demo, and local release builds were blocked by slow tool downloads.
 
 ### D6: No `.nojekyll`, no 404 page
 

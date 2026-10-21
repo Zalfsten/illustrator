@@ -1,10 +1,12 @@
 # CI for impls/rust and deployment of the sketch_ui browser build to GitHub Pages.
-# Checks run on every push and pull request; deployment only from main after
-# both checks pass. Design: openspec change github-pages-deploy (D1-D6).
+# Checks run on pull requests and on pushes to main (push is limited to main so
+# a branch with an open PR is not checked twice); deployment only from main
+# after both checks pass. Design: openspec change github-pages-deploy (D1-D6).
 name: CI and Pages
 
 on:
   push:
+    branches: [main]
   pull_request:
   workflow_dispatch:
 

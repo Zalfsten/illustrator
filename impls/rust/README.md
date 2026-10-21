@@ -91,7 +91,8 @@ The browser build of `main` is online at <https://zalfsten.github.io/illustrator
 It is a "try it" demo: the app cannot load or save yet.
 
 `.github/workflows/pages.yml` runs `cargo test --workspace` and
-`scripts/check-wasm.sh` on every push and pull request. On `main`, after both
+`scripts/check-wasm.sh` on every pull request and push to `main` (branches
+without a PR are not checked; open a draft PR or start the workflow manually). On `main`, after both
 pass, it builds a release with Trunk (`wasm-opt -Oz`, version pinned in
 `Trunk.toml`) and deploys `dist/` to Pages. The same release build locally:
 
