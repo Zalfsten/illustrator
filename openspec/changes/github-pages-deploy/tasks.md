@@ -8,14 +8,14 @@
 
 ## 2. CI and Pages workflow (design D1–D4, D6)
 
-- [ ] 2.1 Create `.github/workflows/pages.yml` with the jobs `test` (system libraries from D2, `cargo test --workspace` in `impls/rust`) and `wasm-check` (`impls/rust/scripts/check-wasm.sh`). Both run on push, pull_request and workflow_dispatch, with `dtolnay/rust-toolchain@stable` (target `wasm32-unknown-unknown`) and `Swatinem/rust-cache` (`workspaces: impls/rust`), and workflow-level `permissions: contents: read`. Verify that the file passes `actionlint` (or at least parses as YAML) locally.
-- [ ] 2.2 Add `build-pages` (`needs: [test, wasm-check]`, only on `refs/heads/main`): install the pinned Trunk 0.22.0 release binary, run `trunk build --release --public-url "/${{ github.event.repository.name }}/"` in `impls/rust/crates/sketch_ui`, and upload `dist` with `actions/upload-pages-artifact`. Add `deploy` (`needs: build-pages`, `environment: github-pages`, `pages: write`, `id-token: write`, concurrency group `pages` without cancel-in-progress) with `actions/deploy-pages`. Verify with `actionlint` that the `if:` conditions and `needs` graph are valid.
+- [x] 2.1 Create `.github/workflows/pages.yml` with the jobs `test` (system libraries from D2, `cargo test --workspace` in `impls/rust`) and `wasm-check` (`impls/rust/scripts/check-wasm.sh`). Both run on push, pull_request and workflow_dispatch, with `dtolnay/rust-toolchain@stable` (target `wasm32-unknown-unknown`) and `Swatinem/rust-cache` (`workspaces: impls/rust`), and workflow-level `permissions: contents: read`. Verify that the file passes `actionlint` (or at least parses as YAML) locally.
+- [x] 2.2 Add `build-pages` (`needs: [test, wasm-check]`, only on `refs/heads/main`): install the pinned Trunk 0.22.0 release binary, run `trunk build --release --public-url "/${{ github.event.repository.name }}/"` in `impls/rust/crates/sketch_ui`, and upload `dist` with `actions/upload-pages-artifact`. Add `deploy` (`needs: build-pages`, `environment: github-pages`, `pages: write`, `id-token: write`, concurrency group `pages` without cancel-in-progress) with `actions/deploy-pages`. Verify with `actionlint` that the `if:` conditions and `needs` graph are valid.
 - [ ] 2.3 Push the branch and verify on GitHub Actions that `test` and `wasm-check` are green and that `build-pages` and `deploy` are skipped (not on `main`).
 
 ## 3. Documentation (design D7)
 
 - [ ] 3.1 Update the "Browser build" section in `impls/rust/README.md`: hosted demo URL, workflow behaviour (checks on every push and PR, deploy from `main` after green checks), the local release command with `--public-url /illustrator/`, the one-time setting Pages → Source "GitHub Actions", and that the page is a demo without load or save. Verify that the documented local command runs as written.
-- [ ] 3.2 Add a one-line link to the demo in the root `README.md` (German). Verify that the link target is `https://zalfsten.github.io/illustrator/`.
+- [x] 3.2 Add a one-line link to the demo in the root `README.md` (German). Verify that the link target is `https://zalfsten.github.io/illustrator/`.
 
 ## 4. Deployment check (after merge to `main`)
 

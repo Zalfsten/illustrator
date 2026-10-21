@@ -2,6 +2,8 @@
 
 Entwicklungsumgebung mit [OpenSpec](https://openspec.dev) im Rust-Dev-Container (Debian trixie).
 
+**Demo im Browser:** <https://zalfsten.github.io/illustrator/> (Stand `main`, ohne Laden/Speichern; Details in [impls/rust/README.md](impls/rust/README.md#hosted-demo-github-pages))
+
 ## Voraussetzungen
 
 - Docker

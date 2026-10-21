@@ -2,3 +2,8 @@
 [serve]
 # Uncommon port: 8080 is often taken on hosts (the Dev Container uses host networking).
 port = 8737
+
+[tools]
+# Pinned for reproducible release builds (Trunk 0.22.0 default). wasm-bindgen
+# follows the version in Cargo.lock.
+wasm_opt = "version_131"

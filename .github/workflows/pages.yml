@@ -1,0 +1,92 @@
+# CI for impls/rust and deployment of the sketch_ui browser build to GitHub Pages.
+# Checks run on every push and pull request; deployment only from main after
+# both checks pass. Design: openspec change github-pages-deploy (D1-D6).
+name: CI and Pages
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  TRUNK_VERSION: v0.22.0
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      # Native eframe (winit/glow) headers needed to build sketch_ui for cargo test.
+      - name: Install system libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libxkbcommon-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libssl-dev
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: impls/rust
+      - name: cargo test
+        working-directory: impls/rust
+        run: cargo test --workspace --locked
+
+  wasm-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: impls/rust
+      - name: Platform-neutrality check
+        run: impls/rust/scripts/check-wasm.sh
+
+  build-pages:
+    needs: [test, wasm-check]
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: impls/rust
+      - name: Install Trunk
+        run: |
+          base="https://github.com/trunk-rs/trunk/releases/download/${TRUNK_VERSION}"
+          archive="trunk-x86_64-unknown-linux-gnu.tar.gz"
+          curl -sSfL --retry 3 -o "$archive" "$base/$archive"
+          curl -sSfL --retry 3 -o "$archive.sha256" "$base/$archive.sha256"
+          echo "$(cut -d' ' -f1 "$archive.sha256")  $archive" | sha256sum -c -
+          mkdir -p "$HOME/.local/bin"
+          tar -xzf "$archive" -C "$HOME/.local/bin" trunk
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - name: Build (release, project-page base path)
+        working-directory: impls/rust/crates/sketch_ui
+        run: trunk build --release --public-url "/${{ github.event.repository.name }}/"
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: impls/rust/crates/sketch_ui/dist
+
+  deploy:
+    needs: build-pages
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
