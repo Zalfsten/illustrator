@@ -85,6 +85,25 @@ cd impls/rust/crates/sketch_ui
 trunk serve
 ```
 
+### Hosted demo (GitHub Pages)
+
+The browser build of `main` is online at <https://zalfsten.github.io/illustrator/>.
+It is a "try it" demo: the app cannot load or save yet.
+
+`.github/workflows/pages.yml` runs `cargo test --workspace` and
+`scripts/check-wasm.sh` on every push and pull request. On `main`, after both
+pass, it builds a release with Trunk (`wasm-opt -Oz`, version pinned in
+`Trunk.toml`) and deploys `dist/` to Pages. The same release build locally:
+
+```bash
+cd impls/rust/crates/sketch_ui
+trunk build --release --public-url /illustrator/
+```
+
+The project page lives under `/illustrator/`, hence `--public-url`; `trunk serve`
+keeps serving at `/`. One-time repository setting: Settings → Pages → Source
+"GitHub Actions".
+
 ### Platform boundary
 
 `constraint_runtime`, `app.rs` and `viewport.rs` stay platform-neutral: no
