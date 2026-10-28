@@ -416,3 +416,55 @@ fn drag_begin_needs_a_point_address() {
     );
     assert!(!s.is_dragging());
 }
+
+fn already_joined(a: &str, b: &str) -> CommandError {
+    CommandError::AlreadyJoined {
+        a: a.into(),
+        b: b.into(),
+    }
+}
+
+#[test]
+fn joining_a_point_with_itself_is_rejected() {
+    let mut s = two_segments();
+    let before = content(&s);
+    assert_eq!(
+        s.apply(join("seg1.end", "seg1.end")),
+        Err(already_joined("seg1.end", "seg1.end"))
+    );
+    assert_eq!(content(&s), before);
+    s.undo().unwrap();
+    s.undo().unwrap();
+    assert!(!s.can_undo(), "the rejected join is no undo step");
+}
+
+#[test]
+fn joining_across_an_existing_chain_is_rejected() {
+    let mut s = two_segments();
+    s.apply(segment((1.0, 0.0), (1.0, 1.0))).unwrap();
+    s.apply(join("seg1.end", "seg2.start")).unwrap();
+    s.apply(join("seg2.start", "seg3.start")).unwrap();
+    let before = content(&s);
+    assert_eq!(
+        s.apply(join("seg1.end", "seg3.start")),
+        Err(already_joined("seg1.end", "seg3.start"))
+    );
+    assert_eq!(content(&s), before);
+}
+
+#[test]
+fn coincident_unjoined_endpoints_can_be_joined() {
+    let mut s = Session::new(Document::new());
+    s.apply(segment((0.0, 0.0), (1.0, 0.0))).unwrap();
+    s.apply(segment((1.0, 0.0), (2.0, 0.0))).unwrap();
+    let outcome = s.apply(join("seg1.end", "seg2.start")).unwrap();
+    assert_eq!(outcome.created.as_deref(), Some("join1"));
+    let doc = s.document();
+    let Address::Point(a) = doc.resolve_address("seg1.end").unwrap() else {
+        panic!("point address");
+    };
+    let Address::Point(b) = doc.resolve_address("seg2.start").unwrap() else {
+        panic!("point address");
+    };
+    assert!(doc.point_class(&a).contains(&b));
+}

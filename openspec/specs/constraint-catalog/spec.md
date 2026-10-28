@@ -33,6 +33,30 @@ Given a point expression \(P\) and the set of structural Congruence relationship
 - **AND** direct partners of \(P\) are requested
 - **THEN** those VectorsOrthogonal/FixPoint relationships do not contribute partner point expressions for \(P\)
 
+### Requirement: Congruence classes of point expressions are enumerable
+
+Given a point expression \(P\), the system SHALL enumerate its congruence class: \(P\) together with every point expression reachable from \(P\) through a chain of structural Congruence relationships (the transitive closure). The class SHALL depend only on the Congruence relationships in Document, not on evaluated locations, and SHALL NOT include point expressions that are merely at the same location.
+
+#### Scenario: A Join chain forms one class
+
+- **WHEN** Congruence relates \(A\) to \(B\) and another Congruence relates \(B\) to \(C\)
+- **AND** the class of \(A\) is requested
+- **THEN** the class contains \(A\), \(B\) and \(C\)
+- **AND** the classes of \(B\) and \(C\) are the same set
+
+#### Scenario: Coincident unrelated points stay in separate classes
+
+- **WHEN** point expressions \(A\) and \(B\) evaluate to the same location
+- **AND** no chain of Congruence relates them
+- **THEN** the class of \(A\) does not contain \(B\)
+
+#### Scenario: Removing a link splits the class
+
+- **WHEN** Congruences relate \(A\) to \(B\) and \(B\) to \(C\)
+- **AND** the Congruence between \(B\) and \(C\) is removed
+- **THEN** the class of \(A\) is \(A\) and \(B\)
+- **AND** the class of \(C\) is \(C\) alone
+
 ### Requirement: VectorsParallel constrains two free-vector expressions
 
 The system SHALL provide a VectorsParallel relationship between two **opaque free-vector expressions**. VectorsParallel SHALL contribute exactly one residual component that is zero if and only if the two evaluated free vectors are linearly dependent (parallel or anti-parallel), including the degenerate case where either vector has zero length. For parallel or perpendicular **lines**, tools SHALL supply the direction expressions of the line capability (see geometry-ir); tangent expressions at a stated curve parameter remain valid inputs and then constrain the curves only at that location (pointwise). The residual SHALL NOT hard-wire segment identity outside those expressions.

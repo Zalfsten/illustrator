@@ -4,8 +4,9 @@
 
 use constraint_runtime::{
     Arc, Congruence, CurveExprs, CurveParam, Document, EndpointExprs, EqualLength, FixPoint,
-    GeometryId, GeometryRole, HeadingAngle, InteractiveSolve, Length, LineExprs, Mesh, MeshFilter,
-    Point2, PointExpr, Segment, SolveError, TurnAngle, VectorsOrthogonal, VectorsParallel,
+    GeometryId, GeometryRole, HeadingAngle, InteractiveSolve, Length, LineExprs, LogicalPoint,
+    Mesh, MeshFilter, Point2, PointExpr, Segment, SolveError, TurnAngle, VectorsOrthogonal,
+    VectorsParallel,
 };
 use eframe::egui::{self, Color32, Pos2, Rect, Sense, Stroke};
 use sketch_session::{Command, Session};
@@ -53,7 +54,8 @@ pub struct App {
     segment_clicks: Vec<Point2>,
     status: String,
     last_error: Option<String>,
-    logical_points: Vec<PointExpr>,
+    /// Grabbable points (congruence classes); rebuilt after structural changes.
+    logical_points: Vec<LogicalPoint>,
     /// Last fitted viewport (updated each paint from canvas rect).
     viewport: Viewport,
 }
@@ -123,7 +125,7 @@ impl App {
         let _ = InteractiveSolve::new().structural_only(&mut doc);
 
         let presentation = PresentationMode::ResultOnly;
-        let logical_points = logical_points_for(&doc, presentation.mesh_filter());
+        let logical_points = doc.logical_points(presentation.mesh_filter());
 
         Self {
             session: Session::new(doc),
@@ -157,7 +159,7 @@ impl App {
     }
 
     fn rebuild_logical_points(&mut self) {
-        self.logical_points = logical_points_for(self.doc(), self.presentation.mesh_filter());
+        self.logical_points = self.doc().logical_points(self.presentation.mesh_filter());
     }
 
     /// Apply `cmd`; status `Added <name> <detail>` or the command error.
@@ -192,7 +194,6 @@ impl App {
                 self.status = format!("Solve failed — kept last good state. {e}");
             }
         }
-        self.rebuild_logical_points();
     }
 
     /// Address of a picked point (`seg1.end`); handles are always addressable.
@@ -217,12 +218,12 @@ impl App {
         let radius = self.viewport.px_to_world(radius_px);
         let mut best = None;
         let mut best_d = radius;
-        for expr in &self.logical_points {
-            let p = self.eval_point(expr);
+        for lp in &self.logical_points {
+            let p = self.eval_point(&lp.representative);
             let d = (p.x - query.x).hypot(p.y - query.y);
             if d < best_d {
                 best_d = d;
-                best = Some(*expr);
+                best = Some(lp.representative);
             }
         }
         best
@@ -342,30 +343,6 @@ fn add_fixed_length_gauge(doc: &mut Document, origin: Point2, len: f64) -> Geome
     id
 }
 
-fn logical_points_for(doc: &Document, filter: MeshFilter) -> Vec<PointExpr> {
-    // Handles from Mesh endpoints (congruence-collapsed); not Mesh hit for drag.
-    let mesh = Mesh::from_document(doc, doc.vector(), filter);
-    let mut keep = Vec::new();
-    for expr in mesh.endpoint_exprs() {
-        let p = expr.evaluate(doc, doc.vector());
-        let duplicate = keep.iter().any(|k: &PointExpr| {
-            let q = k.evaluate(doc, doc.vector());
-            (p.x - q.x).hypot(p.y - q.y) < 1e-3 || congruent(doc, &expr, k)
-        });
-        if !duplicate {
-            keep.push(expr);
-        }
-    }
-    keep
-}
-
-fn congruent(doc: &Document, a: &PointExpr, b: &PointExpr) -> bool {
-    if a == b {
-        return true;
-    }
-    doc.points_identified_with(a).contains(b)
-}
-
 impl eframe::App for App {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         egui::TopBottomPanel::top("tools").show(ctx, |ui| {
@@ -436,8 +413,8 @@ impl eframe::App for App {
                 let b = self.viewport.to_screen(e.b);
                 painter.line_segment([a, b], stroke);
             }
-            for expr in &self.logical_points {
-                let p = self.eval_point(expr);
+            for lp in &self.logical_points {
+                let p = self.eval_point(&lp.representative);
                 painter.circle_filled(
                     self.viewport.to_screen(p),
                     5.0,
@@ -476,7 +453,6 @@ impl eframe::App for App {
                         } else {
                             self.last_error = None;
                         }
-                        self.rebuild_logical_points();
                     }
                 }
                 if response.drag_stopped() && self.session.is_dragging() {
@@ -486,7 +462,6 @@ impl eframe::App for App {
                         self.report_drag(r);
                     } else {
                         self.session.drag_cancel();
-                        self.rebuild_logical_points();
                     }
                 }
             } else if response.clicked() {

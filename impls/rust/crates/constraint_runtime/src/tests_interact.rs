@@ -237,3 +237,27 @@ fn commit_canonicalizes_negative_arc_radius() {
     assert!((start.x - start_before.x).abs() < 1e-12 && (start.y - start_before.y).abs() < 1e-12);
     assert!((end.x - end_before.x).abs() < 1e-12 && (end.y - end_before.y).abs() < 1e-12);
 }
+
+#[test]
+fn drag_moves_a_whole_join_chain_to_the_pointer() {
+    let mut doc = Document::new();
+    let s0 = doc.add_geometry::<Segment>(GeometryRole::Result, (Point2::new(0.0, 0.0), Point2::new(1.0, 0.0)));
+    let s1 = doc.add_geometry::<Segment>(GeometryRole::Result, (Point2::new(1.0, 0.0), Point2::new(2.0, 0.0)));
+    let s2 = doc.add_geometry::<Segment>(GeometryRole::Result, (Point2::new(1.0, 0.0), Point2::new(1.0, 1.0)));
+    doc.add_constraint(Congruence {
+        a: Segment::end_expr(s0),
+        b: Segment::start_expr(s1),
+    });
+    doc.add_constraint(Congruence {
+        a: Segment::start_expr(s1),
+        b: Segment::start_expr(s2),
+    });
+    let mut interact = InteractiveSolve::new();
+    let mut drag = DragSession::new();
+    drag.pointer_down(&doc, Segment::end_expr(s0));
+    drag.pointer_up(&mut interact, &mut doc, (1.5, 0.5)).unwrap();
+    for p in [Segment::end_expr(s0), Segment::start_expr(s1), Segment::start_expr(s2)] {
+        let q = p.evaluate(&doc, doc.vector());
+        assert!((q.x - 1.5).hypot(q.y - 0.5) < 1e-3, "{p:?} at {q:?}");
+    }
+}

@@ -16,6 +16,7 @@ pub mod interact;
 pub mod matrix;
 pub mod mesh;
 pub mod names;
+pub mod point_classes;
 pub mod solver;
 pub mod vector;
 
@@ -46,6 +47,7 @@ pub use interact::{DragSession, InteractiveSolve, SoftTerms, SolveError};
 pub use matrix::{Block, BlockSparseMatrix, DenseMatrix};
 pub use mesh::{Mesh, MeshEdge, MeshFilter, MAX_CHORD_TURN};
 pub use names::{is_valid_name, NameError, ObjectId};
+pub use point_classes::LogicalPoint;
 pub use solver::{LmSolver, SolveOutcome, SolverOptions, SolverPort, StubSolver, SystemEval};
 pub use vector::Vector;
 

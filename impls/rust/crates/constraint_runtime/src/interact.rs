@@ -81,8 +81,7 @@ fn soft_for_drag(
     // Indices pulled by the mouse must not also get stay-near — otherwise stay
     // fights the pointer and traps the drag in the previous nullspace (e.g. only
     // vertical motion on an axis-aligned right angle).
-    let mut mouse_exprs = vec![*dragged];
-    mouse_exprs.extend(doc.points_identified_with(dragged));
+    let mouse_exprs = doc.point_class(dragged);
     let mut mouse_indices = std::collections::BTreeSet::new();
     for expr in &mouse_exprs {
         for &i in &expr.param_indices(doc) {
