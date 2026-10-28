@@ -3,9 +3,9 @@
 //! Extend when adding a geometry:
 //! - new `mod` + file under this directory with a unit-struct marker
 //! - `chart_atoms!` for the layout
-//! - `impl` [`Geometry`](crate::geometry::Geometry) (+ opt-in factory traits
-//!   [`CurveExprs`](crate::geometry::CurveExprs) /
-//!   [`EndpointExprs`](crate::geometry::EndpointExprs))
+//! - `geometry_caps!` for the opt-in capabilities (factory trait impls and
+//!   runtime [`Caps`](crate::geometry::Caps))
+//! - `impl` [`Geometry`](crate::geometry::Geometry)
 //! - `pub use` + one variant in [`GeometryKind`] and one arm in `with_kind!`
 
 pub mod arc;

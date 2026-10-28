@@ -2,7 +2,9 @@ use super::*;
 use crate::constraint_kinds::{Congruence, FixPoint, VectorsOrthogonal};
 use crate::geom::{CurveParam, HeadingAngle, Length, Point2, TurnAngle};
 use crate::geometry_kinds::{Arc, Segment};
-use crate::geometry::{Chart, CurveExprs, EndpointExprs, GeometryRole};
+use crate::geometry::{
+    Caps, Chart, CircularExprs, CurveExprs, EndpointExprs, GeometryId, GeometryRole, LineExprs,
+};
 
 #[test]
 fn two_segment_join_connectivity_indices() {
@@ -245,4 +247,96 @@ fn canonicalize_rewrites_only_negative_radius_arc() {
     assert!((p[7] - 2.0 * std::f64::consts::PI).abs() < 1e-12);
     let end_after = Arc::end_expr(arc).evaluate(&doc, &p);
     assert!((end_after.x - end_before.x).abs() < 1e-12 && (end_after.y - end_before.y).abs() < 1e-12);
+}
+
+fn segment_and_arc(doc: &mut Document) -> (GeometryId, GeometryId) {
+    let seg = doc.add_geometry::<Segment>(
+        GeometryRole::Result,
+        (Point2::new(1.0, 2.0), Point2::new(4.0, 6.0)),
+    );
+    let arc = doc.add_geometry::<Arc>(
+        GeometryRole::Result,
+        (
+            Point2::new(-1.0, 3.0),
+            Length::new(2.0),
+            HeadingAngle::new(0.0),
+            TurnAngle::new(1.0),
+        ),
+    );
+    (seg, arc)
+}
+
+#[test]
+fn caps_by_id_match_kind() {
+    let mut doc = Document::new();
+    let (seg, arc) = segment_and_arc(&mut doc);
+    assert_eq!(
+        doc.caps(seg),
+        Some(Caps::CURVE.with_endpoints().with_line())
+    );
+    assert_eq!(
+        doc.caps(arc),
+        Some(Caps::CURVE.with_endpoints().with_circular())
+    );
+}
+
+/// Curve and endpoint factories by id equal kind `K`'s static factories.
+fn assert_curve_and_endpoint_factories<K: CurveExprs + EndpointExprs>(
+    doc: &Document,
+    id: GeometryId,
+) {
+    let t = CurveParam::Normalized(0.25);
+    assert_eq!(doc.on_curve_expr(id, t), Some(K::on_curve_expr(id, t)));
+    assert_eq!(doc.tangent_expr(id, t), Some(K::tangent_expr(id, t)));
+    assert_eq!(doc.normal_expr(id, t), Some(K::normal_expr(id, t)));
+    assert_eq!(doc.length_expr(id), Some(K::length_expr(id)));
+    assert_eq!(doc.start_expr(id), Some(K::start_expr(id)));
+    assert_eq!(doc.end_expr(id), Some(K::end_expr(id)));
+}
+
+#[test]
+fn identity_factories_match_static_factories_by_capability() {
+    let mut doc = Document::new();
+    let (seg, arc) = segment_and_arc(&mut doc);
+    assert_curve_and_endpoint_factories::<Segment>(&doc, seg);
+    assert_curve_and_endpoint_factories::<Arc>(&doc, arc);
+
+    assert_eq!(doc.direction_expr(seg), Some(Segment::direction_expr(seg)));
+    assert_eq!(doc.direction_expr(arc), None);
+    assert_eq!(doc.center_expr(arc), Some(Arc::center_expr(arc)));
+    assert_eq!(doc.radius_expr(arc), Some(Arc::radius_expr(arc)));
+    assert_eq!(doc.center_expr(seg), None);
+    assert_eq!(doc.radius_expr(seg), None);
+}
+
+#[test]
+fn identity_factories_evaluate_like_the_kind() {
+    let mut doc = Document::new();
+    let (seg, arc) = segment_and_arc(&mut doc);
+    let p = doc.clone_vector();
+
+    let d = doc.direction_expr(seg).unwrap().evaluate(&doc, &p);
+    assert_eq!((d.x, d.y), (3.0, 4.0), "end − start");
+
+    let c = doc.center_expr(arc).unwrap().evaluate(&doc, &p);
+    assert_eq!((c.x, c.y), (-1.0, 3.0), "chart center");
+}
+
+#[test]
+fn unknown_id_has_no_caps_and_no_expressions() {
+    let mut doc = Document::new();
+    let (seg, _) = segment_and_arc(&mut doc);
+    assert!(doc.remove_geometry(seg));
+
+    let t = CurveParam::Normalized(0.0);
+    assert_eq!(doc.caps(seg), None);
+    assert_eq!(doc.on_curve_expr(seg, t), None);
+    assert_eq!(doc.tangent_expr(seg, t), None);
+    assert_eq!(doc.normal_expr(seg, t), None);
+    assert_eq!(doc.length_expr(seg), None);
+    assert_eq!(doc.start_expr(seg), None);
+    assert_eq!(doc.end_expr(seg), None);
+    assert_eq!(doc.direction_expr(seg), None);
+    assert_eq!(doc.center_expr(seg), None);
+    assert_eq!(doc.radius_expr(seg), None);
 }

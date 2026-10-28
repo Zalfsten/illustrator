@@ -9,8 +9,8 @@ pub mod formula;
 pub mod shell;
 
 pub use capabilities::{
-    CircularExprs, CurveExprs, EndpointExprs, HeadingFormula, LengthFormula, LineExprs,
-    PointFormula, TurnFormula, VecFormula,
+    Caps, CircularExprs, CurveExprs, EndpointExprs, GeometryCaps, HeadingFormula, LengthFormula,
+    LineExprs, PointFormula, TurnFormula, VecFormula,
 };
 pub use chart::{Chart, ChartSlot, StateAtom};
 pub use formula::{Formula, Geometry};

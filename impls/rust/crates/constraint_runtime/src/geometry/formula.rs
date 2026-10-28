@@ -6,14 +6,17 @@
 //! single generic evaluate / Jacobian path and one kind match
 //! (`with_kind!` in [`crate::geometry_kinds`]).
 //!
-//! **Adding a kind:** implement [`Chart`] (via `chart_atoms!`) and [`Geometry`]
+//! **Adding a kind:** implement [`Chart`] (via `chart_atoms!`), declare its
+//! capabilities with `geometry_caps!`, and implement [`Geometry`]
 //! (connectivity defaults to the whole chart; override only when sparse, e.g.
 //! `point_params` for endpoints), then add it to
 //! [`GeometryKind`] / `with_kind!`.
 
 use std::ops::Range;
 
-use super::capabilities::{HeadingFormula, LengthFormula, PointFormula, TurnFormula, VecFormula};
+use super::capabilities::{
+    GeometryCaps, HeadingFormula, LengthFormula, PointFormula, TurnFormula, VecFormula,
+};
 use super::chart::Chart;
 use crate::geom::{HeadingAngle, Length, Point2, TurnAngle, Vec2};
 use crate::geometry_kinds::GeometryKind;
@@ -35,8 +38,9 @@ fn unsupported(kind: GeometryKind, family: &str) -> ! {
 /// Jacobians write formula-local columns `0..params(f).len()`, which map to
 /// chart-local columns `params(f)`. Families a kind does not expose keep the
 /// panicking defaults; their factories are kind-specific, so callers cannot
-/// build such expressions.
-pub trait Geometry: Chart + Sized + 'static {
+/// build such expressions. The capability set ([`GeometryCaps`]) comes from
+/// `geometry_caps!`.
+pub trait Geometry: Chart + GeometryCaps + Sized + 'static {
     const KIND: GeometryKind;
 
     /// Canonical chart values describing the same curve (identity by default).

@@ -2,7 +2,7 @@ use super::*;
 use crate::document::Document;
 use crate::geom::{HeadingAngle, Length, Point2, TurnAngle};
 use crate::geometry_kinds::{Arc, Segment};
-use crate::geometry::{EndpointExprs, GeometryRole};
+use crate::geometry::{Caps, CurveExprs, EndpointExprs, GeometryCaps, GeometryId, GeometryRole};
 
 #[test]
 fn one_segment_becomes_one_edge() {
@@ -180,4 +180,59 @@ fn result_only_hits_ignore_construction() {
         full.hit_geometry(Point2::new(5.0, 5.0), 1.0),
         Some(construction)
     );
+}
+
+/// Mesh of one arc built as if its kind lacked the endpoints capability.
+fn arc_mesh_without_endpoints() -> (Document, GeometryId, Mesh) {
+    let mut doc = Document::new();
+    let id = doc.add_geometry::<Arc>(
+        GeometryRole::Result,
+        (
+            Point2::new(1.0, 1.0),
+            Length::new(2.0),
+            HeadingAngle::new(0.0),
+            TurnAngle::new(std::f64::consts::PI),
+        ),
+    );
+    let caps = Caps {
+        endpoints: false,
+        ..<Arc as GeometryCaps>::CAPS
+    };
+    let mut mesh = Mesh::default();
+    append_curve_mesh::<Arc>(
+        caps,
+        &doc,
+        doc.vector(),
+        id,
+        GeometryRole::Result,
+        &mut mesh.edges,
+        &mut mesh.endpoints,
+    );
+    (doc, id, mesh)
+}
+
+#[test]
+fn curve_without_endpoints_is_tessellated_from_on_curve_samples() {
+    let (doc, id, mesh) = arc_mesh_without_endpoints();
+    assert!(mesh.edges.len() > 1);
+    let start = Arc::on_curve_expr(id, CurveParam::Normalized(0.0)).evaluate(&doc, doc.vector());
+    let end = Arc::on_curve_expr(id, CurveParam::Normalized(1.0)).evaluate(&doc, doc.vector());
+    assert_eq!(mesh.edges[0].a, start);
+    assert_eq!(mesh.edges.last().unwrap().b, end);
+    for e in &mesh.edges {
+        assert_eq!(e.geometry, id);
+        for v in [e.a, e.b] {
+            let r = (v.x - 1.0).hypot(v.y - 1.0);
+            assert!((r - 2.0).abs() < 1e-12, "vertex {v:?} not on the arc");
+        }
+    }
+}
+
+#[test]
+fn curve_without_endpoints_yields_no_endpoint_hit() {
+    let (_, id, mesh) = arc_mesh_without_endpoints();
+    let t0 = mesh.edges[0].a;
+    assert_eq!(mesh.endpoint_exprs().count(), 0);
+    assert_eq!(mesh.hit_endpoint(t0, 0.5), None);
+    assert_eq!(mesh.hit_geometry(t0, 0.5), Some(id));
 }

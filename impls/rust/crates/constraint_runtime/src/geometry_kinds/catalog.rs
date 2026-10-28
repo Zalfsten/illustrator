@@ -2,7 +2,9 @@
 
 use std::ops::Range;
 
-use crate::geometry::{Chart, Geometry, GeometryId, GeometryRole, GeometryShell};
+use crate::geometry::{
+    Caps, Chart, Geometry, GeometryCaps, GeometryId, GeometryRole, GeometryShell,
+};
 use crate::vector::Vector;
 
 /// Closed set of geometry kinds (discriminant only; kinds carry no data).
@@ -35,15 +37,11 @@ macro_rules! with_kind {
 pub(crate) use with_kind;
 
 impl GeometryKind {
-    /// Runtime check for [`LineExprs`](crate::geometry::LineExprs) (tools working on
-    /// dynamic ids; statically typed code uses the trait).
-    pub fn has_line_exprs(self) -> bool {
-        matches!(self, GeometryKind::Segment)
-    }
-
-    /// Runtime check for [`CircularExprs`](crate::geometry::CircularExprs).
-    pub fn has_circular_exprs(self) -> bool {
-        matches!(self, GeometryKind::Arc)
+    /// Capability set of this kind (declared by the kind via `geometry_caps!`).
+    ///
+    /// For code working on dynamic ids; statically typed code uses the traits.
+    pub fn caps(self) -> Caps {
+        with_kind!(self, K => K::CAPS)
     }
 }
 

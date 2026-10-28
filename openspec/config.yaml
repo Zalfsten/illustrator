@@ -118,20 +118,24 @@ context: |
     - capabilities.rs: kind-agnostic formula tags (PointFormula,
       VecFormula, LengthFormula, HeadingFormula, TurnFormula) and opt-in
       factories CurveExprs / EndpointExprs, plus invariant capabilities
-      LineExprs (direction) and CircularExprs (center, radius |R|);
-      GeometryKind::has_line_exprs / has_circular_exprs for dynamic ids
+      LineExprs (direction) and CircularExprs (center, radius |R|); a kind
+      declares them once with geometry_caps! (trait impls + runtime Caps);
+      dynamic ids use Document::caps and Option-returning id-based
+      factories (Document::direction_expr, …)
   - id.rs: IdMap<Id, T> (typed id → value storage; shared by geometry and
     constraint namespaces)
   - geometry_kinds/: catalog.rs (data-less GeometryKind enum, GeometryInst,
-    with_kind! dispatch); per kind file: chart_atoms! layout + impl
-    Geometry (Jacobians via set_scaled) + opt-in factory traits. Kinds
+    with_kind! dispatch); per kind file: chart_atoms! layout +
+    geometry_caps! (opt-in factory traits + Caps) + impl Geometry
+    (Jacobians via set_scaled). Kinds
     today: Segment (2×Point2), Arc (center Point2, Length radius ≥ 0 in
     committed State via Geometry::canonical on add / commit, HeadingAngle
     start, TurnAngle sweep).
   - mesh.rs: Display Mesh from Document+State; open curves tessellated via
     on_curve + adaptive subdivision until tangent turn per interval ≤
     MAX_CHORD_TURN (π/8), max 64 samples; endpoint hits use geometric
-    start/end expressions only.
+    start/end expressions only, and only for kinds with the endpoints
+    capability (tessellation itself needs only CurveExprs).
   - constraint.rs: ConstraintKind (RESIDUAL_ARITY, param_connectivity,
     eval_residual, accumulate_jacobian(&mut DenseMatrix),
     referenced_geometries as a deduplicated GeometryId list); ConstraintId

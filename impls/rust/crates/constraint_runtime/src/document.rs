@@ -8,8 +8,12 @@ use std::collections::HashMap;
 
 use crate::constraint::{ConstraintEntry, ConstraintId};
 use crate::constraint_kinds::ConstraintInst;
-use crate::expr::PointExpr;
-use crate::geometry::{Chart, Geometry, GeometryId, GeometryRole, GeometryShell};
+use crate::expr::{Expr, LengthExpr, PointExpr, VecExpr};
+use crate::geom::CurveParam;
+use crate::geometry::{
+    Caps, Chart, Formula, Geometry, GeometryId, GeometryRole, GeometryShell, LengthFormula,
+    PointFormula, VecFormula,
+};
 use crate::geometry_kinds::{with_kind, GeometryInst};
 use crate::id::IdMap;
 use crate::vector::Vector;
@@ -81,6 +85,79 @@ impl Document {
             Some(g) => g,
             None => missing_geometry(id),
         }
+    }
+
+    /// Capability set of geometry `id` (`None` if `id` is not in the document).
+    pub fn caps(&self, id: GeometryId) -> Option<Caps> {
+        self.geometry(id).map(|g| g.kind().caps())
+    }
+
+    /// `formula` on `id` if the geometry exists and `has` its capability.
+    ///
+    /// Same `(id, tag)` expression the kind's static factory builds.
+    fn capability_expr<F: Formula>(
+        &self,
+        id: GeometryId,
+        has: fn(Caps) -> bool,
+        formula: F,
+    ) -> Option<Expr<F>> {
+        self.caps(id)
+            .filter(|&c| has(c))
+            .map(|_| Expr::new(id, formula))
+    }
+
+    /// [`CurveExprs::on_curve_expr`](crate::geometry::CurveExprs::on_curve_expr) by id;
+    /// `None` without the curve capability.
+    pub fn on_curve_expr(&self, id: GeometryId, param: CurveParam) -> Option<PointExpr> {
+        self.capability_expr(id, |c| c.curve, PointFormula::OnCurve { param })
+    }
+
+    /// [`CurveExprs::tangent_expr`](crate::geometry::CurveExprs::tangent_expr) by id;
+    /// `None` without the curve capability.
+    pub fn tangent_expr(&self, id: GeometryId, param: CurveParam) -> Option<VecExpr> {
+        self.capability_expr(id, |c| c.curve, VecFormula::TangentAt { param })
+    }
+
+    /// [`CurveExprs::normal_expr`](crate::geometry::CurveExprs::normal_expr) by id;
+    /// `None` without the curve capability.
+    pub fn normal_expr(&self, id: GeometryId, param: CurveParam) -> Option<VecExpr> {
+        self.capability_expr(id, |c| c.curve, VecFormula::NormalAt { param })
+    }
+
+    /// [`CurveExprs::length_expr`](crate::geometry::CurveExprs::length_expr) by id;
+    /// `None` without the curve capability.
+    pub fn length_expr(&self, id: GeometryId) -> Option<LengthExpr> {
+        self.capability_expr(id, |c| c.curve, LengthFormula::Length)
+    }
+
+    /// [`EndpointExprs::start_expr`](crate::geometry::EndpointExprs::start_expr) by id;
+    /// `None` without the endpoints capability.
+    pub fn start_expr(&self, id: GeometryId) -> Option<PointExpr> {
+        self.capability_expr(id, |c| c.endpoints, PointFormula::Start)
+    }
+
+    /// [`EndpointExprs::end_expr`](crate::geometry::EndpointExprs::end_expr) by id;
+    /// `None` without the endpoints capability.
+    pub fn end_expr(&self, id: GeometryId) -> Option<PointExpr> {
+        self.capability_expr(id, |c| c.endpoints, PointFormula::End)
+    }
+
+    /// [`LineExprs::direction_expr`](crate::geometry::LineExprs::direction_expr) by id;
+    /// `None` without the line capability.
+    pub fn direction_expr(&self, id: GeometryId) -> Option<VecExpr> {
+        self.capability_expr(id, |c| c.line, VecFormula::Direction)
+    }
+
+    /// [`CircularExprs::center_expr`](crate::geometry::CircularExprs::center_expr) by id;
+    /// `None` without the circular capability.
+    pub fn center_expr(&self, id: GeometryId) -> Option<PointExpr> {
+        self.capability_expr(id, |c| c.circular, PointFormula::Center)
+    }
+
+    /// [`CircularExprs::radius_expr`](crate::geometry::CircularExprs::radius_expr) by id;
+    /// `None` without the circular capability.
+    pub fn radius_expr(&self, id: GeometryId) -> Option<LengthExpr> {
+        self.capability_expr(id, |c| c.circular, LengthFormula::Radius)
     }
 
     pub fn constraints(&self) -> &IdMap<ConstraintId, ConstraintEntry> {

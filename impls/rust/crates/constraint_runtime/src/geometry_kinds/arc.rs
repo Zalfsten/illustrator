@@ -4,7 +4,7 @@ use std::ops::Range;
 
 use crate::expr::{HeadingAngleExpr, TurnAngleExpr};
 use crate::geom::{HeadingAngle, Length, Point2, TurnAngle, Vec2};
-use crate::geometry::capabilities::{CircularExprs, CurveExprs, EndpointExprs};
+use crate::geometry::capabilities::geometry_caps;
 use crate::geometry::chart::chart_atoms;
 use crate::geometry::{
     Geometry, GeometryId, HeadingFormula, LengthFormula, PointFormula, TurnFormula, VecFormula,
@@ -38,9 +38,8 @@ chart_atoms! {
     }
 }
 
-impl CurveExprs for Arc {}
-impl EndpointExprs for Arc {}
-impl CircularExprs for Arc {}
+// Capability factory impls + runtime Caps.
+geometry_caps!(Arc: endpoints, circular);
 
 impl Arc {
     /// Heading at the arc start (chart atom).

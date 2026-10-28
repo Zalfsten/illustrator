@@ -1,14 +1,15 @@
 //! Display Mesh: tessellation of Document + Vector into drawable edges.
 //!
 //! Derived view only — not authoritative for parameters or constraints.
-//! Open curves are sampled via [`CurveExprs::on_curve_expr`]; subdivision stops
+//! Curves are sampled via [`CurveExprs::on_curve_expr`]; subdivision stops
 //! when the unsigned turn between endpoint tangents of each parameter interval
-//! is at most [`MAX_CHORD_TURN`].
+//! is at most [`MAX_CHORD_TURN`]. Endpoint hit targets exist only for kinds
+//! with the endpoints capability.
 
 use crate::document::Document;
 use crate::expr::PointExpr;
 use crate::geom::{CurveParam, Point2, Vec2};
-use crate::geometry::{CurveExprs, EndpointExprs, GeometryId, GeometryRole};
+use crate::geometry::{Caps, CurveExprs, GeometryCaps, GeometryId, GeometryRole, PointFormula};
 use crate::geometry_kinds::with_kind;
 use crate::vector::Vector;
 
@@ -73,7 +74,7 @@ impl Mesh {
             let id = g.id();
             let role = g.role();
             with_kind!(g.kind(), K => {
-                append_open_curve_mesh::<K>(doc, p, id, role, &mut edges, &mut endpoints)
+                append_curve_mesh::<K>(K::CAPS, doc, p, id, role, &mut edges, &mut endpoints)
             });
         }
         Self { edges, endpoints }
@@ -113,7 +114,12 @@ impl Mesh {
     }
 }
 
-fn append_open_curve_mesh<C: CurveExprs + EndpointExprs>(
+/// Polyline for one curve; endpoint hit targets only with `caps.endpoints`.
+///
+/// `caps` is `C::CAPS` in production; tests pass a reduced set to cover kinds
+/// without endpoints.
+fn append_curve_mesh<C: CurveExprs>(
+    caps: Caps,
     doc: &Document,
     p: &Vector,
     id: GeometryId,
@@ -121,10 +127,20 @@ fn append_open_curve_mesh<C: CurveExprs + EndpointExprs>(
     edges: &mut Vec<MeshEdge>,
     endpoints: &mut Vec<(PointExpr, Point2)>,
 ) {
-    let start_expr = C::start_expr(id);
-    let end_expr = C::end_expr(id);
-    let start_pt = start_expr.evaluate(doc, p);
-    let end_pt = end_expr.evaluate(doc, p);
+    // Same expressions as `EndpointExprs`; `caps.endpoints` says C has them.
+    let ends = caps.endpoints.then(|| {
+        (
+            PointExpr::new(id, PointFormula::Start),
+            PointExpr::new(id, PointFormula::End),
+        )
+    });
+    let (start_pt, end_pt) = match ends {
+        Some((start, end)) => (start.evaluate(doc, p), end.evaluate(doc, p)),
+        None => (
+            C::on_curve_expr(id, CurveParam::Normalized(0.0)).evaluate(doc, p),
+            C::on_curve_expr(id, CurveParam::Normalized(1.0)).evaluate(doc, p),
+        ),
+    };
 
     let ts = sample_normalized_params::<C>(doc, p, id);
     let mut prev = start_pt;
@@ -142,8 +158,10 @@ fn append_open_curve_mesh<C: CurveExprs + EndpointExprs>(
         });
         prev = pt;
     }
-    endpoints.push((start_expr, start_pt));
-    endpoints.push((end_expr, end_pt));
+    if let Some((start, end)) = ends {
+        endpoints.push((start, start_pt));
+        endpoints.push((end, end_pt));
+    }
 }
 
 /// Normalized \(t\) samples in \([0,1]\), inclusive, ordered.

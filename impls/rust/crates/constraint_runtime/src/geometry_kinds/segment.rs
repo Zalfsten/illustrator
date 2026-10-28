@@ -3,7 +3,7 @@
 use std::ops::Range;
 
 use crate::geom::{Length, Point2, Vec2};
-use crate::geometry::capabilities::{CurveExprs, EndpointExprs, LineExprs};
+use crate::geometry::capabilities::geometry_caps;
 use crate::geometry::chart::chart_atoms;
 use crate::geometry::{Geometry, LengthFormula, PointFormula, VecFormula};
 use crate::geometry_kinds::GeometryKind;
@@ -25,9 +25,8 @@ chart_atoms! {
     }
 }
 
-impl CurveExprs for Segment {}
-impl EndpointExprs for Segment {}
-impl LineExprs for Segment {}
+// Capability factory impls + runtime Caps.
+geometry_caps!(Segment: endpoints, line);
 
 impl Geometry for Segment {
     const KIND: GeometryKind = GeometryKind::Segment;
