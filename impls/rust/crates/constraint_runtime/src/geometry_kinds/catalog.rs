@@ -43,6 +43,11 @@ impl GeometryKind {
     pub fn caps(self) -> Caps {
         with_kind!(self, K => K::CAPS)
     }
+
+    /// Prefix of automatic names for this kind ([`Geometry::NAME_PREFIX`]).
+    pub fn name_prefix(self) -> &'static str {
+        with_kind!(self, K => K::NAME_PREFIX)
+    }
 }
 
 /// Document-held geometry: shared shell plus kind tag.

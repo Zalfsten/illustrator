@@ -5,7 +5,7 @@
 //! - `chart_atoms!` for the layout
 //! - `geometry_caps!` for the opt-in capabilities (factory trait impls and
 //!   runtime [`Caps`](crate::geometry::Caps))
-//! - `impl` [`Geometry`](crate::geometry::Geometry)
+//! - `impl` [`Geometry`](crate::geometry::Geometry) (including `NAME_PREFIX`)
 //! - `pub use` + one variant in [`GeometryKind`] and one arm in `with_kind!`
 
 pub mod arc;

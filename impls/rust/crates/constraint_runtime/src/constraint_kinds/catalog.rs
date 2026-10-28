@@ -33,6 +33,13 @@ macro_rules! constraint_catalog {
                 }
             }
 
+            /// Prefix of automatic names for this kind ([`ConstraintKind::NAME_PREFIX`]).
+            pub fn name_prefix(&self) -> &'static str {
+                match self {
+                    $(Self::$kind(_) => $kind::NAME_PREFIX,)+
+                }
+            }
+
             pub fn residual_arity(&self) -> usize {
                 match self {
                     $(Self::$kind(_) => $kind::RESIDUAL_ARITY,)+

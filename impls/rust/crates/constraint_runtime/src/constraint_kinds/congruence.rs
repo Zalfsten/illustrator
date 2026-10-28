@@ -28,6 +28,7 @@ impl Congruence {
 
 impl ConstraintKind for Congruence {
     const RESIDUAL_ARITY: usize = 2;
+    const NAME_PREFIX: &'static str = "join";
 
     fn param_connectivity(&self, doc: &Document) -> Vec<usize> {
         pair_connectivity(doc, &self.a, &self.b)

@@ -127,7 +127,7 @@ context: |
   - geometry_kinds/: catalog.rs (data-less GeometryKind enum, GeometryInst,
     with_kind! dispatch); per kind file: chart_atoms! layout +
     geometry_caps! (opt-in factory traits + Caps) + impl Geometry
-    (Jacobians via set_scaled). Kinds
+    (Jacobians via set_scaled) with NAME_PREFIX (seg, arc). Kinds
     today: Segment (2×Point2), Arc (center Point2, Length radius ≥ 0 in
     committed State via Geometry::canonical on add / commit, HeadingAngle
     start, TurnAngle sweep).
@@ -136,12 +136,23 @@ context: |
     MAX_CHORD_TURN (π/8), max 64 samples; endpoint hits use geometric
     start/end expressions only, and only for kinds with the endpoints
     capability (tessellation itself needs only CurveExprs).
-  - constraint.rs: ConstraintKind (RESIDUAL_ARITY, param_connectivity,
+  - names.rs: user-visible object names (one namespace for geometries
+    and constraints, unique at any time); Names table owned by Document
+    (name ↔ ObjectId, stem → numbers index); automatic names are
+    <NAME_PREFIX><max in use + 1>, derived from current names (no stored
+    counter); remove_geometry / remove_constraint return a Removal with
+    the dropped names (cascade included).
+  - address.rs: `<name>.<suffix>` addresses (start, end, center, at(t),
+    direction, tangent(t), normal(t), length, radius) resolved through
+    the id-based capability factories; point/vec/length_address print
+    expressions back.
+  - constraint.rs: ConstraintKind (RESIDUAL_ARITY, NAME_PREFIX, param_connectivity,
     eval_residual, accumulate_jacobian(&mut DenseMatrix),
     referenced_geometries as a deduplicated GeometryId list); ConstraintId
     + ConstraintEntry (ConstraintInst body).
   - constraint_kinds/: catalog.rs (closed ConstraintInst, generated from
-    the kind list) + per-kind files; add_constraint: Into<ConstraintInst>.
+    the kind list) + per-kind files (prefixes join, par, orth, fix,
+    eqlen); add_constraint: Into<ConstraintInst>.
   - matrix.rs: borrowed DenseMatrix (packed or window, also over plain
     Vec<f64> buffers);
     block_slice / set_scaled / fill (no matrix trait: DenseMatrix is the

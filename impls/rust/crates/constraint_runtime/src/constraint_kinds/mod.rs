@@ -1,6 +1,7 @@
 //! Concrete structural constraint kinds and the closed document catalog.
 //!
-//! Add a kind: new `mod` + file, `pub use`, then one name in [`catalog`].
+//! Add a kind: new `mod` + file (including its `NAME_PREFIX`), `pub use`, then
+//! one name in [`catalog`].
 
 pub mod catalog;
 pub mod congruence;

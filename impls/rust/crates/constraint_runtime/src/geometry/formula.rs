@@ -7,9 +7,9 @@
 //! (`with_kind!` in [`crate::geometry_kinds`]).
 //!
 //! **Adding a kind:** implement [`Chart`] (via `chart_atoms!`), declare its
-//! capabilities with `geometry_caps!`, and implement [`Geometry`]
-//! (connectivity defaults to the whole chart; override only when sparse, e.g.
-//! `point_params` for endpoints), then add it to
+//! capabilities with `geometry_caps!`, and implement [`Geometry`] (including
+//! `NAME_PREFIX`; connectivity defaults to the whole chart; override only when
+//! sparse, e.g. `point_params` for endpoints), then add it to
 //! [`GeometryKind`] / `with_kind!`.
 
 use std::ops::Range;
@@ -42,6 +42,9 @@ fn unsupported(kind: GeometryKind, family: &str) -> ! {
 /// `geometry_caps!`.
 pub trait Geometry: Chart + GeometryCaps + Sized + 'static {
     const KIND: GeometryKind;
+
+    /// Prefix of automatic object names (`seg` → `seg1`, `seg2`, …).
+    const NAME_PREFIX: &'static str;
 
     /// Canonical chart values describing the same curve (identity by default).
     ///
