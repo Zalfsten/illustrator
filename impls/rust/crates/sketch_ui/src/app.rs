@@ -1,12 +1,14 @@
-//! Application shell: Document, Interact, tools, and Canvas painting.
+//! Application shell: command session, tools, and Canvas painting.
+//!
+//! The App edits the drawing only through [`Session`] commands and drags.
 
 use constraint_runtime::{
-    Arc, Congruence, ConstraintId, CurveExprs, CurveParam, Document, DragSession, EndpointExprs,
-    EqualLength, FixPoint, GeometryId, GeometryRole, HeadingAngle, InteractiveSolve, Length,
-    LineExprs, Mesh, MeshFilter, Point2, PointExpr, Segment, SolveError, TurnAngle,
-    VectorsOrthogonal, VectorsParallel,
+    Arc, Congruence, CurveExprs, CurveParam, Document, EndpointExprs, EqualLength, FixPoint,
+    GeometryId, GeometryRole, HeadingAngle, InteractiveSolve, Length, LineExprs, Mesh, MeshFilter,
+    Point2, PointExpr, Segment, SolveError, TurnAngle, VectorsOrthogonal, VectorsParallel,
 };
 use eframe::egui::{self, Color32, Pos2, Rect, Sense, Stroke};
+use sketch_session::{Command, Session};
 
 use crate::viewport::Viewport;
 
@@ -41,11 +43,9 @@ const WORLD_MIN: Point2 = Point2 { x: -0.5, y: -0.5 };
 const WORLD_MAX: Point2 = Point2 { x: 2.5, y: 2.5 };
 const VIEW_MARGIN: f32 = 40.0;
 
-/// Owns Document and Interact; central panel is the Canvas.
+/// Owns the command session; central panel is the Canvas.
 pub struct App {
-    doc: Document,
-    interact: InteractiveSolve,
-    drag: DragSession,
+    session: Session,
     tool: Tool,
     presentation: PresentationMode,
     pick_points: Vec<PointExpr>,
@@ -119,16 +119,14 @@ impl App {
             b: Segment::length_expr(length_gauge),
         });
 
-        let mut interact = InteractiveSolve::new();
-        let _ = interact.structural_only(&mut doc);
+        // Initial content (session baseline, not an edit).
+        let _ = InteractiveSolve::new().structural_only(&mut doc);
 
         let presentation = PresentationMode::ResultOnly;
         let logical_points = logical_points_for(&doc, presentation.mesh_filter());
 
         Self {
-            doc,
-            interact,
-            drag: DragSession::new(),
+            session: Session::new(doc),
             tool: Tool::Select,
             presentation,
             pick_points: Vec::new(),
@@ -142,28 +140,52 @@ impl App {
         }
     }
 
+    fn doc(&self) -> &Document {
+        self.session.document()
+    }
+
     fn mesh(&self) -> Mesh {
         Mesh::from_document(
-            &self.doc,
-            self.doc.vector(),
+            self.doc(),
+            self.doc().vector(),
             self.presentation.mesh_filter(),
         )
     }
 
     fn eval_point(&self, expr: &PointExpr) -> Point2 {
-        expr.evaluate(&self.doc, self.doc.vector())
+        expr.evaluate(self.doc(), self.doc().vector())
     }
 
     fn rebuild_logical_points(&mut self) {
-        self.logical_points = logical_points_for(&self.doc, self.presentation.mesh_filter());
+        self.logical_points = logical_points_for(self.doc(), self.presentation.mesh_filter());
     }
 
-    /// Status after a solve: `ok` on success, the solve error otherwise.
-    fn report(&mut self, result: Result<(), SolveError>, ok: String) {
+    /// Apply `cmd`; status `Added <name> <detail>` or the command error.
+    fn run(&mut self, cmd: Command, detail: String) {
+        match self.session.apply(cmd) {
+            Ok(outcome) => {
+                self.last_error = None;
+                let name = outcome.created.unwrap_or_default();
+                self.status = format!("Added {name}{detail}");
+            }
+            Err(e) => {
+                self.last_error = Some(e.to_string());
+                self.status = format!("Rejected — drawing unchanged. {e}");
+            }
+        }
+        self.rebuild_logical_points();
+    }
+
+    /// Status after a drag solve.
+    fn report_drag(&mut self, result: Result<(), SolveError>) {
         match result {
             Ok(()) => {
                 self.last_error = None;
-                self.status = ok;
+                self.status = format!(
+                    "OK — geometries={} constraints={}",
+                    self.doc().geometries().len(),
+                    self.doc().constraints().len()
+                );
             }
             Err(e) => {
                 self.last_error = Some(e.to_string());
@@ -173,26 +195,21 @@ impl App {
         self.rebuild_logical_points();
     }
 
-    /// Generic success status (counts of objects).
-    fn counts(&self) -> String {
-        format!(
-            "OK — geometries={} constraints={}",
-            self.doc.geometries().len(),
-            self.doc.constraints().len()
-        )
-    }
-
-    /// Address of a picked point for status text (`seg1.end`).
+    /// Address of a picked point (`seg1.end`); handles are always addressable.
     fn address(&self, p: &PointExpr) -> String {
-        self.doc.point_address(p).unwrap_or_else(|| "?".into())
+        self.doc().point_address(p).unwrap_or_else(|| "?".into())
     }
 
     fn geometry_name(&self, id: GeometryId) -> &str {
-        self.doc.geometry_name(id).unwrap_or("?")
+        self.doc().geometry_name(id).unwrap_or("?")
     }
 
-    fn constraint_name(&self, id: ConstraintId) -> &str {
-        self.doc.constraint_name(id).unwrap_or("?")
+    /// `<name>.direction` of a picked line (checked by the caller).
+    fn direction_address(&self, id: GeometryId) -> String {
+        self.doc()
+            .direction_expr(id)
+            .and_then(|e| self.doc().vec_address(&e))
+            .unwrap_or_else(|| "?".into())
     }
 
     fn hit_point(&self, screen: Pos2, radius_px: f64) -> Option<PointExpr> {
@@ -231,12 +248,14 @@ impl App {
                 if self.segment_clicks.len() >= 2 {
                     let a = self.segment_clicks[0];
                     let b = self.segment_clicks[1];
-                    let id = self
-                        .doc
-                        .add_geometry::<Segment>(GeometryRole::Result, (a, b));
                     self.segment_clicks.clear();
-                    self.rebuild_logical_points();
-                    self.status = format!("Added {}", self.geometry_name(id));
+                    let cmd = Command::CreateSegment {
+                        start: a,
+                        end: b,
+                        role: GeometryRole::Result,
+                        name: None,
+                    };
+                    self.run(cmd, String::new());
                 } else {
                     self.status = "Segment: click second endpoint".into();
                 }
@@ -245,18 +264,11 @@ impl App {
                 if let Some(expr) = self.hit_end(screen, 12.0) {
                     self.pick_points.push(expr);
                     if self.pick_points.len() >= 2 {
-                        let a = self.pick_points[0];
-                        let b = self.pick_points[1];
-                        let c = self.doc.add_constraint(Congruence { a, b });
+                        let a = self.address(&self.pick_points[0]);
+                        let b = self.address(&self.pick_points[1]);
                         self.pick_points.clear();
-                        let ok = format!(
-                            "Added {} ({} = {})",
-                            self.constraint_name(c),
-                            self.address(&a),
-                            self.address(&b)
-                        );
-                        let r = self.interact.structural_only(&mut self.doc);
-                        self.report(r, ok);
+                        let detail = format!(" ({a} = {b})");
+                        self.run(Command::Join { a, b, name: None }, detail);
                     } else {
                         self.status = format!("Join: {} → pick second point", self.address(&expr));
                     }
@@ -265,33 +277,26 @@ impl App {
             Tool::Parallel | Tool::Orthogonal => {
                 if let Some(id) = self.hit_edge(screen, 24.0) {
                     // Lines only: the direction is a curve invariant; arcs have none.
-                    if !self.doc.caps(id).is_some_and(|c| c.line) {
+                    if !self.doc().caps(id).is_some_and(|c| c.line) {
                         self.status = "Parallel/Orthogonal needs two line segments".into();
                         return;
                     }
                     self.pick_geoms.push(id);
                     if self.pick_geoms.len() >= 2 {
-                        let direction = |id| {
-                            self.doc
-                                .direction_expr(id)
-                                .expect("line capability checked on pick")
-                        };
-                        let a = direction(self.pick_geoms[0]);
-                        let b = direction(self.pick_geoms[1]);
-                        let c = if self.tool == Tool::Parallel {
-                            self.doc.add_constraint(VectorsParallel { a, b })
-                        } else {
-                            self.doc.add_constraint(VectorsOrthogonal { a, b })
-                        };
-                        let ok = format!(
-                            "Added {} ({}, {})",
-                            self.constraint_name(c),
+                        let detail = format!(
+                            " ({}, {})",
                             self.geometry_name(self.pick_geoms[0]),
                             self.geometry_name(self.pick_geoms[1])
                         );
+                        let a = self.direction_address(self.pick_geoms[0]);
+                        let b = self.direction_address(self.pick_geoms[1]);
                         self.pick_geoms.clear();
-                        let r = self.interact.structural_only(&mut self.doc);
-                        self.report(r, ok);
+                        let cmd = if self.tool == Tool::Parallel {
+                            Command::Parallel { a, b, name: None }
+                        } else {
+                            Command::Perpendicular { a, b, name: None }
+                        };
+                        self.run(cmd, detail);
                     } else {
                         let tool = if self.tool == Tool::Parallel {
                             "Parallel"
@@ -305,18 +310,15 @@ impl App {
             }
             Tool::FixPoint => {
                 if let Some(expr) = self.hit_point(screen, 12.0) {
-                    let p = self.eval_point(&expr);
-                    let c = self.doc.add_constraint(FixPoint {
-                        point: expr,
-                        target: p,
-                    });
-                    let ok = format!(
-                        "Added {} ({})",
-                        self.constraint_name(c),
-                        self.address(&expr)
-                    );
-                    let r = self.interact.structural_only(&mut self.doc);
-                    self.report(r, ok);
+                    let target = self.eval_point(&expr);
+                    let point = self.address(&expr);
+                    let detail = format!(" ({point})");
+                    let cmd = Command::Fix {
+                        point,
+                        target,
+                        name: None,
+                    };
+                    self.run(cmd, detail);
                 }
             }
             Tool::Select => {}
@@ -375,8 +377,16 @@ impl eframe::App for App {
                 ui.selectable_value(&mut self.tool, Tool::Parallel, "Parallel");
                 ui.selectable_value(&mut self.tool, Tool::Orthogonal, "Orthogonal");
                 ui.selectable_value(&mut self.tool, Tool::FixPoint, "FixPoint");
-                if ui.button("Undo drag").clicked() && self.drag.undo(&mut self.doc) {
-                    self.status = "Undid last drag".into();
+                let undo = ui.add_enabled(self.session.can_undo(), egui::Button::new("Undo"));
+                if undo.clicked() && self.session.undo().is_ok() {
+                    self.status = "Undone".into();
+                    self.last_error = None;
+                    self.rebuild_logical_points();
+                }
+                let redo = ui.add_enabled(self.session.can_redo(), egui::Button::new("Redo"));
+                if redo.clicked() && self.session.redo().is_ok() {
+                    self.status = "Redone".into();
+                    self.last_error = None;
                     self.rebuild_logical_points();
                 }
                 if ui.button("Clear picks").clicked() {
@@ -427,7 +437,7 @@ impl eframe::App for App {
                 painter.line_segment([a, b], stroke);
             }
             for expr in &self.logical_points {
-                let p = expr.evaluate(&self.doc, self.doc.vector());
+                let p = self.eval_point(expr);
                 painter.circle_filled(
                     self.viewport.to_screen(p),
                     5.0,
@@ -450,18 +460,17 @@ impl eframe::App for App {
                     let press = ui.input(|i| i.pointer.press_origin());
                     if let Some(pos) = press.or_else(|| response.interact_pointer_pos()) {
                         if let Some(expr) = self.hit_point(pos, 12.0) {
-                            self.drag.pointer_down(&self.doc, expr);
+                            let point = self.address(&expr);
+                            if let Err(e) = self.session.drag_begin(&point) {
+                                self.last_error = Some(e.to_string());
+                            }
                         }
                     }
                 }
-                if response.dragged() && self.drag.is_dragging() {
+                if response.dragged() && self.session.is_dragging() {
                     if let Some(pos) = response.interact_pointer_pos() {
                         let world = self.viewport.to_world(pos);
-                        if let Err(e) = self.drag.pointer_move(
-                            &mut self.interact,
-                            &mut self.doc,
-                            (world.x, world.y),
-                        ) {
+                        if let Err(e) = self.session.drag_to(world) {
                             self.last_error = Some(e.to_string());
                             self.status = "Solve failed during drag — kept last good".into();
                         } else {
@@ -470,18 +479,13 @@ impl eframe::App for App {
                         self.rebuild_logical_points();
                     }
                 }
-                if response.drag_stopped() && self.drag.is_dragging() {
+                if response.drag_stopped() && self.session.is_dragging() {
                     if let Some(pos) = response.interact_pointer_pos() {
                         let world = self.viewport.to_world(pos);
-                        let r = self.drag.pointer_up(
-                            &mut self.interact,
-                            &mut self.doc,
-                            (world.x, world.y),
-                        );
-                        let ok = self.counts();
-                        self.report(r, ok);
+                        let r = self.session.drag_end(world);
+                        self.report_drag(r);
                     } else {
-                        self.drag.cancel(&mut self.doc);
+                        self.session.drag_cancel();
                         self.rebuild_logical_points();
                     }
                 }

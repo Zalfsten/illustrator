@@ -1,0 +1,9 @@
+[package]
+name = "sketch_session"
+version = "0.1.0"
+edition = "2021"
+description = "Command session for constraint_runtime: atomic named commands, undo/redo"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+constraint_runtime = { path = "../constraint_runtime" }

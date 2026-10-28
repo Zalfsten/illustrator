@@ -224,7 +224,6 @@ impl<S: SolverPort> InteractiveSolve<S> {
 #[derive(Clone, Debug)]
 pub struct DragSession {
     snapshot: Vector,
-    undo_stack: Vec<Vector>,
     active: Option<PointExpr>,
 }
 
@@ -232,7 +231,6 @@ impl DragSession {
     pub fn new() -> Self {
         Self {
             snapshot: Vector::new(),
-            undo_stack: Vec::new(),
             active: None,
         }
     }
@@ -270,22 +268,7 @@ impl DragSession {
         let result =
             interact.solve_commit_soft(doc, &soft.params, &soft.points, &soft.lengths, &fallback);
         self.active = None;
-        match result {
-            Ok(()) => {
-                self.undo_stack.push(self.snapshot.clone());
-                Ok(())
-            }
-            Err(e) => Err(e),
-        }
-    }
-
-    pub fn undo(&mut self, doc: &mut Document) -> bool {
-        if let Some(prev) = self.undo_stack.pop() {
-            doc.restore_vector(&prev);
-            true
-        } else {
-            false
-        }
+        result
     }
 
     pub fn is_dragging(&self) -> bool {

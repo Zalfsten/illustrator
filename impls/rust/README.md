@@ -31,7 +31,7 @@ runtime (geometry IR, catalog, solve interaction, solver port).
 
 ```bash
 cd impls/rust
-cargo test -p constraint_runtime
+cargo test -p constraint_runtime -p sketch_session
 cargo build -p sketch_ui
 ```
 
