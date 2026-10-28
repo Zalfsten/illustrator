@@ -121,6 +121,11 @@ pub enum CommandError {
     },
     /// A drag is in progress.
     Busy,
+    /// A join of two points that are already one congruence class.
+    AlreadyJoined {
+        a: String,
+        b: String,
+    },
 }
 
 impl fmt::Display for CommandError {
@@ -142,6 +147,9 @@ impl fmt::Display for CommandError {
                 )
             }
             CommandError::Busy => f.write_str("busy: a drag is in progress"),
+            CommandError::AlreadyJoined { a, b } => {
+                write!(f, "already joined: {a} and {b} are one point")
+            }
         }
     }
 }

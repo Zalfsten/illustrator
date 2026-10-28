@@ -167,6 +167,9 @@ impl Session {
                     a: self.point(&a)?,
                     b: self.point(&b)?,
                 };
+                if self.doc.point_class(&c.a).contains(&c.b) {
+                    return Err(CommandError::AlreadyJoined { a, b });
+                }
                 self.constrain(c, name)
             }
             Command::Parallel { a, b, name } => {

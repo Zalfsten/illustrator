@@ -146,6 +146,11 @@ context: |
     direction, tangent(t), normal(t), length, radius) resolved through
     the id-based capability factories; point/vec/length_address print
     expressions back.
+  - point_classes.rs: congruence classes (transitive closure of
+    Congruence, never by distance) and logical_points(filter), one
+    LogicalPoint per class with a visible endpoint; structure-only, so
+    the App rebuilds handles after structural changes, not per drag step;
+    Interact puts the whole class under the mouse target.
   - constraint.rs: ConstraintKind (RESIDUAL_ARITY, NAME_PREFIX, param_connectivity,
     eval_residual, accumulate_jacobian(&mut DenseMatrix),
     referenced_geometries as a deduplicated GeometryId list); ConstraintId
