@@ -241,14 +241,19 @@ impl App {
             Tool::Parallel | Tool::Orthogonal => {
                 if let Some(id) = self.hit_edge(screen, 24.0) {
                     // Lines only: the direction is a curve invariant; arcs have none.
-                    if !self.doc.expect_geometry(id).kind().has_line_exprs() {
+                    if !self.doc.caps(id).is_some_and(|c| c.line) {
                         self.status = "Parallel/Orthogonal needs two line segments".into();
                         return;
                     }
                     self.pick_geoms.push(id);
                     if self.pick_geoms.len() >= 2 {
-                        let a = Segment::direction_expr(self.pick_geoms[0]);
-                        let b = Segment::direction_expr(self.pick_geoms[1]);
+                        let direction = |id| {
+                            self.doc
+                                .direction_expr(id)
+                                .expect("line capability checked on pick")
+                        };
+                        let a = direction(self.pick_geoms[0]);
+                        let b = direction(self.pick_geoms[1]);
                         if self.tool == Tool::Parallel {
                             self.doc.add_constraint(VectorsParallel { a, b });
                         } else {

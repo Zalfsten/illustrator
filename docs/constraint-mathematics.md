@@ -253,7 +253,10 @@ equations:
 | circle / arc | center $C$, radius $|R|$ (`CircularExprs::center_expr`, `radius_expr`) | concentric: `Congruence` of centers; equal radius: `EqualLength` of radii |
 
 Mixed families (line "parallel" to an arc) have no universal meaning; tools
-reject them. General curves (splines, function graphs) have no such carrier
+reject them. Tools that hold only a geometry id check the capability and build
+the invariant through the id-based factories (`Document::caps`,
+`Document::direction_expr`, `center_expr`, `radius_expr`), which return no
+expression for kinds without that capability. General curves (splines, function graphs) have no such carrier
 invariants; only pointwise or existential relations apply there.
 
 Each contribution also exposes derivatives equivalent to a contribution
