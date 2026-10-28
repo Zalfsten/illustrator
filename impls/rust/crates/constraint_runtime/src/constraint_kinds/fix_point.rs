@@ -16,6 +16,7 @@ pub struct FixPoint {
 
 impl ConstraintKind for FixPoint {
     const RESIDUAL_ARITY: usize = 2;
+    const NAME_PREFIX: &'static str = "fix";
 
     fn param_connectivity(&self, doc: &Document) -> Vec<usize> {
         self.point.param_indices(doc)

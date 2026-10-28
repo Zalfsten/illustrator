@@ -2,6 +2,7 @@
 //! analytical Jacobians, and a swappable solver port (owned sparse
 //! Levenberg–Marquardt backend, pure Rust).
 
+pub mod address;
 pub mod assemble;
 pub mod constraint;
 pub mod constraint_kinds;
@@ -14,12 +15,14 @@ pub mod id;
 pub mod interact;
 pub mod matrix;
 pub mod mesh;
+pub mod names;
 pub mod solver;
 pub mod vector;
 
 #[cfg(test)]
 mod test_alloc;
 
+pub use address::{Address, AddressError};
 pub use assemble::{
     structural_residual_norm, AssembledSystem, SoftContribution, SoftLengthFloor, SoftPointFollow,
 };
@@ -27,7 +30,7 @@ pub use constraint::{ConstraintEntry, ConstraintId, ConstraintKind};
 pub use constraint_kinds::{
     Congruence, ConstraintInst, EqualLength, FixPoint, VectorsOrthogonal, VectorsParallel,
 };
-pub use document::Document;
+pub use document::{Document, Removal};
 pub use expr::{
     Expr, HeadingAngleExpr, LengthExpr, PointExpr, TurnAngleExpr, VecExpr, VecJet,
     MAX_FORMULA_LOCAL_DOF,
@@ -42,6 +45,7 @@ pub use id::IdMap;
 pub use interact::{DragSession, InteractiveSolve, SoftTerms, SolveError};
 pub use matrix::{Block, BlockSparseMatrix, DenseMatrix};
 pub use mesh::{Mesh, MeshEdge, MeshFilter, MAX_CHORD_TURN};
+pub use names::{is_valid_name, NameError, ObjectId};
 pub use solver::{LmSolver, SolveOutcome, SolverOptions, SolverPort, StubSolver, SystemEval};
 pub use vector::Vector;
 

@@ -90,3 +90,29 @@ fn jacobian_matches_fd_for_catalog() {
         }
     }
 }
+
+#[test]
+fn name_prefixes_are_valid_and_unique_across_kinds() {
+    use crate::constraint::ConstraintKind;
+    use crate::geometry_kinds::GeometryKind;
+    // Extend with the catalogs.
+    let prefixes = [
+        GeometryKind::Segment.name_prefix(),
+        GeometryKind::Arc.name_prefix(),
+        Congruence::NAME_PREFIX,
+        VectorsParallel::NAME_PREFIX,
+        VectorsOrthogonal::NAME_PREFIX,
+        FixPoint::NAME_PREFIX,
+        EqualLength::NAME_PREFIX,
+    ];
+    for p in prefixes {
+        assert!(crate::names::is_valid_name(p), "{p:?}");
+        assert!(!p.ends_with(|c: char| c.is_ascii_digit()), "{p:?}");
+    }
+    let unique: std::collections::HashSet<_> = prefixes.iter().collect();
+    assert_eq!(
+        unique.len(),
+        prefixes.len(),
+        "duplicate prefix in {prefixes:?}"
+    );
+}

@@ -30,6 +30,7 @@ geometry_caps!(Segment: endpoints, line);
 
 impl Geometry for Segment {
     const KIND: GeometryKind = GeometryKind::Segment;
+    const NAME_PREFIX: &'static str = "seg";
 
     fn point(f: PointFormula, (a, b): Self::Init) -> Point2 {
         match f {

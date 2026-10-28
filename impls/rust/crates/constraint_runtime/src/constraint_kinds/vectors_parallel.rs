@@ -15,6 +15,7 @@ pub struct VectorsParallel {
 
 impl ConstraintKind for VectorsParallel {
     const RESIDUAL_ARITY: usize = 1;
+    const NAME_PREFIX: &'static str = "par";
 
     fn param_connectivity(&self, doc: &Document) -> Vec<usize> {
         pair_connectivity(doc, &self.a, &self.b)

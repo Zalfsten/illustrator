@@ -71,6 +71,7 @@ impl Arc {
 
 impl Geometry for Arc {
     const KIND: GeometryKind = GeometryKind::Arc;
+    const NAME_PREFIX: &'static str = "arc";
 
     /// `R < 0` → `(C, −R, θ₀ + π, Δθ)`: same curve, non-negative radius.
     fn canonical((center, radius, start, sweep): Self::Init) -> Self::Init {

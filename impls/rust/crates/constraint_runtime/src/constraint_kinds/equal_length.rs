@@ -15,6 +15,7 @@ pub struct EqualLength {
 
 impl ConstraintKind for EqualLength {
     const RESIDUAL_ARITY: usize = 1;
+    const NAME_PREFIX: &'static str = "eqlen";
 
     fn param_connectivity(&self, doc: &Document) -> Vec<usize> {
         pair_connectivity(doc, &self.a, &self.b)

@@ -1,7 +1,8 @@
 use super::*;
-use crate::constraint_kinds::{Congruence, FixPoint, VectorsOrthogonal};
+use crate::constraint_kinds::{Congruence, FixPoint, VectorsOrthogonal, VectorsParallel};
 use crate::geom::{CurveParam, HeadingAngle, Length, Point2, TurnAngle};
 use crate::geometry_kinds::{Arc, Segment};
+use crate::names::{NameError, ObjectId};
 use crate::geometry::{
     Caps, Chart, CircularExprs, CurveExprs, EndpointExprs, GeometryId, GeometryRole, LineExprs,
 };
@@ -102,7 +103,7 @@ fn remove_geometry_compacts_state_and_drops_orphans() {
         target: Point2::new(1.0, 0.5),
     });
     assert_eq!(doc.constraints().len(), 4);
-    assert!(doc.remove_geometry(s1));
+    assert!(doc.remove_geometry(s1).is_some());
     assert_eq!(doc.geometries().len(), 2);
     assert_eq!(doc.vector().len(), 2 * Segment::PARAMETER_COUNT);
     // s0 still at 0..4; s2 remapped from 8..12 to 4..8
@@ -143,7 +144,7 @@ fn constraints_on_tracks_incidence() {
     });
     assert_eq!(doc.constraints_on(s0), &[cong, fix]);
     assert_eq!(doc.constraints_on(s1), &[cong]);
-    assert!(doc.remove_constraint(cong));
+    assert!(doc.remove_constraint(cong).is_some());
     assert_eq!(doc.constraints_on(s0), &[fix]);
     assert!(doc.constraints_on(s1).is_empty());
 }
@@ -182,7 +183,7 @@ fn constraint_id_allocate_lookup_and_remove() {
     assert_eq!(c0, ConstraintId(0));
     assert_eq!(c1, ConstraintId(1));
     assert!(doc.constraint(c0).is_some());
-    assert!(doc.remove_constraint(c0));
+    assert!(doc.remove_constraint(c0).is_some());
     assert!(doc.constraint(c0).is_none());
     assert!(doc.constraint(c1).is_some());
     assert_eq!(doc.constraints().len(), 1);
@@ -326,7 +327,7 @@ fn identity_factories_evaluate_like_the_kind() {
 fn unknown_id_has_no_caps_and_no_expressions() {
     let mut doc = Document::new();
     let (seg, _) = segment_and_arc(&mut doc);
-    assert!(doc.remove_geometry(seg));
+    assert!(doc.remove_geometry(seg).is_some());
 
     let t = CurveParam::Normalized(0.0);
     assert_eq!(doc.caps(seg), None);
@@ -339,4 +340,127 @@ fn unknown_id_has_no_caps_and_no_expressions() {
     assert_eq!(doc.direction_expr(seg), None);
     assert_eq!(doc.center_expr(seg), None);
     assert_eq!(doc.radius_expr(seg), None);
+}
+
+fn segment(doc: &mut Document, x: f64) -> GeometryId {
+    doc.add_geometry::<Segment>(
+        GeometryRole::Result,
+        (Point2::new(x, 0.0), Point2::new(x + 1.0, 1.0)),
+    )
+}
+
+#[test]
+fn geometry_and_constraint_names_do_not_collide() {
+    let mut doc = Document::new();
+    let s = segment(&mut doc, 0.0);
+    let c = doc.add_constraint(FixPoint {
+        point: Segment::start_expr(s),
+        target: Point2::new(0.0, 0.0),
+    });
+    assert_eq!(doc.geometry_name(s), Some("seg1"));
+    assert_eq!(doc.constraint_name(c), Some("fix1"));
+    assert_eq!(doc.lookup("seg1"), Some(ObjectId::Geometry(s)));
+    assert_eq!(doc.lookup("fix1"), Some(ObjectId::Constraint(c)));
+    assert_eq!(doc.name(ObjectId::Constraint(c)), Some("fix1"));
+}
+
+#[test]
+fn constraint_kinds_have_their_own_prefixes() {
+    let mut doc = Document::new();
+    let (a, b) = (segment(&mut doc, 0.0), segment(&mut doc, 2.0));
+    let par = doc.add_constraint(VectorsParallel {
+        a: Segment::direction_expr(a),
+        b: Segment::direction_expr(b),
+    });
+    let orth = doc.add_constraint(VectorsOrthogonal {
+        a: Segment::direction_expr(a),
+        b: Segment::direction_expr(b),
+    });
+    assert_eq!(doc.constraint_name(par), Some("par1"));
+    assert_eq!(doc.constraint_name(orth), Some("orth1"));
+}
+
+#[test]
+fn other_edits_keep_names() {
+    let mut doc = Document::new();
+    let ids: Vec<_> = (0..3).map(|i| segment(&mut doc, i as f64)).collect();
+    doc.remove_geometry(ids[1]).unwrap();
+    assert_eq!(doc.geometry_name(ids[0]), Some("seg1"));
+    assert_eq!(doc.geometry_name(ids[2]), Some("seg3"));
+    assert_eq!(doc.lookup("seg2"), None);
+}
+
+#[test]
+fn geometry_removal_reports_and_drops_cascaded_names() {
+    let mut doc = Document::new();
+    let (s1, s2) = (segment(&mut doc, 0.0), segment(&mut doc, 2.0));
+    doc.add_constraint(VectorsParallel {
+        a: Segment::direction_expr(s1),
+        b: Segment::direction_expr(s2),
+    });
+    doc.add_constraint(Congruence {
+        a: Segment::end_expr(s1),
+        b: Segment::start_expr(s2),
+    });
+
+    let removal = doc.remove_geometry(s1).unwrap();
+    let mut names: Vec<_> = removal.names().collect();
+    names.sort();
+    assert_eq!(names, ["join1", "par1", "seg1"]);
+    for n in ["seg1", "par1", "join1"] {
+        assert_eq!(doc.lookup(n), None, "{n}");
+    }
+    assert_eq!(doc.lookup("seg2"), Some(ObjectId::Geometry(s2)));
+}
+
+#[test]
+fn constraint_removal_reports_its_name() {
+    let mut doc = Document::new();
+    let s = segment(&mut doc, 0.0);
+    let c = doc.add_constraint(FixPoint {
+        point: Segment::start_expr(s),
+        target: Point2::new(0.0, 0.0),
+    });
+    let removal = doc.remove_constraint(c).unwrap();
+    assert_eq!(removal.constraints, [(c, "fix1".to_owned())]);
+    assert!(removal.geometries.is_empty());
+    assert_eq!(doc.lookup("fix1"), None);
+}
+
+#[test]
+fn rename_keeps_the_drawing() {
+    let mut doc = Document::new();
+    let (s1, s2) = (segment(&mut doc, 0.0), segment(&mut doc, 2.0));
+    let par = doc.add_constraint(VectorsParallel {
+        a: Segment::direction_expr(s1),
+        b: Segment::direction_expr(s2),
+    });
+    let values = doc.clone_vector();
+
+    doc.rename(ObjectId::Geometry(s1), "x_axis").unwrap();
+    assert_eq!(doc.lookup("x_axis"), Some(ObjectId::Geometry(s1)));
+    assert_eq!(doc.lookup("seg1"), None);
+    assert_eq!(doc.clone_vector(), values);
+    assert_eq!(doc.constraints_on(s1), [par]);
+    assert_eq!(
+        doc.constraint(par).unwrap().referenced_geometries(),
+        vec![s1, s2]
+    );
+    assert_eq!(
+        doc.rename(ObjectId::Geometry(s2), "x_axis"),
+        Err(NameError::Taken)
+    );
+}
+
+#[test]
+fn restoring_a_snapshot_restores_names() {
+    let mut doc = Document::new();
+    let s = segment(&mut doc, 0.0);
+    let snapshot = doc.clone();
+    doc.rename(ObjectId::Geometry(s), "x_axis").unwrap();
+    segment(&mut doc, 2.0);
+    doc = snapshot;
+    assert_eq!(doc.geometry_name(s), Some("seg1"));
+    assert_eq!(doc.lookup("x_axis"), None);
+    assert_eq!(doc.lookup("seg2"), None);
 }

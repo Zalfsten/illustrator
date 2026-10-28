@@ -73,6 +73,9 @@ pub trait ConstraintKind: Clone + Debug + 'static {
     /// Residual row count for this contribution.
     const RESIDUAL_ARITY: usize;
 
+    /// Prefix of automatic object names (`par` → `par1`, `par2`, …).
+    const NAME_PREFIX: &'static str;
+
     /// Global Vector columns involved in this contribution (assembly column map).
     fn param_connectivity(&self, doc: &Document) -> Vec<usize>;
 

@@ -11,3 +11,18 @@ fn capability_sets_match_kinds() {
         Caps::CURVE.with_endpoints().with_circular()
     );
 }
+
+/// Every geometry kind (extend with the catalog).
+const ALL_KINDS: [GeometryKind; 2] = [GeometryKind::Segment, GeometryKind::Arc];
+
+#[test]
+fn name_prefixes_are_valid_stems() {
+    for kind in ALL_KINDS {
+        let p = kind.name_prefix();
+        assert!(crate::names::is_valid_name(p), "{kind:?}: {p:?}");
+        assert!(
+            !p.ends_with(|c: char| c.is_ascii_digit()),
+            "{kind:?}: {p:?}"
+        );
+    }
+}

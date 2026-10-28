@@ -1,10 +1,10 @@
 //! Application shell: Document, Interact, tools, and Canvas painting.
 
 use constraint_runtime::{
-    Arc, Congruence, CurveExprs, CurveParam, Document, DragSession, EndpointExprs, EqualLength,
-    FixPoint, GeometryId, GeometryRole, HeadingAngle, InteractiveSolve, Length, LineExprs, Mesh,
-    MeshFilter, Point2, PointExpr, Segment, SolveError, TurnAngle, VectorsOrthogonal,
-    VectorsParallel,
+    Arc, Congruence, ConstraintId, CurveExprs, CurveParam, Document, DragSession, EndpointExprs,
+    EqualLength, FixPoint, GeometryId, GeometryRole, HeadingAngle, InteractiveSolve, Length,
+    LineExprs, Mesh, MeshFilter, Point2, PointExpr, Segment, SolveError, TurnAngle,
+    VectorsOrthogonal, VectorsParallel,
 };
 use eframe::egui::{self, Color32, Pos2, Rect, Sense, Stroke};
 
@@ -158,15 +158,12 @@ impl App {
         self.logical_points = logical_points_for(&self.doc, self.presentation.mesh_filter());
     }
 
-    fn report(&mut self, result: Result<(), SolveError>) {
+    /// Status after a solve: `ok` on success, the solve error otherwise.
+    fn report(&mut self, result: Result<(), SolveError>, ok: String) {
         match result {
             Ok(()) => {
                 self.last_error = None;
-                self.status = format!(
-                    "OK — geometries={} constraints={}",
-                    self.doc.geometries().len(),
-                    self.doc.constraints().len()
-                );
+                self.status = ok;
             }
             Err(e) => {
                 self.last_error = Some(e.to_string());
@@ -174,6 +171,28 @@ impl App {
             }
         }
         self.rebuild_logical_points();
+    }
+
+    /// Generic success status (counts of objects).
+    fn counts(&self) -> String {
+        format!(
+            "OK — geometries={} constraints={}",
+            self.doc.geometries().len(),
+            self.doc.constraints().len()
+        )
+    }
+
+    /// Address of a picked point for status text (`seg1.end`).
+    fn address(&self, p: &PointExpr) -> String {
+        self.doc.point_address(p).unwrap_or_else(|| "?".into())
+    }
+
+    fn geometry_name(&self, id: GeometryId) -> &str {
+        self.doc.geometry_name(id).unwrap_or("?")
+    }
+
+    fn constraint_name(&self, id: ConstraintId) -> &str {
+        self.doc.constraint_name(id).unwrap_or("?")
     }
 
     fn hit_point(&self, screen: Pos2, radius_px: f64) -> Option<PointExpr> {
@@ -212,12 +231,12 @@ impl App {
                 if self.segment_clicks.len() >= 2 {
                     let a = self.segment_clicks[0];
                     let b = self.segment_clicks[1];
-                    self.doc
+                    let id = self
+                        .doc
                         .add_geometry::<Segment>(GeometryRole::Result, (a, b));
                     self.segment_clicks.clear();
                     self.rebuild_logical_points();
-                    self.status =
-                        format!("Added segment — geometries={}", self.doc.geometries().len());
+                    self.status = format!("Added {}", self.geometry_name(id));
                 } else {
                     self.status = "Segment: click second endpoint".into();
                 }
@@ -228,13 +247,18 @@ impl App {
                     if self.pick_points.len() >= 2 {
                         let a = self.pick_points[0];
                         let b = self.pick_points[1];
-                        self.doc.add_constraint(Congruence { a, b });
+                        let c = self.doc.add_constraint(Congruence { a, b });
                         self.pick_points.clear();
+                        let ok = format!(
+                            "Added {} ({} = {})",
+                            self.constraint_name(c),
+                            self.address(&a),
+                            self.address(&b)
+                        );
                         let r = self.interact.structural_only(&mut self.doc);
-                        self.report(r);
-                        self.status = "Congruence between points".into();
+                        self.report(r, ok);
                     } else {
-                        self.status = "Join: pick second point".into();
+                        self.status = format!("Join: {} → pick second point", self.address(&expr));
                     }
                 }
             }
@@ -254,29 +278,45 @@ impl App {
                         };
                         let a = direction(self.pick_geoms[0]);
                         let b = direction(self.pick_geoms[1]);
-                        if self.tool == Tool::Parallel {
-                            self.doc.add_constraint(VectorsParallel { a, b });
+                        let c = if self.tool == Tool::Parallel {
+                            self.doc.add_constraint(VectorsParallel { a, b })
                         } else {
-                            self.doc.add_constraint(VectorsOrthogonal { a, b });
-                        }
+                            self.doc.add_constraint(VectorsOrthogonal { a, b })
+                        };
+                        let ok = format!(
+                            "Added {} ({}, {})",
+                            self.constraint_name(c),
+                            self.geometry_name(self.pick_geoms[0]),
+                            self.geometry_name(self.pick_geoms[1])
+                        );
                         self.pick_geoms.clear();
                         let r = self.interact.structural_only(&mut self.doc);
-                        self.report(r);
+                        self.report(r, ok);
                     } else {
-                        self.status = "Pick second geometry".into();
+                        let tool = if self.tool == Tool::Parallel {
+                            "Parallel"
+                        } else {
+                            "Orthogonal"
+                        };
+                        self.status =
+                            format!("{tool}: {} → pick second line", self.geometry_name(id));
                     }
                 }
             }
             Tool::FixPoint => {
                 if let Some(expr) = self.hit_point(screen, 12.0) {
                     let p = self.eval_point(&expr);
-                    self.doc.add_constraint(FixPoint {
+                    let c = self.doc.add_constraint(FixPoint {
                         point: expr,
                         target: p,
                     });
+                    let ok = format!(
+                        "Added {} ({})",
+                        self.constraint_name(c),
+                        self.address(&expr)
+                    );
                     let r = self.interact.structural_only(&mut self.doc);
-                    self.report(r);
-                    self.status = "FixPoint added".into();
+                    self.report(r, ok);
                 }
             }
             Tool::Select => {}
@@ -438,7 +478,8 @@ impl eframe::App for App {
                             &mut self.doc,
                             (world.x, world.y),
                         );
-                        self.report(r);
+                        let ok = self.counts();
+                        self.report(r, ok);
                     } else {
                         self.drag.cancel(&mut self.doc);
                         self.rebuild_logical_points();

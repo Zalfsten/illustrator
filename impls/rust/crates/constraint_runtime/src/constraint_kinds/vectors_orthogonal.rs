@@ -15,6 +15,7 @@ pub struct VectorsOrthogonal {
 
 impl ConstraintKind for VectorsOrthogonal {
     const RESIDUAL_ARITY: usize = 1;
+    const NAME_PREFIX: &'static str = "orth";
 
     fn param_connectivity(&self, doc: &Document) -> Vec<usize> {
         pair_connectivity(doc, &self.a, &self.b)

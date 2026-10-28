@@ -16,6 +16,7 @@ use crate::geometry::{
 };
 use crate::geometry_kinds::{with_kind, GeometryInst};
 use crate::id::IdMap;
+use crate::names::{NameError, Names, ObjectId};
 use crate::vector::Vector;
 
 /// One Congruence edge, indexed under each participating geometry.
@@ -51,6 +52,26 @@ pub struct Document {
     identification_by_geometry: HashMap<GeometryId, Vec<IdentificationEdge>>,
     /// Committed continuous parameters \(p\).
     pub vector: Vector,
+    /// User-visible names of all geometries and constraints (never on the solve path).
+    names: Names,
+}
+
+/// Objects dropped by [`Document::remove_geometry`] / [`Document::remove_constraint`].
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Removal {
+    pub geometries: Vec<(GeometryId, String)>,
+    /// Includes constraints removed together with a geometry.
+    pub constraints: Vec<(ConstraintId, String)>,
+}
+
+impl Removal {
+    /// Names of all removed objects (geometries first).
+    pub fn names(&self) -> impl Iterator<Item = &str> {
+        self.geometries
+            .iter()
+            .map(|(_, n)| n.as_str())
+            .chain(self.constraints.iter().map(|(_, n)| n.as_str()))
+    }
 }
 
 impl Document {
@@ -85,6 +106,30 @@ impl Document {
             Some(g) => g,
             None => missing_geometry(id),
         }
+    }
+
+    /// Name of geometry or constraint `id`.
+    pub fn name(&self, id: ObjectId) -> Option<&str> {
+        self.names.name(id)
+    }
+
+    pub fn geometry_name(&self, id: GeometryId) -> Option<&str> {
+        self.names.name(ObjectId::Geometry(id))
+    }
+
+    pub fn constraint_name(&self, id: ConstraintId) -> Option<&str> {
+        self.names.name(ObjectId::Constraint(id))
+    }
+
+    /// Object named `name` (O(1)).
+    pub fn lookup(&self, name: &str) -> Option<ObjectId> {
+        self.names.lookup(name)
+    }
+
+    /// Rename `id` to `new`. Fails if `new` is invalid or used by another object;
+    /// renaming to the current name succeeds. The drawing itself is unchanged.
+    pub fn rename(&mut self, id: ObjectId, new: &str) -> Result<(), NameError> {
+        self.names.rename(id, new)
     }
 
     /// Capability set of geometry `id` (`None` if `id` is not in the document).
@@ -207,7 +252,10 @@ impl Document {
 
     /// Register a geometry whose parameters already live in an external Vector.
     /// Prefer [`Document::add_geometry`] so graph and committed Vector stay matched.
+    /// Insert `g` and give it the next automatic name of its kind.
     pub(crate) fn push_geometry(&mut self, g: GeometryInst) {
+        let name = self.names.next_auto(g.kind().name_prefix());
+        self.names.insert(ObjectId::Geometry(g.id()), name);
         self.geometries.insert(g.id(), g);
     }
 
@@ -227,30 +275,36 @@ impl Document {
         if let Some(g) = body.as_congruence() {
             self.link_identification(id, g.a, g.b);
         }
+        let name = self.names.next_auto(body.name_prefix());
+        self.names.insert(ObjectId::Constraint(id), name);
         self.constraints.insert(id, ConstraintEntry { id, body });
         self.link_constraint(id, &geos);
         id
     }
 
     /// Remove a constraint by id. Returns false if missing.
-    pub fn remove_constraint(&mut self, id: ConstraintId) -> bool {
-        let Some(entry) = self.constraints.remove(id) else {
-            return false;
-        };
+    /// Remove constraint `id`; `None` if it is not in the document.
+    pub fn remove_constraint(&mut self, id: ConstraintId) -> Option<Removal> {
+        let entry = self.constraints.remove(id)?;
+        let name = self.names.remove(ObjectId::Constraint(id));
         let geos = entry.body().referenced_geometries();
         let congruence = entry.body().as_congruence().map(|g| (g.a, g.b));
         self.unlink_constraint(id, &geos);
         if let Some((a, b)) = congruence {
             self.unlink_identification(id, a, b);
         }
-        true
+        Some(Removal {
+            constraints: vec![(id, name.expect("constraints are named"))],
+            ..Removal::default()
+        })
     }
 
     /// Remove a geometry: compact Vector, remap offsets, drop orphan constraints.
-    pub fn remove_geometry(&mut self, id: GeometryId) -> bool {
-        let Some(removed) = self.geometries.remove(id) else {
-            return false;
-        };
+    /// Remove geometry `id` and the constraints that reference it; `None` if
+    /// it is not in the document.
+    pub fn remove_geometry(&mut self, id: GeometryId) -> Option<Removal> {
+        let removed = self.geometries.remove(id)?;
+        let name = self.names.remove(ObjectId::Geometry(id));
 
         let block = removed.param_block();
         let (start, removed_len) = (block.start, block.len());
@@ -262,12 +316,28 @@ impl Document {
             g.reindex_after_removal(start, removed_len);
         }
 
+        let orphans: Vec<ConstraintId> = self
+            .constraints
+            .values()
+            .filter(|e| e.body().references_geometry(id))
+            .map(|e| e.id)
+            .collect();
         self.constraints
             .retain(|e| !e.body().references_geometry(id));
         self.rebuild_incidence();
+        let constraints = orphans
+            .into_iter()
+            .map(|c| {
+                let n = self.names.remove(ObjectId::Constraint(c));
+                (c, n.expect("constraints are named"))
+            })
+            .collect();
 
         debug_assert_eq!(self.vector.len(), self.parameter_count());
-        true
+        Some(Removal {
+            geometries: vec![(id, name.expect("geometries are named"))],
+            constraints,
+        })
     }
 
     /// Snapshot of committed state for undo / drag.
