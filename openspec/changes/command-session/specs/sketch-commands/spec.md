@@ -74,7 +74,7 @@ After every successful command the drawing SHALL satisfy all its structural cons
 
 #### Scenario: Contradicting constraint is rolled back
 
-- **WHEN** `seg1` and `seg2` are parallel
+- **WHEN** `seg1` is fixed in place, `seg2` has the same length as `seg1`, and the two are parallel
 - **AND** a perpendicular command is applied to their directions
 - **THEN** the command fails with class `unsatisfiable`
 - **AND** the drawing contains no perpendicular constraint and the previous values

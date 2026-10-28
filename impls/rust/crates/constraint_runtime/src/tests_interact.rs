@@ -54,7 +54,7 @@ fn failed_solve_keeps_state() {
 }
 
 #[test]
-fn atomic_drag_undo() {
+fn drag_commits_a_new_state() {
     let mut doc = Document::new();
     let s0 = doc.add_geometry::<Segment>(GeometryRole::Result, (Point2::new(0.0, 0.0), Point2::new(1.0, 0.0)));
     let s1 = doc.add_geometry::<Segment>(GeometryRole::Result, (Point2::new(1.0, 0.0), Point2::new(1.0, 1.0)));
@@ -80,8 +80,8 @@ fn atomic_drag_undo() {
         .unwrap();
     drag.pointer_up(&mut interact, &mut doc, (2.0, 2.0))
         .unwrap();
-    assert!(drag.undo(&mut doc));
-    assert_eq!(doc.vector(), &before);
+    assert!(!drag.is_dragging());
+    assert_ne!(doc.vector(), &before, "drag committed a new state");
 }
 
 fn fillet_doc_without_length_pin(r: f64) -> (Document, crate::geometry::GeometryId) {

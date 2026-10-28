@@ -174,7 +174,8 @@ context: |
     soft_for_drag builds SoftContribution / SoftPointFollow /
     SoftLengthFloor (ℓ_min = fraction × L0 at drag-start snapshot);
     InteractiveSolve (default backend LmSolver) commits the working Vector
-    only if structural residuals pass.
+    only if structural residuals pass. DragSession runs one drag (no
+    history of its own; history lives in sketch_session).
   - document: discrete graph + committed Vector; IdMap stores; incidence /
     Congruence identification indexes.
   - solver: SolverPort::solve<E: SystemEval>; SystemEval exposes
@@ -183,6 +184,13 @@ context: |
     Levenberg–Marquardt (normal.rs assembles JᵀJ / Jᵀr from blocks with
     precomputed slots; sparse_chol.rs wraps faer sparse Cholesky, symbolic
     once per solve, numeric per iteration; hot path allocation-free).
+  sketch_session (crate on top of constraint_runtime): Session owns
+  Document, InteractiveSolve, DragSession and undo/redo stacks of Document
+  snapshots. Command enum addresses objects by name / address text;
+  apply = snapshot, execute, structural solve for constraint commands,
+  commit or restore (CommandError incl. Unsatisfiable, Busy while
+  dragging). drag_begin/to/end/cancel; a completed drag is one undo step.
+  sketch_ui edits only through the Session (sample scene is the baseline).
   Prefer sibling files once a module has unit tests: src/<module>.rs for
   production code and src/tests_<module>.rs for that module's unit tests,
   declared with `#[cfg(test)] #[path = "tests_<module>.rs"] mod tests_<module>;`
