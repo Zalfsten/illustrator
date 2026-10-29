@@ -39,3 +39,12 @@ fn sample_scene_exports_and_re_executes() {
     );
     assert!(close(&a, &b, 1e-9), "{text}\n{again}");
 }
+
+#[test]
+fn sample_scene_file_round_trip_is_byte_identical() {
+    let app = App::with_sample();
+    let first = app.session.save().unwrap();
+    let (loaded, report) = Session::load(&first).unwrap();
+    assert!(report.adjusted.is_empty() && report.conflicts.is_empty());
+    assert_eq!(loaded.save().unwrap(), first);
+}

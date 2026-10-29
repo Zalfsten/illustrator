@@ -212,6 +212,14 @@ context: |
   inside a frozen component gives each surviving piece one solve.
   Session::new solves each inconsistent component once (rest stay
   frozen); Session::conflicts lists frozen components (names, residual).
+  file.rs: the native sketch file (FORMAT "illustrator-sketch", VERSION 1):
+  Session::save writes the declarative list in a fixed layout (one command
+  per line, byte-identical round trip); Session::load reads any JSON layout
+  (check order: JSON, format, version + migrate, envelope fields, commands),
+  executes commands in Mode::Load (no frozen check, no solve, no history),
+  then Session::start returns the session plus LoadReport (adjusted
+  components with sampled curve displacement, conflicts). LoadError names the
+  failing command's index. Bytes only; hosts move them.
   Command = Create / Constrain / Delete / Rename / SetRole; DeclCommand is
   the declarative subset (Create / Constrain with mandatory name). Kind
   payloads come from layer traits in kinds/ (GeometryCommand /

@@ -200,6 +200,24 @@ pub struct Conflict {
     pub residual: f64,
 }
 
+/// A component the session-start solve changed: its geometries (creation
+/// order) and the largest distance a curve point moved, compared at the same
+/// curve position, in drawing units.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Adjusted {
+    pub geometries: Vec<String>,
+    pub displacement: f64,
+}
+
+/// What starting a session on an existing drawing did to it: components it
+/// solved, and components left frozen. Both empty when the drawing's values
+/// already met all constraints.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct LoadReport {
+    pub adjusted: Vec<Adjusted>,
+    pub conflicts: Vec<Conflict>,
+}
+
 /// Why the drawing cannot be written as declarative commands.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ExportError {

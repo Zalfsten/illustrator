@@ -13,15 +13,28 @@
 use std::collections::HashSet;
 
 use constraint_runtime::{
-    is_valid_name, ConstraintInst, Document, DragSession, GeometryId, InteractiveSolve, NameError,
-    ObjectId, Point2, SolveError,
+    is_valid_name, Component, ConstraintInst, CurveParam, Document, DragSession, GeometryId,
+    InteractiveSolve, NameError, ObjectId, Point2, SolveError, Vector,
 };
 
 use crate::catalog::{ConstraintSpec, GeometrySpec};
 use crate::command::{
-    Command, CommandError, Conflict, DeclCommand, ExportError, HistoryError, Outcome,
+    Adjusted, Command, CommandError, Conflict, DeclCommand, ExportError, HistoryError, LoadReport,
+    Outcome,
 };
+
+/// Curve positions `k / DISPLACEMENT_SAMPLES` at which the displacement of an
+/// adjusted component is measured (both ends included).
+const DISPLACEMENT_SAMPLES: u32 = 32;
 use crate::kinds::Resolver;
+
+/// How a command runs: interactively (frozen check and eager solve), or while
+/// loading a file, where the session start judges the final values instead.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Mode {
+    Interactive,
+    Load,
+}
 
 /// A drawing being edited: the only mutation path for front-ends.
 pub struct Session {
@@ -41,6 +54,11 @@ impl Session {
     /// whose constraints are not met gets one solve; the ones that still
     /// fail stay frozen with their values.
     pub fn new(doc: Document) -> Self {
+        Self::start(doc).0
+    }
+
+    /// [`Session::new`], also reporting what the start-up solves changed.
+    pub(crate) fn start(doc: Document) -> (Self, LoadReport) {
         let mut s = Self {
             doc,
             interact: InteractiveSolve::new(),
@@ -49,16 +67,29 @@ impl Session {
             undo: Vec::new(),
             redo: Vec::new(),
         };
+        let mut report = LoadReport::default();
         for c in s.doc.components() {
-            if !s.doc.is_consistent(&c) {
-                let _ = s.interact.structural_scoped(&mut s.doc, &c);
+            if s.doc.is_consistent(&c) {
+                continue;
+            }
+            let before = s.doc.clone_vector();
+            if s.interact.structural_scoped(&mut s.doc, &c).is_ok() {
+                report.adjusted.push(Adjusted {
+                    geometries: s.names(&c.geometries),
+                    displacement: displacement(&s.doc, &c, &before),
+                });
             }
         }
-        s
+        report.conflicts = s.conflicts();
+        (s, report)
     }
 
     pub fn document(&self) -> &Document {
         &self.doc
+    }
+
+    pub(crate) fn into_document(self) -> Document {
+        self.doc
     }
 
     /// The conflicted (frozen) components, in order of their first geometry.
@@ -69,11 +100,7 @@ impl Session {
             .into_iter()
             .filter(|c| !doc.is_consistent(c))
             .map(|c| Conflict {
-                geometries: c
-                    .geometries
-                    .iter()
-                    .map(|&g| name(ObjectId::Geometry(g)))
-                    .collect(),
+                geometries: self.names(&c.geometries),
                 constraints: c
                     .constraints
                     .iter()
@@ -113,7 +140,7 @@ impl Session {
             return Err(CommandError::Busy);
         }
         let snapshot = self.doc.clone();
-        match self.execute(cmd) {
+        match self.execute(cmd, Mode::Interactive) {
             Ok(outcome) => {
                 self.undo.push(snapshot);
                 self.redo.clear();
@@ -203,7 +230,7 @@ impl Session {
         }
     }
 
-    fn execute(&mut self, cmd: Command) -> Result<Outcome, CommandError> {
+    pub(crate) fn execute(&mut self, cmd: Command, mode: Mode) -> Result<Outcome, CommandError> {
         match cmd {
             Command::Create {
                 name,
@@ -217,7 +244,7 @@ impl Session {
             }
             Command::Constrain { name, constraint } => {
                 let c = constraint.build(&Resolver::new(&self.doc))?;
-                self.constrain(c, name)
+                self.constrain(c, name, mode)
             }
             Command::Delete { name } => {
                 let id = self.object(&name)?;
@@ -257,14 +284,20 @@ impl Session {
     }
 
     /// New constraint, then the eager structural solve of the component it
-    /// ends up in (its operands' components merged).
+    /// ends up in (its operands' components merged). Loading skips both the
+    /// frozen check and the solve.
     fn constrain(
         &mut self,
         c: ConstraintInst,
         name: Option<String>,
+        mode: Mode,
     ) -> Result<Outcome, CommandError> {
         self.check_new_name(name.as_deref())?;
         let geometries = c.referenced_geometries();
+        if mode == Mode::Load {
+            let id = self.doc.add_constraint(c);
+            return self.created(ObjectId::Constraint(id), name);
+        }
         for &g in &geometries {
             self.check_not_frozen(g)?;
         }
@@ -316,6 +349,16 @@ impl Session {
         }
     }
 
+    fn names(&self, geometries: &[GeometryId]) -> Vec<String> {
+        geometries
+            .iter()
+            .map(|&g| {
+                let name = self.doc.geometry_name(g).expect("geometries are named");
+                name.to_owned()
+            })
+            .collect()
+    }
+
     fn check_new_name(&self, name: Option<&str>) -> Result<(), CommandError> {
         match name {
             Some(n) if !is_valid_name(n) => Err(NameError::Invalid.into()),
@@ -341,6 +384,23 @@ impl Session {
             .lookup(name)
             .ok_or_else(|| CommandError::UnknownName(name.to_owned()))
     }
+}
+
+/// Largest distance a curve point of `c` moved from `before` to the committed
+/// values, compared at the same curve position (sampled).
+fn displacement(doc: &Document, c: &Component, before: &Vector) -> f64 {
+    let mut max: f64 = 0.0;
+    for &g in &c.geometries {
+        for k in 0..=DISPLACEMENT_SAMPLES {
+            let t = f64::from(k) / f64::from(DISPLACEMENT_SAMPLES);
+            let Some(p) = doc.on_curve_expr(g, CurveParam::Normalized(t)) else {
+                break;
+            };
+            let moved = p.evaluate(doc, doc.vector()) - p.evaluate(doc, before);
+            max = max.max(moved.length());
+        }
+    }
+    max
 }
 
 #[cfg(test)]

@@ -1,5 +1,5 @@
 use super::*;
-use crate::command::{DeclCommand, ExportError, Family, HistoryError};
+use crate::command::{DeclCommand, ExportError, Family, HistoryError, LoadReport};
 use crate::kinds::{ArcParams, FixParams, LenPair, PointPair, SegmentParams, VecPair};
 use constraint_runtime::{Address, AddressError, GeometryRole, Point2, Vec2};
 
@@ -897,4 +897,46 @@ fn consistent_drawing_lists_no_conflicts() {
     s.apply(parallel("seg1.direction", "seg2.direction"))
         .unwrap();
     assert!(s.conflicts().is_empty());
+}
+
+// --- Session start report ---
+
+#[test]
+fn drawing_within_tolerance_reports_nothing() {
+    let mut doc = Document::new();
+    segment_in(&mut doc, (0.0, 0.0), (1.0, 0.0));
+    let start = point_in(&doc, "seg1.start");
+    doc.add_constraint(constraint_runtime::FixPoint {
+        point: start,
+        target: Point2::new(0.0, 0.0),
+    });
+    let (_, report) = Session::start(doc);
+    assert_eq!(report, LoadReport::default());
+}
+
+#[test]
+fn moved_end_of_a_segment() {
+    let mut doc = Document::new();
+    segment_in(&mut doc, (0.0, 0.0), (1.0, 0.0));
+    let end = point_in(&doc, "seg1.end");
+    doc.add_constraint(constraint_runtime::FixPoint {
+        point: end,
+        target: Point2::new(1.0, 0.1),
+    });
+    let (s, report) = Session::start(doc);
+    assert!(report.conflicts.is_empty());
+    assert_eq!(report.adjusted.len(), 1);
+    assert_eq!(report.adjusted[0].geometries, ["seg1"]);
+    assert!((report.adjusted[0].displacement - 0.1).abs() < 1e-6);
+    let doc = s.document();
+    let start = point_in(doc, "seg1.start").evaluate(doc, doc.vector());
+    assert_eq!(start, Point2::new(0.0, 0.0));
+}
+
+#[test]
+fn contradicting_component_is_reported_as_conflict_not_adjusted() {
+    let (s, report) = Session::start(conflicted_document());
+    assert!(report.adjusted.is_empty());
+    assert_eq!(report.conflicts, s.conflicts());
+    assert_eq!(report.conflicts[0].geometries, ["seg1", "seg2"]);
 }
