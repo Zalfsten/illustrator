@@ -1,48 +1,75 @@
 use super::*;
-use crate::command::HistoryError;
-use constraint_runtime::{AddressError, Point2, Vec2};
+use crate::command::{DeclCommand, ExportError, Family, HistoryError};
+use crate::kinds::{ArcParams, FixParams, LenPair, PointPair, SegmentParams, VecPair};
+use constraint_runtime::{Address, AddressError, GeometryRole, Point2, Vec2};
 
 fn segment(start: (f64, f64), end: (f64, f64)) -> Command {
-    Command::CreateSegment {
-        start: Point2::new(start.0, start.1),
-        end: Point2::new(end.0, end.1),
-        role: GeometryRole::Result,
+    Command::Create {
         name: None,
+        role: GeometryRole::Result,
+        geometry: GeometrySpec::Segment(SegmentParams {
+            start: Point2::new(start.0, start.1),
+            end: Point2::new(end.0, end.1),
+        }),
+    }
+}
+
+fn constrain(constraint: ConstraintSpec) -> Command {
+    Command::Constrain {
+        name: None,
+        constraint,
+    }
+}
+
+fn vec_pair(a: &str, b: &str) -> VecPair {
+    VecPair {
+        a: a.into(),
+        b: b.into(),
     }
 }
 
 fn parallel(a: &str, b: &str) -> Command {
-    Command::Parallel {
-        a: a.into(),
-        b: b.into(),
-        name: None,
-    }
+    constrain(ConstraintSpec::VectorsParallel(vec_pair(a, b)))
 }
 
 fn perpendicular(a: &str, b: &str) -> Command {
-    Command::Perpendicular {
-        a: a.into(),
-        b: b.into(),
-        name: None,
-    }
+    constrain(ConstraintSpec::VectorsOrthogonal(vec_pair(a, b)))
 }
 
 fn join(a: &str, b: &str) -> Command {
-    Command::Join {
+    constrain(ConstraintSpec::Congruence(PointPair {
         a: a.into(),
         b: b.into(),
-        name: None,
+    }))
+}
+
+fn fix(point: &str, target: (f64, f64), name: Option<&str>) -> Command {
+    Command::Constrain {
+        name: name.map(Into::into),
+        constraint: ConstraintSpec::FixPoint(FixParams {
+            point: point.into(),
+            target: Point2::new(target.0, target.1),
+        }),
     }
 }
 
+fn equal_length(a: &str, b: &str) -> Command {
+    constrain(ConstraintSpec::EqualLength(LenPair {
+        a: a.into(),
+        b: b.into(),
+    }))
+}
+
 fn arc(name: Option<&str>) -> Command {
-    Command::CreateArc {
-        center: Point2::new(0.0, 0.0),
-        radius: 1.0,
-        start_heading: 0.0,
-        sweep: 1.0,
-        role: GeometryRole::Result,
+    Command::Create {
         name: name.map(Into::into),
+        role: GeometryRole::Result,
+        geometry: GeometrySpec::Arc(ArcParams {
+            center: Point2::new(0.0, 0.0),
+            radius: 1.0,
+            start_heading: 0.0,
+            sweep: 1.0,
+        }),
     }
 }
 
@@ -172,7 +199,7 @@ fn failed_create_with_a_taken_name_changes_nothing() {
     let mut s = two_segments();
     let before = content(&s);
     let mut cmd = segment((5.0, 5.0), (6.0, 5.0));
-    if let Command::CreateSegment { name, .. } = &mut cmd {
+    if let Command::Create { name, .. } = &mut cmd {
         *name = Some("seg1".into());
     }
     assert_eq!(s.apply(cmd), Err(CommandError::Name(NameError::Taken)));
@@ -197,19 +224,9 @@ fn invalid_name_on_create_is_rejected() {
 fn contradicting_constraint_is_rolled_back() {
     let mut s = two_segments();
     for (point, x) in [("seg1.start", 0.0), ("seg1.end", 1.0)] {
-        s.apply(Command::Fix {
-            point: point.into(),
-            target: Point2::new(x, 0.0),
-            name: None,
-        })
-        .unwrap();
+        s.apply(fix(point, (x, 0.0), None)).unwrap();
     }
-    s.apply(Command::EqualLength {
-        a: "seg1.length".into(),
-        b: "seg2.length".into(),
-        name: None,
-    })
-    .unwrap();
+    s.apply(equal_length("seg1.length", "seg2.length")).unwrap();
     s.apply(parallel("seg1.direction", "seg2.direction"))
         .unwrap();
     let before = content(&s);
@@ -268,19 +285,9 @@ fn set_role_on_a_constraint_is_the_wrong_object_type() {
 #[test]
 fn fix_and_equal_length() {
     let mut s = two_segments();
-    s.apply(Command::Fix {
-        point: "seg1.start".into(),
-        target: Point2::new(0.5, 0.5),
-        name: Some("anchor".into()),
-    })
-    .unwrap();
-    let out = s
-        .apply(Command::EqualLength {
-            a: "seg1.length".into(),
-            b: "seg2.length".into(),
-            name: None,
-        })
+    s.apply(fix("seg1.start", (0.5, 0.5), Some("anchor")))
         .unwrap();
+    let out = s.apply(equal_length("seg1.length", "seg2.length")).unwrap();
     assert_eq!(out.created.as_deref(), Some("eqlen1"));
     let doc = s.document();
     let len = |a: &str| match doc.resolve_address(a).unwrap() {
@@ -467,4 +474,191 @@ fn coincident_unjoined_endpoints_can_be_joined() {
         panic!("point address");
     };
     assert!(doc.point_class(&a).contains(&b));
+}
+
+// --- Drawing as declarative command list ---
+
+fn named(cmd: Command, n: &str) -> Command {
+    match cmd {
+        Command::Create { role, geometry, .. } => Command::Create {
+            name: Some(n.into()),
+            role,
+            geometry,
+        },
+        Command::Constrain { constraint, .. } => Command::Constrain {
+            name: Some(n.into()),
+            constraint,
+        },
+        other => other,
+    }
+}
+
+fn construction(cmd: Command) -> Command {
+    match cmd {
+        Command::Create { name, geometry, .. } => Command::Create {
+            name,
+            role: GeometryRole::Construction,
+            geometry,
+        },
+        other => other,
+    }
+}
+
+/// `seg1`, construction `x_axis`, arc `fillet`, `join1`, `par1`.
+fn export_scene() -> Session {
+    let mut s = Session::new(Document::new());
+    s.apply(segment((0.0, 0.0), (1.0, 0.0))).unwrap();
+    s.apply(named(
+        construction(segment((0.0, -1.0), (3.0, -1.0))),
+        "x_axis",
+    ))
+    .unwrap();
+    s.apply(Command::Create {
+        name: Some("fillet".into()),
+        role: GeometryRole::Result,
+        geometry: GeometrySpec::Arc(ArcParams {
+            center: Point2::new(1.0, 1.0),
+            radius: 1.0,
+            start_heading: -std::f64::consts::FRAC_PI_2,
+            sweep: std::f64::consts::FRAC_PI_2,
+        }),
+    })
+    .unwrap();
+    s.apply(join("seg1.end", "fillet.start")).unwrap();
+    s.apply(parallel("seg1.direction", "x_axis.direction"))
+        .unwrap();
+    s
+}
+
+/// Equal up to numbers, which may differ by `tol`.
+fn close(a: &serde_json::Value, b: &serde_json::Value, tol: f64) -> bool {
+    use serde_json::Value::*;
+    match (a, b) {
+        (Number(x), Number(y)) => (x.as_f64().unwrap() - y.as_f64().unwrap()).abs() <= tol,
+        (Array(x), Array(y)) => {
+            x.len() == y.len() && x.iter().zip(y).all(|(x, y)| close(x, y, tol))
+        }
+        (Object(x), Object(y)) => {
+            x.len() == y.len()
+                && x.iter()
+                    .all(|(k, v)| y.get(k).is_some_and(|w| close(v, w, tol)))
+        }
+        _ => a == b,
+    }
+}
+
+fn list_value(list: &[DeclCommand]) -> serde_json::Value {
+    serde_json::from_str(&DeclCommand::list_to_json(list).unwrap()).unwrap()
+}
+
+/// Execute `list` in a new session and export again.
+fn replay(list: &[DeclCommand]) -> Vec<DeclCommand> {
+    let mut t = Session::new(Document::new());
+    for c in list {
+        t.apply(c.clone().into()).unwrap();
+    }
+    t.declarative_commands().unwrap()
+}
+
+#[test]
+fn export_lists_geometries_then_constraints_in_creation_order() {
+    let list = export_scene().declarative_commands().unwrap();
+    let head: Vec<(&str, &str, Option<GeometryRole>)> = list
+        .iter()
+        .map(|c| match c {
+            DeclCommand::Create {
+                name,
+                role,
+                geometry,
+            } => (name.as_str(), geometry.tag(), Some(*role)),
+            DeclCommand::Constrain { name, constraint } => (name.as_str(), constraint.tag(), None),
+        })
+        .collect();
+    assert_eq!(
+        head,
+        [
+            ("seg1", "segment", Some(GeometryRole::Result)),
+            ("x_axis", "segment", Some(GeometryRole::Construction)),
+            ("fillet", "arc", Some(GeometryRole::Result)),
+            ("join1", "join", None),
+            ("par1", "parallel", None),
+        ]
+    );
+    assert_eq!(
+        list[3],
+        DeclCommand::Constrain {
+            name: "join1".into(),
+            constraint: ConstraintSpec::Congruence(PointPair {
+                a: "seg1.end".into(),
+                b: "fillet.start".into()
+            })
+        }
+    );
+    assert_eq!(
+        list[4],
+        DeclCommand::Constrain {
+            name: "par1".into(),
+            constraint: ConstraintSpec::VectorsParallel(vec_pair(
+                "seg1.direction",
+                "x_axis.direction"
+            ))
+        }
+    );
+}
+
+#[test]
+fn exported_list_re_executes_to_the_same_list() {
+    let list = export_scene().declarative_commands().unwrap();
+    let text = DeclCommand::list_to_json(&list).unwrap();
+    let again = replay(&DeclCommand::list_from_json(&text).unwrap());
+    assert!(
+        close(&list_value(&list), &list_value(&again), 1e-9),
+        "{text}\n{}",
+        DeclCommand::list_to_json(&again).unwrap()
+    );
+}
+
+#[test]
+fn export_after_rename_and_delete() {
+    let mut s = two_segments();
+    s.apply(segment((3.0, 1.0), (4.0, 1.0))).unwrap();
+    s.apply(join("seg2.end", "seg3.start")).unwrap();
+    s.apply(Command::Rename {
+        name: "seg2".into(),
+        new_name: "base".into(),
+    })
+    .unwrap();
+    s.apply(Command::Delete {
+        name: "seg3".into(),
+    })
+    .unwrap();
+    let names: Vec<String> = s
+        .declarative_commands()
+        .unwrap()
+        .into_iter()
+        .map(|c| match c {
+            DeclCommand::Create { name, .. } | DeclCommand::Constrain { name, .. } => name,
+        })
+        .collect();
+    assert_eq!(names, ["seg1", "base"]);
+}
+
+#[test]
+fn constraint_without_address_cannot_be_exported() {
+    use constraint_runtime::{CurveParam, FixPoint, Segment};
+    let mut doc = Document::new();
+    let id = doc.add_geometry::<Segment>(
+        GeometryRole::Result,
+        (Point2::new(0.0, 0.0), Point2::new(1.0, 0.0)),
+    );
+    doc.add_constraint(FixPoint {
+        point: doc.on_curve_expr(id, CurveParam::Uniform(0.5)).unwrap(),
+        target: Point2::new(0.5, 0.0),
+    });
+    assert_eq!(
+        Session::new(doc).declarative_commands(),
+        Err(ExportError::NotAddressable {
+            constraint: "fix1".into()
+        })
+    );
 }

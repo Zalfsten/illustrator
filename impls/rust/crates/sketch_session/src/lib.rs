@@ -5,8 +5,18 @@
 //! atomic, keep the drawing structurally consistent, and form one undo/redo
 //! history together with drags.
 
+pub mod catalog;
 pub mod command;
+pub mod json;
+pub mod kinds;
+pub mod schema;
 pub mod session;
+pub mod wire;
 
-pub use command::{Command, CommandError, Family, HistoryError, Outcome};
+pub use catalog::{ConstraintSpec, GeometrySpec};
+pub use command::{Command, CommandError, DeclCommand, ExportError, Family, HistoryError, Outcome};
+pub use json::{ReadError, WriteError};
+pub use kinds::{ArcParams, FixParams, LenPair, PointPair, SegmentParams, VecPair};
+pub use schema::{command_schema, declarative_schema};
 pub use session::Session;
+pub use wire::{LenAddr, PointAddr, Role, VecAddr};

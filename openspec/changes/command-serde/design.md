@@ -37,13 +37,12 @@ pub trait GeometryCommand: Geometry {
 pub trait ConstraintCommand: ConstraintKind + Into<ConstraintInst> + Sized {
     const TAG: &'static str;                       // "parallel"
     type Params: Clone + Debug + PartialEq + Serialize + DeserializeOwned + JsonSchema;
-    fn resolve(p: &Self::Params, r: &Resolver<'_>) -> Result<Self, CommandError>;
-    fn check(&self, doc: &Document) -> Result<(), CommandError> { Ok(()) }
-    fn params(&self, doc: &Document) -> Result<Self::Params, ExportError>;
+    fn resolve(p: &Self::Params, r: &Resolver<'_>) -> Result<Self, CommandError>;  // incl. kind checks
+    fn params(&self, doc: &Document) -> Option<Self::Params>;    // None: operand without address
 }
 ```
 
-Implemented in `sketch_session/src/kinds/<kind>.rs` (`kinds.rs` declares the submodules) for `Segment`, `Arc`, `Congruence`, `VectorsParallel`, `VectorsOrthogonal`, `FixPoint`, `EqualLength`. A local trait on a foreign type satisfies the orphan rule. `Congruence::check` holds the `AlreadyJoined` test that is in the `Join` arm today. `Resolver` wraps `&Document` and holds the existing `point` / `vector` / `length` helpers (address → expression, wrong-family error), moved out of `Session`.
+Implemented in `sketch_session/src/kinds/<kind>.rs` (`kinds.rs` declares the submodules) for `Segment`, `Arc`, `Congruence`, `VectorsParallel`, `VectorsOrthogonal`, `FixPoint`, `EqualLength`. A local trait on a foreign type satisfies the orphan rule. `Congruence::resolve` holds the `AlreadyJoined` test that is in the `Join` arm today. A separate `check` hook was dropped during implementation: only this kind needs one, and its error needs the address strings that `resolve` already has. `params` returns `Option`; the catalog turns `None` into `ExportError::NotAddressable` with the constraint's name. `Resolver` wraps `&Document` and holds the existing `point` / `vector` / `length` helpers (address → expression, wrong-family error), moved out of `Session`.
 
 `TAG` and `NAME_PREFIX` are separate constants on purpose (`parallel` vs `par`).
 
@@ -60,7 +59,7 @@ command_catalog! {
 
 generates
 - `GeometrySpec { Segment(<Segment as GeometryCommand>::Params), Arc(..) }` and `ConstraintSpec { Congruence(..), … }`, with `tag()`;
-- `fn create(doc, role, &GeometrySpec) -> Result<GeometryId, CommandError>` (`K::init` then `doc.add_geometry::<K>`) and `fn build(&ConstraintSpec, &Resolver) -> Result<ConstraintInst, CommandError>` (`K::resolve` then `check`);
+- `fn create(doc, role, &GeometrySpec) -> Result<GeometryId, CommandError>` (`K::init` then `doc.add_geometry::<K>`) and `fn build(&ConstraintSpec, &Resolver) -> Result<ConstraintInst, CommandError>` (`K::resolve`);
 - the reverse: `match GeometryKind::$k` / `match ConstraintInst::$k(c)` to `GeometrySpec` / `ConstraintSpec`. A core kind missing from the command catalog makes this match non-exhaustive, so the compiler catches it;
 - serde and `JsonSchema` impls of D4 and D6.
 
@@ -102,7 +101,7 @@ The buffer goes through `serde_json::Value`, so the impls are tied to JSON. That
 - `wire::point` (`#[serde(with = …)]`): `Point2` ↔ `[x, y]`; exactly two numbers; schema is an array with `minItems = maxItems = 2`.
 - `wire::finite` for plain `f64` fields and inside `wire::point`: serializing a non-finite value returns an error, so a NaN can never be written as `null`. serde_json's own default would write it as `null`, which then fails to read back. Reading a number out of range (`1e999`) already fails in serde_json; a test pins that behaviour.
 - `PointAddr`, `VecAddr`, `LenAddr`: `#[serde(transparent)]` string newtypes whose schemas carry a description and example per family. `Resolver::point(&PointAddr)` etc. resolve them. The family check stays at execution, because the family of an address depends on the drawing.
-- Range checks (arc `radius >= 0`) and finiteness checks for values built in Rust (the GUI builds commands directly) are done in `GeometryCommand::init` / `ConstraintCommand::resolve` and report `CommandError::InvalidValue { field, reason }` with `reason` ∈ {`NonFinite`, `OutOfRange`}. Schemas state the same range (`minimum: 0`).
+- Range checks (arc `radius >= 0`) and finiteness checks for values built in Rust (the GUI builds commands directly) are done in `GeometryCommand::init` / `ConstraintCommand::resolve` and report `CommandError::InvalidValue { field, reason }` (`reason` a short text such as "not a finite number" or "negative"; the structured form comes with #33). Schemas state the same range (`minimum: 0`).
 
 ### D6 Schemas by schemars 1.x, composed by the catalog, checked in
 

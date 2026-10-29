@@ -1,0 +1,338 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "One command of a drawing session.",
+  "oneOf": [
+    {
+      "additionalProperties": false,
+      "properties": {
+        "end": {
+          "description": "Point [x, y].",
+          "items": {
+            "type": "number"
+          },
+          "maxItems": 2,
+          "minItems": 2,
+          "type": "array"
+        },
+        "kind": {
+          "const": "segment"
+        },
+        "name": {
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+          "type": "string"
+        },
+        "op": {
+          "const": "create"
+        },
+        "role": {
+          "description": "Geometry role: `\"result\"` or `\"construction\"`.",
+          "enum": [
+            "result",
+            "construction"
+          ],
+          "type": "string"
+        },
+        "start": {
+          "description": "Point [x, y].",
+          "items": {
+            "type": "number"
+          },
+          "maxItems": 2,
+          "minItems": 2,
+          "type": "array"
+        }
+      },
+      "required": [
+        "op",
+        "kind",
+        "start",
+        "end"
+      ],
+      "title": "create segment",
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "center": {
+          "description": "Point [x, y].",
+          "items": {
+            "type": "number"
+          },
+          "maxItems": 2,
+          "minItems": 2,
+          "type": "array"
+        },
+        "kind": {
+          "const": "arc"
+        },
+        "name": {
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+          "type": "string"
+        },
+        "op": {
+          "const": "create"
+        },
+        "radius": {
+          "description": "Radius, zero or positive.",
+          "format": "double",
+          "minimum": 0,
+          "type": "number"
+        },
+        "role": {
+          "description": "Geometry role: `\"result\"` or `\"construction\"`.",
+          "enum": [
+            "result",
+            "construction"
+          ],
+          "type": "string"
+        },
+        "start_heading": {
+          "description": "Heading of the start point from the center, radians from +x.",
+          "format": "double",
+          "type": "number"
+        },
+        "sweep": {
+          "description": "Turn from start to end, radians, counterclockwise positive.",
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "op",
+        "kind",
+        "center",
+        "radius",
+        "start_heading",
+        "sweep"
+      ],
+      "title": "create arc",
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "a": {
+          "description": "Address of a point, e.g. seg1.end or arc1.center.",
+          "type": "string"
+        },
+        "b": {
+          "description": "Address of a point, e.g. seg1.end or arc1.center.",
+          "type": "string"
+        },
+        "kind": {
+          "const": "join"
+        },
+        "name": {
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+          "type": "string"
+        },
+        "op": {
+          "const": "constrain"
+        }
+      },
+      "required": [
+        "op",
+        "kind",
+        "a",
+        "b"
+      ],
+      "title": "constrain join",
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "a": {
+          "description": "Address of a free vector, e.g. seg1.direction or arc1.tangent(0.5).",
+          "type": "string"
+        },
+        "b": {
+          "description": "Address of a free vector, e.g. seg1.direction or arc1.tangent(0.5).",
+          "type": "string"
+        },
+        "kind": {
+          "const": "parallel"
+        },
+        "name": {
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+          "type": "string"
+        },
+        "op": {
+          "const": "constrain"
+        }
+      },
+      "required": [
+        "op",
+        "kind",
+        "a",
+        "b"
+      ],
+      "title": "constrain parallel",
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "a": {
+          "description": "Address of a free vector, e.g. seg1.direction or arc1.tangent(0.5).",
+          "type": "string"
+        },
+        "b": {
+          "description": "Address of a free vector, e.g. seg1.direction or arc1.tangent(0.5).",
+          "type": "string"
+        },
+        "kind": {
+          "const": "perpendicular"
+        },
+        "name": {
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+          "type": "string"
+        },
+        "op": {
+          "const": "constrain"
+        }
+      },
+      "required": [
+        "op",
+        "kind",
+        "a",
+        "b"
+      ],
+      "title": "constrain perpendicular",
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "fix"
+        },
+        "name": {
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+          "type": "string"
+        },
+        "op": {
+          "const": "constrain"
+        },
+        "point": {
+          "description": "Address of a point, e.g. seg1.end or arc1.center.",
+          "type": "string"
+        },
+        "target": {
+          "description": "Point [x, y].",
+          "items": {
+            "type": "number"
+          },
+          "maxItems": 2,
+          "minItems": 2,
+          "type": "array"
+        }
+      },
+      "required": [
+        "op",
+        "kind",
+        "point",
+        "target"
+      ],
+      "title": "constrain fix",
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "a": {
+          "description": "Address of a length, e.g. seg1.length or arc1.radius.",
+          "type": "string"
+        },
+        "b": {
+          "description": "Address of a length, e.g. seg1.length or arc1.radius.",
+          "type": "string"
+        },
+        "kind": {
+          "const": "equal_length"
+        },
+        "name": {
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+          "type": "string"
+        },
+        "op": {
+          "const": "constrain"
+        }
+      },
+      "required": [
+        "op",
+        "kind",
+        "a",
+        "b"
+      ],
+      "title": "constrain equal_length",
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "op": {
+          "const": "delete"
+        }
+      },
+      "required": [
+        "op",
+        "name"
+      ],
+      "title": "delete",
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "new_name": {
+          "type": "string"
+        },
+        "op": {
+          "const": "rename"
+        }
+      },
+      "required": [
+        "op",
+        "name",
+        "new_name"
+      ],
+      "title": "rename",
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "op": {
+          "const": "set_role"
+        },
+        "role": {
+          "description": "Geometry role: `\"result\"` or `\"construction\"`.",
+          "enum": [
+            "result",
+            "construction"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "op",
+        "name",
+        "role"
+      ],
+      "title": "set_role",
+      "type": "object"
+    }
+  ],
+  "title": "Command"
+}
