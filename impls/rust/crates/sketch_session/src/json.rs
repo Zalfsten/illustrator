@@ -58,11 +58,11 @@ struct WithOp<F> {
 
 /// Interchange text could not be read as a command.
 #[derive(Debug)]
-pub struct ReadError(serde_json::Error);
+pub struct ReadError(pub(crate) serde_json::Error);
 
 /// A command could not be written (e.g. a non-finite number).
 #[derive(Debug)]
-pub struct WriteError(serde_json::Error);
+pub struct WriteError(pub(crate) serde_json::Error);
 
 impl fmt::Display for ReadError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
