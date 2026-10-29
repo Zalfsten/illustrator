@@ -162,3 +162,46 @@ fn blocked_jacobian_matches_fd_for_all_contribution_kinds() {
         assert_jacobian_matches_fd(&sys, &p);
     }
 }
+
+#[test]
+fn scoped_system_has_only_the_scoped_rows() {
+    let mut doc = Document::new();
+    let s0 = doc.add_geometry::<Segment>(GeometryRole::Result, (Point2::new(0.0, 0.0), Point2::new(1.0, 0.0)));
+    let s1 = doc.add_geometry::<Segment>(GeometryRole::Result, (Point2::new(3.0, 0.0), Point2::new(4.0, 1.0)));
+    let join = doc.add_constraint(Congruence {
+        a: Segment::end_expr(s0),
+        b: Segment::start_expr(s0),
+    });
+    let fix = doc.add_constraint(FixPoint {
+        point: Segment::start_expr(s1),
+        target: Point2::new(3.0, 0.5),
+    });
+    let soft = [SoftContribution {
+        index: 0,
+        target: 0.0,
+        weight: 1.0,
+    }];
+    let scope = [fix];
+    let sys = AssembledSystem::new(&doc, &soft).scoped(&scope);
+    assert_eq!(sys.n_residuals(), 2 + 1);
+    assert_eq!(sys.new_jacobian().nrows(), 3);
+
+    let p = doc.vector().clone();
+    let mut r = Vector::zeros(3);
+    sys.residual(&p, &mut r);
+    assert_eq!(&r[..2], &[0.0, -0.5]);
+
+    let all = [join, fix];
+    let both = AssembledSystem::new(&doc, &soft).scoped(&all);
+    assert_eq!(
+        both.n_residuals(),
+        AssembledSystem::new(&doc, &soft).n_residuals()
+    );
+    let none: [ConstraintId; 0] = [];
+    assert_eq!(
+        AssembledSystem::new(&doc, &soft)
+            .scoped(&none)
+            .n_residuals(),
+        1
+    );
+}

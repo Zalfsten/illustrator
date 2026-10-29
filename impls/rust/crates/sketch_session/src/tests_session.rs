@@ -662,3 +662,239 @@ fn constraint_without_address_cannot_be_exported() {
         })
     );
 }
+
+// --- Conflicted components ---
+
+fn segment_in(doc: &mut Document, a: (f64, f64), b: (f64, f64)) {
+    doc.add_geometry::<constraint_runtime::Segment>(
+        GeometryRole::Result,
+        (Point2::new(a.0, a.1), Point2::new(b.0, b.1)),
+    );
+}
+
+fn point_in(doc: &Document, address: &str) -> constraint_runtime::PointExpr {
+    match doc.resolve_address(address).unwrap() {
+        Address::Point(e) => e,
+        other => panic!("{address}: {other:?}"),
+    }
+}
+
+/// A drawing no command could produce: `seg1` and `seg2` joined (`join1`) with
+/// `seg1.start` fixed to two targets (`fix1` met, `fix2` not), so that
+/// component is conflicted; `seg3` and `seg4` are free.
+fn conflicted_document() -> Document {
+    let mut doc = Document::new();
+    segment_in(&mut doc, (0.0, 0.0), (1.0, 0.0));
+    segment_in(&mut doc, (1.0, 0.0), (1.0, 1.0));
+    segment_in(&mut doc, (5.0, 0.0), (6.0, 0.0));
+    segment_in(&mut doc, (5.0, 2.0), (7.0, 3.0));
+    let start = point_in(&doc, "seg1.start");
+    doc.add_constraint(constraint_runtime::FixPoint {
+        point: start,
+        target: Point2::new(0.0, 0.0),
+    });
+    doc.add_constraint(constraint_runtime::FixPoint {
+        point: start,
+        target: Point2::new(0.0, 1.0),
+    });
+    doc.add_constraint(constraint_runtime::Congruence {
+        a: point_in(&doc, "seg1.end"),
+        b: point_in(&doc, "seg2.start"),
+    });
+    doc
+}
+
+/// Values of the geometries named `names`, as bits.
+fn values_of(s: &Session, names: &[&str]) -> Vec<u64> {
+    let doc = s.document();
+    names
+        .iter()
+        .flat_map(|n| {
+            let Some(ObjectId::Geometry(g)) = doc.lookup(n) else {
+                panic!("{n} is not a geometry");
+            };
+            doc.vector()[doc.expect_geometry(g).param_block()]
+                .iter()
+                .map(|v| v.to_bits())
+                .collect::<Vec<_>>()
+        })
+        .collect()
+}
+
+fn frozen(name: &str) -> CommandError {
+    CommandError::Frozen { name: name.into() }
+}
+
+#[test]
+fn conflicted_document_stays_frozen_at_start() {
+    let doc = conflicted_document();
+    let before = doc.vector().clone();
+    let s = Session::new(doc);
+    assert_eq!(s.document().vector().as_slice(), before.as_slice());
+    assert_eq!(s.conflicts().len(), 1);
+    assert!(!s.can_undo());
+}
+
+#[test]
+fn constraint_inside_a_frozen_component_is_rejected() {
+    let mut s = Session::new(conflicted_document());
+    let before = content(&s);
+    let e = s
+        .apply(parallel("seg1.direction", "seg2.direction"))
+        .unwrap_err();
+    assert_eq!(e, frozen("seg1"));
+    assert_eq!(content(&s), before);
+    assert!(!s.can_undo());
+}
+
+#[test]
+fn joining_to_a_frozen_component_is_rejected() {
+    let mut s = Session::new(conflicted_document());
+    let before = content(&s);
+    let e = s.apply(join("seg3.start", "seg1.end")).unwrap_err();
+    assert_eq!(e, frozen("seg1"));
+    assert_eq!(content(&s), before);
+}
+
+#[test]
+fn contradiction_elsewhere_does_not_block_commands() {
+    let mut s = Session::new(conflicted_document());
+    let frozen_values = values_of(&s, &["seg1", "seg2"]);
+    s.apply(parallel("seg3.direction", "seg4.direction"))
+        .unwrap();
+    let (a, b) = (vec_at(&s, "seg3.direction"), vec_at(&s, "seg4.direction"));
+    assert!((a.x * b.y - a.y * b.x).abs() < 1e-6);
+    assert_eq!(values_of(&s, &["seg1", "seg2"]), frozen_values);
+    assert_eq!(s.conflicts().len(), 1);
+}
+
+#[test]
+fn new_contradiction_next_to_a_frozen_component_is_unsatisfiable() {
+    let mut s = Session::new(conflicted_document());
+    s.apply(fix("seg3.start", (5.0, 0.0), None)).unwrap();
+    let before = content(&s);
+    let e = s.apply(fix("seg3.start", (9.0, 9.0), None)).unwrap_err();
+    assert!(matches!(e, CommandError::Unsatisfiable { .. }), "{e:?}");
+    assert_eq!(content(&s), before);
+}
+
+#[test]
+fn rename_inside_a_frozen_component_succeeds() {
+    let mut s = Session::new(conflicted_document());
+    let values = values_of(&s, &["seg1", "seg2"]);
+    s.apply(Command::Rename {
+        name: "seg1".into(),
+        new_name: "base".into(),
+    })
+    .unwrap();
+    assert_eq!(values_of(&s, &["base", "seg2"]), values);
+    assert_eq!(s.conflicts()[0].geometries, ["base", "seg2"]);
+}
+
+#[test]
+fn deleting_the_contradicting_constraint_unfreezes_the_component() {
+    let mut s = Session::new(conflicted_document());
+    s.apply(Command::Delete {
+        name: "fix2".into(),
+    })
+    .unwrap();
+    assert!(s.conflicts().is_empty());
+    s.apply(parallel("seg1.direction", "seg2.direction"))
+        .unwrap();
+}
+
+#[test]
+fn deleting_the_satisfied_fix_solves_the_component() {
+    let mut s = Session::new(conflicted_document());
+    s.apply(Command::Delete {
+        name: "fix1".into(),
+    })
+    .unwrap();
+    assert!(s.conflicts().is_empty());
+    let doc = s.document();
+    let p = point_in(doc, "seg1.start").evaluate(doc, doc.vector());
+    assert!((p - Point2::new(0.0, 1.0)).length() < 1e-6, "{p:?}");
+}
+
+#[test]
+fn deleting_an_unrelated_constraint_keeps_the_component_frozen() {
+    let mut s = Session::new(conflicted_document());
+    let values = values_of(&s, &["seg1", "seg2"]);
+    s.apply(Command::Delete {
+        name: "join1".into(),
+    })
+    .unwrap();
+    let conflicts = s.conflicts();
+    assert_eq!(conflicts.len(), 1);
+    assert_eq!(conflicts[0].geometries, ["seg1"]);
+    assert_eq!(values_of(&s, &["seg1", "seg2"]), values);
+}
+
+#[test]
+fn undo_restores_the_conflict() {
+    let mut s = Session::new(conflicted_document());
+    let before = content(&s);
+    s.apply(Command::Delete {
+        name: "fix1".into(),
+    })
+    .unwrap();
+    assert!(s.conflicts().is_empty());
+    s.undo().unwrap();
+    assert_eq!(content(&s), before);
+    assert_eq!(s.conflicts().len(), 1);
+}
+
+#[test]
+fn drag_cannot_start_on_a_frozen_point() {
+    let mut s = Session::new(conflicted_document());
+    let before = content(&s);
+    assert_eq!(s.drag_begin("seg2.end").unwrap_err(), frozen("seg2"));
+    assert!(!s.is_dragging());
+    assert_eq!(content(&s), before);
+    assert!(!s.can_undo());
+
+    let values = values_of(&s, &["seg1", "seg2"]);
+    drag(&mut s, "seg3.end", (6.0, 1.0));
+    assert!(s.can_undo());
+    assert_eq!(values_of(&s, &["seg1", "seg2"]), values);
+}
+
+#[test]
+fn solvable_and_contradicting_components_at_start() {
+    let mut doc = conflicted_document();
+    let end = point_in(&doc, "seg3.end");
+    doc.add_constraint(constraint_runtime::FixPoint {
+        point: end,
+        target: Point2::new(6.0, 2.0),
+    });
+    let frozen_values: Vec<u64> = doc.vector()[..8].iter().map(|v| v.to_bits()).collect();
+    let s = Session::new(doc);
+
+    let conflicts = s.conflicts();
+    assert_eq!(conflicts.len(), 1);
+    assert_eq!(conflicts[0].geometries, ["seg1", "seg2"]);
+    assert_eq!(values_of(&s, &["seg1", "seg2"]), frozen_values);
+    let doc = s.document();
+    let p = point_in(doc, "seg3.end").evaluate(doc, doc.vector());
+    assert!((p - Point2::new(6.0, 2.0)).length() < 1e-6, "{p:?}");
+    assert!(!s.can_undo());
+}
+
+#[test]
+fn one_conflicted_component_is_listed() {
+    let s = Session::new(conflicted_document());
+    let conflicts = s.conflicts();
+    assert_eq!(conflicts.len(), 1);
+    let c = &conflicts[0];
+    assert_eq!(c.geometries, ["seg1", "seg2"]);
+    assert_eq!(c.constraints, ["fix1", "fix2", "join1"]);
+    assert!(c.residual > constraint_runtime::COMMIT_TOL);
+}
+
+#[test]
+fn consistent_drawing_lists_no_conflicts() {
+    let mut s = two_segments();
+    s.apply(parallel("seg1.direction", "seg2.direction"))
+        .unwrap();
+    assert!(s.conflicts().is_empty());
+}

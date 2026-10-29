@@ -1,12 +1,13 @@
 //! FEM-style assembly of global residual and Jacobian from local contributions.
 
+use crate::constraint::{ConstraintEntry, ConstraintId};
+use crate::constraint_kinds::ConstraintInst;
 use crate::document::Document;
 use crate::expr::{LengthExpr, PointExpr};
 use crate::geom::Point2;
 use crate::matrix::BlockSparseMatrix;
 use crate::solver::SystemEval;
 use crate::vector::Vector;
-use crate::SOLVE_TOL;
 
 /// Soft residual on a single State slot: \(\sqrt{w}\,(p_i - t)\).
 ///
@@ -76,8 +77,12 @@ impl SoftLengthFloor {
 /// Jacobian block each. Parameter connectivity depends only on the document
 /// graph; it is gathered once into the block structure of
 /// [`SystemEval::new_jacobian`] (columns = State indices, no reduction).
+///
+/// With a scope ([`AssembledSystem::scoped`]) only the listed constraints
+/// contribute structural rows; columns stay global.
 pub struct AssembledSystem<'a> {
     pub doc: &'a Document,
+    pub scope: Option<&'a [ConstraintId]>,
     pub soft: &'a [SoftContribution],
     pub soft_points: &'a [SoftPointFollow],
     pub soft_lengths: &'a [SoftLengthFloor],
@@ -96,16 +101,22 @@ impl<'a> AssembledSystem<'a> {
         soft_lengths: &'a [SoftLengthFloor],
     ) -> Self {
         debug_assert_eq!(doc.vector().len(), doc.parameter_count());
-        let n_res = doc
-            .constraints()
-            .values()
-            .map(|c| c.body().residual_arity())
-            .sum::<usize>()
-            + soft.iter().map(SoftContribution::residual_arity).sum::<usize>()
-            + soft_points.iter().map(SoftPointFollow::residual_arity).sum::<usize>()
-            + soft_lengths.iter().map(SoftLengthFloor::residual_arity).sum::<usize>();
+        let n_res = Self::structural_rows(doc, None)
+            + soft
+                .iter()
+                .map(SoftContribution::residual_arity)
+                .sum::<usize>()
+            + soft_points
+                .iter()
+                .map(SoftPointFollow::residual_arity)
+                .sum::<usize>()
+            + soft_lengths
+                .iter()
+                .map(SoftLengthFloor::residual_arity)
+                .sum::<usize>();
         Self {
             doc,
+            scope: None,
             soft,
             soft_points,
             soft_lengths,
@@ -115,6 +126,56 @@ impl<'a> AssembledSystem<'a> {
 
     pub fn from_document(doc: &'a Document, soft: &'a [SoftContribution]) -> Self {
         Self::new(doc, soft)
+    }
+
+    /// Restrict the structural rows to `constraints` (in the given order).
+    pub fn scoped(mut self, constraints: &'a [ConstraintId]) -> Self {
+        self.n_res = self.n_res - Self::structural_rows(self.doc, self.scope)
+            + Self::structural_rows(self.doc, Some(constraints));
+        self.scope = Some(constraints);
+        self
+    }
+
+    fn structural_rows(doc: &Document, scope: Option<&[ConstraintId]>) -> usize {
+        Self::structural_in(doc, scope)
+            .map(ConstraintInst::residual_arity)
+            .sum()
+    }
+
+    fn structural_in<'d>(
+        doc: &'d Document,
+        scope: Option<&'d [ConstraintId]>,
+    ) -> impl Iterator<Item = &'d ConstraintInst> + 'd {
+        match scope {
+            None => Either::All(doc.constraints().values().map(ConstraintEntry::body)),
+            Some(ids) => Either::Scoped(
+                ids.iter()
+                    .map(|&id| doc.constraint(id).expect("scoped constraint exists")),
+            ),
+        }
+    }
+
+    /// Structural constraints that contribute rows, in row order.
+    fn structural(&self) -> impl Iterator<Item = &'a ConstraintInst> + 'a {
+        Self::structural_in(self.doc, self.scope)
+    }
+}
+
+/// One of two iterators; keeps the structural row iteration allocation-free
+/// (no boxed iterator) while the scoped and unscoped cases differ in type.
+enum Either<A, B> {
+    All(A),
+    Scoped(B),
+}
+
+impl<T, A: Iterator<Item = T>, B: Iterator<Item = T>> Iterator for Either<A, B> {
+    type Item = T;
+
+    fn next(&mut self) -> Option<T> {
+        match self {
+            Either::All(a) => a.next(),
+            Either::Scoped(b) => b.next(),
+        }
     }
 }
 
@@ -130,8 +191,7 @@ impl SystemEval for AssembledSystem<'_> {
     fn new_jacobian(&self) -> BlockSparseMatrix {
         let doc = self.doc;
         let mut j = BlockSparseMatrix::new(doc.parameter_count());
-        for c in doc.constraints().values() {
-            let body = c.body();
+        for body in self.structural() {
             j.push_block(body.residual_arity(), &body.param_connectivity(doc));
         }
         for s in self.soft {
@@ -154,8 +214,7 @@ impl SystemEval for AssembledSystem<'_> {
             row += m;
             row - m..row
         };
-        for entry in self.doc.constraints().values() {
-            let c = entry.body();
+        for c in self.structural() {
             c.eval_residual(self.doc, p, &mut r[rows(c.residual_arity())]);
         }
         for s in self.soft {
@@ -183,10 +242,10 @@ impl SystemEval for AssembledSystem<'_> {
         let mut blocks = 0..j.num_blocks();
         let mut next = || blocks.next().expect("Jacobian from new_jacobian()");
 
-        for entry in self.doc.constraints().values() {
+        for c in self.structural() {
             let mut jac = j.block_mut(next());
             jac.fill(0.0);
-            entry.body().accumulate_jacobian(self.doc, p, &mut jac);
+            c.accumulate_jacobian(self.doc, p, &mut jac);
         }
 
         for s in self.soft {
@@ -224,10 +283,6 @@ pub fn structural_residual_norm_at(doc: &Document, p: &Vector) -> f64 {
     let mut r = Vector::zeros(sys.n_residuals());
     sys.residual(p, &mut r);
     r.iter().map(|x| x * x).sum::<f64>().sqrt()
-}
-
-pub fn is_structurally_satisfied(doc: &Document) -> bool {
-    structural_residual_norm(doc) <= SOLVE_TOL
 }
 
 #[cfg(test)]

@@ -49,6 +49,19 @@ fn jacobian_and_residual_do_not_allocate() {
         }
     });
     assert_eq!(n, 0, "hot-path evaluation allocated {n} times");
+
+    // Scoped to every constraint: same rows, still no allocation.
+    let scope: Vec<_> = doc.constraints().iter().map(|(id, _)| id).collect();
+    let sys = AssembledSystem::with_soft(&doc, &soft, &points, &lengths).scoped(&scope);
+    sys.residual(&p, &mut r);
+    sys.jacobian(&p, &mut j);
+    let n = allocations(|| {
+        for _ in 0..5 {
+            sys.residual(&p, &mut r);
+            sys.jacobian(&p, &mut j);
+        }
+    });
+    assert_eq!(n, 0, "scoped evaluation allocated {n} times");
 }
 
 #[test]

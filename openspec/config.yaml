@@ -151,6 +151,11 @@ context: |
     LogicalPoint per class with a visible endpoint; structure-only, so
     the App rebuilds handles after structural changes, not per drag step;
     Interact puts the whole class under the mouse target.
+  - components.rs: components of the constraint graph (geometries
+    connected through constraints; structure-only, computed on demand)
+    and their consistency: component_residual at committed values vs
+    COMMIT_TOL (= 10 × SOLVE_TOL), the single threshold for both commit
+    gate and classification; Document::whole is the all-components scope.
   - constraint.rs: ConstraintKind (RESIDUAL_ARITY, NAME_PREFIX, param_connectivity,
     eval_residual, accumulate_jacobian(&mut DenseMatrix),
     referenced_geometries as a deduplicated GeometryId list); ConstraintId
@@ -178,9 +183,14 @@ context: |
   - interact: SoftTerms (mouse/stay weights + min_curve_length_fraction);
     soft_for_drag builds SoftContribution / SoftPointFollow /
     SoftLengthFloor (ℓ_min = fraction × L0 at drag-start snapshot);
-    InteractiveSolve (default backend LmSolver) commits the working Vector
-    only if structural residuals pass. DragSession runs one drag (no
-    history of its own; history lives in sketch_session).
+    InteractiveSolve (default backend LmSolver) solves a scope (one or
+    more components; AssembledSystem::scoped keeps only their constraint
+    rows), gates on the scope's residual and copies only the scope's
+    parameter blocks back (commit on success, fallback on failure), so
+    other components never change; solve_commit / structural_only use
+    the whole document. DragSession scopes every step to the dragged
+    point's component (no history of its own; history lives in
+    sketch_session).
   - document: discrete graph + committed Vector; IdMap stores; incidence /
     Congruence identification indexes.
   - solver: SolverPort::solve<E: SystemEval>; SystemEval exposes
@@ -195,6 +205,13 @@ context: |
   apply = snapshot, execute, structural solve for constraint commands,
   commit or restore (CommandError incl. Unsatisfiable, Busy while
   dragging). drag_begin/to/end/cancel; a completed drag is one undo step.
+  Contradictions are held per component: a conflicted (inconsistent)
+  component is frozen, so a constraint touching it or a drag_begin in it
+  fails with CommandError::Frozen; a constraint on consistent components
+  solves only the merged component (Unsatisfiable if it fails); a delete
+  inside a frozen component gives each surviving piece one solve.
+  Session::new solves each inconsistent component once (rest stay
+  frozen); Session::conflicts lists frozen components (names, residual).
   Command = Create / Constrain / Delete / Rename / SetRole; DeclCommand is
   the declarative subset (Create / Constrain with mandatory name). Kind
   payloads come from layer traits in kinds/ (GeometryCommand /

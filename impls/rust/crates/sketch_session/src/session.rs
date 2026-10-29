@@ -3,14 +3,24 @@
 //! Atomicity and undo/redo both use Document snapshots: before a step the
 //! session keeps a clone of the Document (structure, values, names); a failed
 //! command restores it, a successful one pushes it onto the undo stack.
+//!
+//! Contradictions are held per component of the constraint graph. A
+//! component whose constraints are not met at its values is frozen: no
+//! constraint may touch it and no drag may start in it, and only a delete
+//! inside it gets it solved again. Every other command solves and checks
+//! only the components it touches.
+
+use std::collections::HashSet;
 
 use constraint_runtime::{
-    is_valid_name, ConstraintInst, Document, DragSession, InteractiveSolve, NameError, ObjectId,
-    Point2, SolveError,
+    is_valid_name, ConstraintInst, Document, DragSession, GeometryId, InteractiveSolve, NameError,
+    ObjectId, Point2, SolveError,
 };
 
 use crate::catalog::{ConstraintSpec, GeometrySpec};
-use crate::command::{Command, CommandError, DeclCommand, ExportError, HistoryError, Outcome};
+use crate::command::{
+    Command, CommandError, Conflict, DeclCommand, ExportError, HistoryError, Outcome,
+};
 use crate::kinds::Resolver;
 
 /// A drawing being edited: the only mutation path for front-ends.
@@ -27,20 +37,51 @@ pub struct Session {
 }
 
 impl Session {
-    /// Session on `doc` (the baseline; not an undo step).
+    /// Session on `doc` (the baseline; not an undo step). Each component
+    /// whose constraints are not met gets one solve; the ones that still
+    /// fail stay frozen with their values.
     pub fn new(doc: Document) -> Self {
-        Self {
+        let mut s = Self {
             doc,
             interact: InteractiveSolve::new(),
             drag: DragSession::new(),
             drag_start: None,
             undo: Vec::new(),
             redo: Vec::new(),
+        };
+        for c in s.doc.components() {
+            if !s.doc.is_consistent(&c) {
+                let _ = s.interact.structural_scoped(&mut s.doc, &c);
+            }
         }
+        s
     }
 
     pub fn document(&self) -> &Document {
         &self.doc
+    }
+
+    /// The conflicted (frozen) components, in order of their first geometry.
+    pub fn conflicts(&self) -> Vec<Conflict> {
+        let doc = &self.doc;
+        let name = |id| doc.name(id).expect("objects are named").to_owned();
+        doc.components()
+            .into_iter()
+            .filter(|c| !doc.is_consistent(c))
+            .map(|c| Conflict {
+                geometries: c
+                    .geometries
+                    .iter()
+                    .map(|&g| name(ObjectId::Geometry(g)))
+                    .collect(),
+                constraints: c
+                    .constraints
+                    .iter()
+                    .map(|&k| name(ObjectId::Constraint(k)))
+                    .collect(),
+                residual: doc.component_residual(&c, doc.vector()),
+            })
+            .collect()
     }
 
     /// The drawing as declarative commands: geometries, then constraints, each
@@ -123,6 +164,7 @@ impl Session {
             return Err(CommandError::Busy);
         }
         let expr = Resolver::new(&self.doc).point(&point.into())?;
+        self.check_not_frozen(expr.referenced_geometry())?;
         self.drag_start = Some(self.doc.clone());
         self.drag.pointer_down(&self.doc, expr);
         Ok(())
@@ -178,11 +220,19 @@ impl Session {
                 self.constrain(c, name)
             }
             Command::Delete { name } => {
-                let removal = match self.object(&name)? {
+                let id = self.object(&name)?;
+                let before = self.doc.component_of(self.anchor(id));
+                let was_frozen = !self.doc.is_consistent(&before);
+                let removal = match id {
                     ObjectId::Geometry(id) => self.doc.remove_geometry(id),
                     ObjectId::Constraint(id) => self.doc.remove_constraint(id),
                 }
                 .expect("looked-up objects exist");
+                // Removing constraints never breaks a consistent component;
+                // the pieces of a frozen one get one chance to solve.
+                if was_frozen {
+                    self.resolve(&before.geometries);
+                }
                 Ok(Outcome {
                     created: None,
                     removed: removal.names().map(str::to_owned).collect(),
@@ -206,21 +256,64 @@ impl Session {
         }
     }
 
-    /// New constraint, then the eager structural solve.
+    /// New constraint, then the eager structural solve of the component it
+    /// ends up in (its operands' components merged).
     fn constrain(
         &mut self,
         c: ConstraintInst,
         name: Option<String>,
     ) -> Result<Outcome, CommandError> {
         self.check_new_name(name.as_deref())?;
+        let geometries = c.referenced_geometries();
+        for &g in &geometries {
+            self.check_not_frozen(g)?;
+        }
         let id = self.doc.add_constraint(c);
         let outcome = self.created(ObjectId::Constraint(id), name)?;
+        let scope = self.doc.component_of(geometries[0]);
         self.interact
-            .structural_only(&mut self.doc)
+            .structural_scoped(&mut self.doc, &scope)
             .map_err(|e| CommandError::Unsatisfiable {
                 residual: e.residual_norm,
             })?;
         Ok(outcome)
+    }
+
+    fn check_not_frozen(&self, g: GeometryId) -> Result<(), CommandError> {
+        if self.doc.is_consistent(&self.doc.component_of(g)) {
+            return Ok(());
+        }
+        let name = self.doc.geometry_name(g).expect("geometries are named");
+        Err(CommandError::Frozen {
+            name: name.to_owned(),
+        })
+    }
+
+    /// A geometry in the component of `id`.
+    fn anchor(&self, id: ObjectId) -> GeometryId {
+        match id {
+            ObjectId::Geometry(g) => g,
+            ObjectId::Constraint(k) => {
+                let c = self.doc.constraint(k).expect("looked-up objects exist");
+                c.referenced_geometries()[0]
+            }
+        }
+    }
+
+    /// One structural solve for each inconsistent component that holds one of
+    /// `geometries` (the survivors of a frozen component after a delete).
+    fn resolve(&mut self, geometries: &[GeometryId]) {
+        let mut done = HashSet::new();
+        for &g in geometries {
+            if self.doc.geometry(g).is_none() || done.contains(&g) {
+                continue;
+            }
+            let c = self.doc.component_of(g);
+            done.extend(c.geometries.iter().copied());
+            if !self.doc.is_consistent(&c) {
+                let _ = self.interact.structural_scoped(&mut self.doc, &c);
+            }
+        }
     }
 
     fn check_new_name(&self, name: Option<&str>) -> Result<(), CommandError> {

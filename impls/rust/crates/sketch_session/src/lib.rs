@@ -14,7 +14,9 @@ pub mod session;
 pub mod wire;
 
 pub use catalog::{ConstraintSpec, GeometrySpec};
-pub use command::{Command, CommandError, DeclCommand, ExportError, Family, HistoryError, Outcome};
+pub use command::{
+    Command, CommandError, Conflict, DeclCommand, ExportError, Family, HistoryError, Outcome,
+};
 pub use json::{ReadError, WriteError};
 pub use kinds::{ArcParams, FixParams, LenPair, PointPair, SegmentParams, VecPair};
 pub use schema::{command_schema, declarative_schema};

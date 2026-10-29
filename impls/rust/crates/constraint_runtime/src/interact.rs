@@ -1,13 +1,15 @@
 //! Interactive solve: soft drag, stay-near-previous, commit/fail, atomic drag.
 
 use crate::assemble::{AssembledSystem, SoftContribution, SoftLengthFloor, SoftPointFollow};
+use crate::components::Component;
 use crate::document::Document;
 use crate::expr::{LengthExpr, PointExpr};
 use crate::geom::Point2;
 use crate::geometry::CurveExprs;
 use crate::geometry_kinds::with_kind;
-use crate::solver::{LmSolver, SolverOptions, SolverPort, SystemEval};
+use crate::solver::{LmSolver, SolverOptions, SolverPort};
 use crate::vector::Vector;
+use crate::COMMIT_TOL;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct SolveError {
@@ -64,15 +66,18 @@ struct SoftDrag {
     lengths: Vec<SoftLengthFloor>,
 }
 
-fn curve_length_exprs(doc: &Document) -> Vec<LengthExpr> {
-    doc.geometries()
-        .values()
-        .map(|g| with_kind!(g.kind(), K => K::length_expr(g.id())))
+fn curve_length_exprs(doc: &Document, scope: &Component) -> Vec<LengthExpr> {
+    scope
+        .geometries
+        .iter()
+        .map(|&id| with_kind!(doc.expect_geometry(id).kind(), K => K::length_expr(id)))
         .collect()
 }
 
+/// Soft terms for one drag step, limited to the dragged component `scope`.
 fn soft_for_drag(
     doc: &Document,
+    scope: &Component,
     prev: &Vector,
     dragged: &PointExpr,
     mouse: (f64, f64),
@@ -90,15 +95,17 @@ fn soft_for_drag(
     }
 
     let mut params = Vec::new();
-    for (i, &v) in prev.iter().enumerate() {
-        if mouse_indices.contains(&i) {
-            continue;
+    for &id in &scope.geometries {
+        for i in doc.expect_geometry(id).param_block() {
+            if mouse_indices.contains(&i) {
+                continue;
+            }
+            params.push(SoftContribution {
+                index: i,
+                target: prev[i],
+                weight: weights.stay_weight,
+            });
         }
-        params.push(SoftContribution {
-            index: i,
-            target: v,
-            weight: weights.stay_weight,
-        });
     }
     // Follow the opaque point map (not formula-local slots 0/1 — those are only
     // world xy for segment-style endpoint atoms, not for arc endpoints).
@@ -107,7 +114,7 @@ fn soft_for_drag(
         target: Point2::new(mouse.0, mouse.1),
         weight: weights.mouse_weight,
     }];
-    let lengths = curve_length_exprs(doc)
+    let lengths = curve_length_exprs(doc, scope)
         .into_iter()
         .map(|length| {
             let l0 = length.evaluate(doc, prev).value();
@@ -148,19 +155,8 @@ impl Default for InteractiveSolve<LmSolver> {
 }
 
 impl<S: SolverPort> InteractiveSolve<S> {
-    fn structural_norm(doc: &Document, p: &Vector) -> f64 {
-        let soft0: [SoftContribution; 0] = [];
-        let sys0 = AssembledSystem::new(doc, &soft0);
-        let mut r = Vector::zeros(sys0.n_residuals());
-        sys0.residual(p, &mut r);
-        r.iter().map(|x| x * x).sum::<f64>().sqrt()
-    }
-
-    fn structural_ok(&self, doc: &Document, p: &Vector) -> bool {
-        Self::structural_norm(doc, p) <= self.opts.tol * 10.0
-    }
-
-    /// Solve on a working copy of Vector; commit only if structural residuals pass.
+    /// Solve the whole document on a working copy; commit only if every
+    /// structural residual passes.
     pub fn solve_commit(
         &mut self,
         doc: &mut Document,
@@ -178,33 +174,52 @@ impl<S: SolverPort> InteractiveSolve<S> {
         soft_lengths: &[SoftLengthFloor],
         fallback: &Vector,
     ) -> Result<(), SolveError> {
+        let scope = doc.whole();
+        self.solve_scoped(doc, &scope, soft, soft_points, soft_lengths, fallback)
+    }
+
+    /// Solve `scope` (one or more components) on a working copy. Only the
+    /// constraints of `scope` contribute structural rows, and only its
+    /// residual gates the commit ([`COMMIT_TOL`]). Success commits the values
+    /// of `scope`'s geometries; failure restores them from `fallback`. Values
+    /// outside `scope` never change.
+    pub fn solve_scoped(
+        &mut self,
+        doc: &mut Document,
+        scope: &Component,
+        soft: &[SoftContribution],
+        soft_points: &[SoftPointFollow],
+        soft_lengths: &[SoftLengthFloor],
+        fallback: &Vector,
+    ) -> Result<(), SolveError> {
         let mut working = doc.clone_vector();
 
         // Phase 1: soft + hard (when soft is empty, this is structural-only).
-        let sys = AssembledSystem::with_soft(doc, soft, soft_points, soft_lengths);
+        let sys = AssembledSystem::with_soft(doc, soft, soft_points, soft_lengths)
+            .scoped(&scope.constraints);
         let _ = self.solver.solve(&sys, &mut working, &self.opts);
 
         // Gate and commit the canonical State (e.g. non-negative arc radius).
         doc.canonicalize(&mut working);
-        if self.structural_ok(doc, &working) {
-            doc.commit_vector(&working);
+        if doc.component_residual(scope, &working) <= COMMIT_TOL {
+            commit_scope(doc, scope, &working);
             return Ok(());
         }
 
         // Phase 2: polish onto the constraint manifold from the soft attempt.
         if !soft.is_empty() || !soft_points.is_empty() || !soft_lengths.is_empty() {
             let soft0: [SoftContribution; 0] = [];
-            let sys0 = AssembledSystem::new(doc, &soft0);
+            let sys0 = AssembledSystem::new(doc, &soft0).scoped(&scope.constraints);
             let _ = self.solver.solve(&sys0, &mut working, &self.opts);
             doc.canonicalize(&mut working);
-            if self.structural_ok(doc, &working) {
-                doc.commit_vector(&working);
+            if doc.component_residual(scope, &working) <= COMMIT_TOL {
+                commit_scope(doc, scope, &working);
                 return Ok(());
             }
         }
 
-        let s_norm = Self::structural_norm(doc, &working);
-        doc.restore_vector(fallback);
+        let s_norm = doc.component_residual(scope, &working);
+        commit_scope(doc, scope, fallback);
         Err(SolveError {
             message: format!(
                 "structural residuals not satisfied after soft solve + polish (structural={s_norm})"
@@ -213,17 +228,40 @@ impl<S: SolverPort> InteractiveSolve<S> {
         })
     }
 
+    /// Structural solve of the whole document.
     pub fn structural_only(&mut self, doc: &mut Document) -> Result<(), SolveError> {
-        let fallback = doc.clone_vector();
-        let soft: [SoftContribution; 0] = [];
-        self.solve_commit(doc, &soft, &fallback)
+        let scope = doc.whole();
+        self.structural_scoped(doc, &scope)
     }
+
+    /// Structural solve of `scope` only; see [`Self::solve_scoped`].
+    pub fn structural_scoped(
+        &mut self,
+        doc: &mut Document,
+        scope: &Component,
+    ) -> Result<(), SolveError> {
+        let fallback = doc.clone_vector();
+        self.solve_scoped(doc, scope, &[], &[], &[], &fallback)
+    }
+}
+
+/// Copy the parameter blocks of `scope`'s geometries from `values` into the
+/// committed State.
+fn commit_scope(doc: &mut Document, scope: &Component, values: &Vector) {
+    let mut p = doc.clone_vector();
+    for &id in &scope.geometries {
+        let block = doc.expect_geometry(id).param_block();
+        p[block.clone()].copy_from_slice(&values[block]);
+    }
+    doc.commit_vector(&p);
 }
 
 #[derive(Clone, Debug)]
 pub struct DragSession {
     snapshot: Vector,
     active: Option<PointExpr>,
+    /// Component of the dragged point; every drag solve is scoped to it.
+    scope: Component,
 }
 
 impl DragSession {
@@ -231,12 +269,14 @@ impl DragSession {
         Self {
             snapshot: Vector::new(),
             active: None,
+            scope: Component::default(),
         }
     }
 
     pub fn pointer_down(&mut self, doc: &Document, point: PointExpr) {
         self.snapshot = doc.clone_vector();
         self.active = Some(point);
+        self.scope = doc.component_of(point.referenced_geometry());
     }
 
     pub fn pointer_move<S: SolverPort>(
@@ -248,9 +288,23 @@ impl DragSession {
         let Some(point) = self.active.as_ref() else {
             return Ok(());
         };
-        let soft = soft_for_drag(doc, &self.snapshot, point, mouse, &interact.soft_weights);
+        let soft = soft_for_drag(
+            doc,
+            &self.scope,
+            &self.snapshot,
+            point,
+            mouse,
+            &interact.soft_weights,
+        );
         let fallback = doc.clone_vector();
-        interact.solve_commit_soft(doc, &soft.params, &soft.points, &soft.lengths, &fallback)
+        interact.solve_scoped(
+            doc,
+            &self.scope,
+            &soft.params,
+            &soft.points,
+            &soft.lengths,
+            &fallback,
+        )
     }
 
     pub fn pointer_up<S: SolverPort>(
@@ -262,10 +316,23 @@ impl DragSession {
         let Some(point) = self.active.as_ref() else {
             return Ok(());
         };
-        let soft = soft_for_drag(doc, &self.snapshot, point, mouse, &interact.soft_weights);
+        let soft = soft_for_drag(
+            doc,
+            &self.scope,
+            &self.snapshot,
+            point,
+            mouse,
+            &interact.soft_weights,
+        );
         let fallback = self.snapshot.clone();
-        let result =
-            interact.solve_commit_soft(doc, &soft.params, &soft.points, &soft.lengths, &fallback);
+        let result = interact.solve_scoped(
+            doc,
+            &self.scope,
+            &soft.params,
+            &soft.points,
+            &soft.lengths,
+            &fallback,
+        );
         self.active = None;
         result
     }
