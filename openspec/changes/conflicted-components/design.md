@@ -31,12 +31,12 @@ New module `constraint_runtime/src/components.rs` (tests in `tests_components.rs
 ```rust
 pub struct Component { pub geometries: Vec<GeometryId>, pub constraints: Vec<ConstraintId> }
 impl Document {
-    pub fn components(&self) -> Vec<Component>;            // union-find over referenced_geometries
+    pub fn components(&self) -> Vec<Component>;            // graph walk over constraints_on / referenced_geometries
     pub fn component_of(&self, g: GeometryId) -> Component;
 }
 ```
 
-Both lists are in id order, and components are ordered by their smallest geometry id, so output is deterministic. Computed on demand: O(geometries + constraint references) per call, negligible next to a solve. No cache, so no invalidation on structural edits.
+Both lists are in id order, and components are ordered by their smallest geometry id, so output is deterministic. The walk mirrors `point_class` (breadth-first over `constraints_on` and `referenced_geometries`). Computed on demand: O(geometries + constraint references) per call, negligible next to a solve. No cache, so no invalidation on structural edits.
 
 *Alternative:* store a component id per geometry in `Document` and update it on add/remove. Rejected: removal splits components, so incremental updates need a full recompute anyway, and a stored index is one more thing that undo snapshots must keep consistent.
 
@@ -56,15 +56,19 @@ The commit gate in `InteractiveSolve` and the classification both use `COMMIT_TO
 
 ### D3 Scoped solve: filter rows, commit only the component's windows
 
-`AssembledSystem` gets a constraint scope (`Option<&[ConstraintId]>`, `None` = all, as today): only those constraints contribute row blocks. Columns stay global. `InteractiveSolve::solve_commit_soft` and `structural_only` take a `&Component`:
-- they assemble with its constraints;
-- the gate checks `component_residual` of that component;
-- on success they copy **only that component's parameter windows** from the working vector into the committed vector, and canonicalize only those geometries;
-- on failure they restore the fallback as today.
+`AssembledSystem` gets a constraint scope (`AssembledSystem::scoped(&[ConstraintId])`; unscoped = all constraints, as today): only those constraints contribute row blocks. Columns stay global. Row iteration stays allocation-free (no boxed iterator; the hot-path allocation test also covers a scoped system).
 
-Copying windows instead of the whole vector makes "other components keep their values" exact by construction. It doesn't rely on LM leaving row-less columns untouched.
+`InteractiveSolve` gains `solve_scoped(doc, &Component, soft…, fallback)` and `structural_scoped(doc, &Component)`:
+- they assemble with the scope's constraints;
+- the gate checks `component_residual` of the scope;
+- on success they copy **only the scope's parameter windows** from the working vector into the committed vector;
+- on failure they restore only the scope's windows from the fallback.
 
-`soft_for_drag` limits stay-near terms to the dragged component's geometries. Terms elsewhere would be inert rows that only cost time.
+The existing `solve_commit`, `solve_commit_soft` and `structural_only` stay and solve the whole document: they call the scoped versions with `Document::whole()`, the union of all components. Keeping them leaves `sketch_ui` (sample scene), the acceptance tests and the benchmark unchanged.
+
+Copying windows instead of the whole vector makes "other components keep their values" exact by construction. It doesn't rely on LM leaving row-less columns untouched. Canonicalization still runs over the whole working copy; only the scope's windows are copied from it.
+
+`DragSession::pointer_down` stores the dragged point's component, and every drag step uses `solve_scoped` on it. `soft_for_drag` limits stay-near terms and length floors to that component's geometries. Terms elsewhere would be inert rows that only cost time.
 
 *Alternative:* assemble a reduced system over the component's columns only, with a local-to-global column map. Smaller systems and per-component parallelism are the real performance win (#2). Rejected for now: `BlockSparseMatrix` and the expression Jacobians write global columns, so remapping touches every kind. The scoped row filter gives the same semantics with a contained change, and the reduced form can replace it later behind the same `&Component` API.
 
@@ -75,15 +79,15 @@ Additions to `Session`, all inside the existing `apply` snapshot/rollback:
 - **Constrain:**
   1. `build` as today, so resolve errors and `already joined` come first.
   2. Before adding, for each operand geometry: if its component is not consistent, fail with `CommandError::Frozen { name }`, where `name` is that geometry's name.
-  3. Add the constraint, then `structural_only` over `component_of(any operand)`, which is the merged component. Failure gives `Unsatisfiable` as today.
+  3. Add the constraint, then `structural_scoped` over `component_of(any operand)`, which is the merged component. Failure gives `Unsatisfiable` as today.
 - **Delete:**
   1. Before removing, take `component_of` the target (for a constraint, its first referenced geometry) and note whether it is consistent.
   2. Remove.
-  3. If it was conflicted: for each surviving geometry of the old component, take its new component once (deduplicated). If that component is not consistent, run one `structural_only` on it and ignore failure.
+  3. If it was conflicted: for each surviving geometry of the old component, take its new component once (deduplicated). If that component is not consistent, run one `structural_scoped` on it and ignore failure.
   4. If the target's component was consistent, no solve is needed: removing constraints cannot violate the others.
 - **Rename / SetRole / Create:** unchanged.
 - **`drag_begin`:** after resolving the point, if the component of the point's geometry is not consistent, return `CommandError::Frozen`. `DragSession::pointer_down` stores the dragged `Component` and uses it as the scope of every pointer move and of pointer-up.
-- **`Session::new(doc)`:** for each component that is not consistent, run one `structural_only`. No history step.
+- **`Session::new(doc)`:** for each component that is not consistent, run one `structural_scoped`. No history step.
 - **`Session::conflicts() -> Vec<Conflict>`** with `Conflict { geometries: Vec<String>, constraints: Vec<String>, residual: f64 }`, using names in the D1 order.
 
 `CommandError::Frozen { name: String }`, displayed as "`{name}` is in a conflicted component". `sketch_ui` only shows errors through `Display`, so it compiles unchanged and needs no new UI code (scope (i); display in #52).
@@ -102,4 +106,4 @@ The session tests build a contradicting `Document` directly (add geometries and 
 
 ## Migration Plan
 
-No persisted data. The `InteractiveSolve` and `DragSession` signatures change (an added scope argument); their callers are `sketch_session` and the core tests. Rollback is a revert.
+No persisted data. Existing `InteractiveSolve` and `DragSession` signatures stay; the scoped solve is added beside them, and drags become scoped without a signature change. Rollback is a revert.

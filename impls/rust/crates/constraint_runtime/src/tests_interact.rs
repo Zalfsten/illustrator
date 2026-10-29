@@ -2,7 +2,7 @@ use super::*;
 use crate::constraint_kinds::{Congruence, EqualLength, FixPoint, VectorsOrthogonal, VectorsParallel};
 use crate::geom::{CurveParam, HeadingAngle, Length, Point2, TurnAngle};
 use crate::geometry_kinds::{Arc, Segment};
-use crate::geometry::{CurveExprs, EndpointExprs, GeometryRole};
+use crate::geometry::{CurveExprs, EndpointExprs, GeometryId, GeometryRole};
 use crate::solver::StubSolver;
 
 #[test]
@@ -260,4 +260,85 @@ fn drag_moves_a_whole_join_chain_to_the_pointer() {
         let q = p.evaluate(&doc, doc.vector());
         assert!((q.x - 1.5).hypot(q.y - 0.5) < 1e-3, "{p:?} at {q:?}");
     }
+}
+
+/// `s1` with two fixes of its start to different targets (conflicted) and a
+/// separate `s2` whose end is fixed away from its current location (solvable).
+fn conflicted_next_to_consistent() -> (Document, GeometryId, GeometryId) {
+    let mut doc = Document::new();
+    let s1 = doc.add_geometry::<Segment>(
+        GeometryRole::Result,
+        (Point2::new(0.0, 0.0), Point2::new(1.0, 0.0)),
+    );
+    let s2 = doc.add_geometry::<Segment>(
+        GeometryRole::Result,
+        (Point2::new(5.0, 0.0), Point2::new(6.0, 0.0)),
+    );
+    doc.add_constraint(FixPoint {
+        point: Segment::start_expr(s1),
+        target: Point2::new(0.0, 0.0),
+    });
+    doc.add_constraint(FixPoint {
+        point: Segment::start_expr(s1),
+        target: Point2::new(0.0, 1.0),
+    });
+    doc.add_constraint(FixPoint {
+        point: Segment::start_expr(s2),
+        target: Point2::new(5.0, 0.0),
+    });
+    (doc, s1, s2)
+}
+
+fn block_bits(doc: &Document, g: GeometryId) -> Vec<u64> {
+    doc.vector()[doc.expect_geometry(g).param_block()]
+        .iter()
+        .map(|v| v.to_bits())
+        .collect()
+}
+
+#[test]
+fn scoped_solve_leaves_other_components_bit_identical() {
+    let (mut doc, s1, s2) = conflicted_next_to_consistent();
+    doc.add_constraint(FixPoint {
+        point: Segment::end_expr(s2),
+        target: Point2::new(5.0, 2.0),
+    });
+    let frozen = block_bits(&doc, s1);
+    let mut interact = InteractiveSolve::new();
+
+    // The whole document cannot be solved because of `s1`.
+    assert!(interact.structural_only(&mut doc).is_err());
+    assert_eq!(block_bits(&doc, s1), frozen);
+
+    let c2 = doc.component_of(s2);
+    assert!(!doc.is_consistent(&c2));
+    interact.structural_scoped(&mut doc, &c2).unwrap();
+    assert!(doc.is_consistent(&doc.component_of(s2)));
+    assert_eq!(block_bits(&doc, s1), frozen);
+
+    // A failing scoped solve keeps both its own and the other values.
+    let before2 = block_bits(&doc, s2);
+    let c1 = doc.component_of(s1);
+    assert!(interact.structural_scoped(&mut doc, &c1).is_err());
+    assert_eq!(block_bits(&doc, s1), frozen);
+    assert_eq!(block_bits(&doc, s2), before2);
+}
+
+#[test]
+fn drag_next_to_a_conflicted_component() {
+    let (mut doc, s1, s2) = conflicted_next_to_consistent();
+    let frozen = block_bits(&doc, s1);
+    let mut interact = InteractiveSolve::new();
+    let mut drag = DragSession::new();
+    drag.pointer_down(&doc, Segment::end_expr(s2));
+    drag.pointer_move(&mut interact, &mut doc, (6.0, 1.0))
+        .unwrap();
+    drag.pointer_up(&mut interact, &mut doc, (6.0, 1.5))
+        .unwrap();
+
+    let end = Segment::end_expr(s2).evaluate(&doc, doc.vector());
+    assert!(end.y > 1.0, "end did not follow the pointer: {end:?}");
+    let start = Segment::start_expr(s2).evaluate(&doc, doc.vector());
+    assert!((start - Point2::new(5.0, 0.0)).length() <= 1e-6);
+    assert_eq!(block_bits(&doc, s1), frozen);
 }

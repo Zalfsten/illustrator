@@ -4,6 +4,7 @@
 
 pub mod address;
 pub mod assemble;
+pub mod components;
 pub mod constraint;
 pub mod constraint_kinds;
 pub mod document;
@@ -27,6 +28,7 @@ pub use address::{Address, AddressError};
 pub use assemble::{
     structural_residual_norm, AssembledSystem, SoftContribution, SoftLengthFloor, SoftPointFollow,
 };
+pub use components::Component;
 pub use constraint::{ConstraintEntry, ConstraintId, ConstraintKind};
 pub use constraint_kinds::{
     Congruence, ConstraintInst, EqualLength, FixPoint, VectorsOrthogonal, VectorsParallel,
@@ -52,3 +54,7 @@ pub use solver::{LmSolver, SolveOutcome, SolverOptions, SolverPort, StubSolver, 
 pub use vector::Vector;
 
 pub const SOLVE_TOL: f64 = 1e-6;
+
+/// Structural residual norm up to which a solve result may be committed and
+/// a component counts as consistent (one threshold for both).
+pub const COMMIT_TOL: f64 = 10.0 * SOLVE_TOL;

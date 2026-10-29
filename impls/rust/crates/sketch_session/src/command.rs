@@ -137,6 +137,11 @@ pub enum CommandError {
         field: &'static str,
         reason: &'static str,
     },
+    /// An operand lies in a conflicted (frozen) component; `name` is one of
+    /// its geometries.
+    Frozen {
+        name: String,
+    },
 }
 
 impl fmt::Display for CommandError {
@@ -164,6 +169,9 @@ impl fmt::Display for CommandError {
             CommandError::InvalidValue { field, reason } => {
                 write!(f, "invalid value for {field}: {reason}")
             }
+            CommandError::Frozen { name } => {
+                write!(f, "frozen: {name} is in a conflicted component")
+            }
         }
     }
 }
@@ -180,6 +188,16 @@ impl From<AddressError> for CommandError {
     fn from(e: AddressError) -> Self {
         CommandError::Address(e)
     }
+}
+
+/// A component whose constraints are not met at its values; it is frozen
+/// until a delete resolves it. Names are in creation order.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Conflict {
+    pub geometries: Vec<String>,
+    pub constraints: Vec<String>,
+    /// Norm of the component's structural residual.
+    pub residual: f64,
 }
 
 /// Why the drawing cannot be written as declarative commands.
