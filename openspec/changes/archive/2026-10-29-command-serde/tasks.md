@@ -31,7 +31,7 @@
 ## 6. GUI (`sketch_ui`)
 
 - [x] 6.1 Update command construction in `src/app.rs` to `Command::Create` / `Command::Constrain` with `GeometrySpec` / `ConstraintSpec`; verify `cargo build -p sketch_ui` and `cargo clippy -p sketch_ui` without new warnings
-- [ ] 6.2 Manual check in the running app: draw a segment, join two ends, add parallel, perpendicular and fix, undo/redo; behaviour is as before
+- [x] 6.2 Manual check in the running app: draw a segment, join two ends, add parallel, perpendicular and fix, undo/redo; behaviour is as before
 
 ## 7. Integration
 
