@@ -195,6 +195,18 @@ context: |
   apply = snapshot, execute, structural solve for constraint commands,
   commit or restore (CommandError incl. Unsatisfiable, Busy while
   dragging). drag_begin/to/end/cancel; a completed drag is one undo step.
+  Command = Create / Constrain / Delete / Rename / SetRole; DeclCommand is
+  the declarative subset (Create / Constrain with mandatory name). Kind
+  payloads come from layer traits in kinds/ (GeometryCommand /
+  ConstraintCommand on the core kind types: TAG, Params, init / resolve,
+  params for export); catalog.rs (command_catalog!) generates GeometrySpec /
+  ConstraintSpec and all dispatch, no per-kind match in session.rs.
+  json.rs: flat strict interchange form (op, kind, name, role reserved;
+  two-step read through serde_json::Value, deny_unknown_fields); wire.rs:
+  [x, y] points, finite numbers, typed address strings; schema.rs composes
+  JSON Schemas, checked in under sketch_session/schema/ (tests/schema.rs,
+  UPDATE_SCHEMA=1). Session::declarative_commands exports a drawing.
+  constraint_runtime stays serde-free.
   sketch_ui edits only through the Session (sample scene is the baseline).
   Prefer sibling files once a module has unit tests: src/<module>.rs for
   production code and src/tests_<module>.rs for that module's unit tests,

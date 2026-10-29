@@ -5,55 +5,26 @@
 
 use std::fmt;
 
-use constraint_runtime::{AddressError, GeometryRole, NameError, Point2};
+use constraint_runtime::{AddressError, GeometryRole, NameError};
+
+use crate::catalog::{ConstraintSpec, GeometrySpec};
 
 /// One edit of the drawing. Optional `name`s replace the automatic name.
+///
+/// Interchange form: see [`crate::json`]; kinds and their parameters: see
+/// [`crate::catalog`].
 #[derive(Clone, Debug, PartialEq)]
 pub enum Command {
-    CreateSegment {
-        start: Point2,
-        end: Point2,
+    /// New geometry of the kind in `geometry`.
+    Create {
+        name: Option<String>,
         role: GeometryRole,
-        name: Option<String>,
+        geometry: GeometrySpec,
     },
-    /// Angles in radians (start heading from +x, counterclockwise sweep).
-    CreateArc {
-        center: Point2,
-        radius: f64,
-        start_heading: f64,
-        sweep: f64,
-        role: GeometryRole,
+    /// New constraint of the kind in `constraint`.
+    Constrain {
         name: Option<String>,
-    },
-    /// Two point addresses become one location.
-    Join {
-        a: String,
-        b: String,
-        name: Option<String>,
-    },
-    /// Two free-vector addresses are parallel.
-    Parallel {
-        a: String,
-        b: String,
-        name: Option<String>,
-    },
-    /// Two free-vector addresses are perpendicular.
-    Perpendicular {
-        a: String,
-        b: String,
-        name: Option<String>,
-    },
-    /// A point address is pinned to `target`.
-    Fix {
-        point: String,
-        target: Point2,
-        name: Option<String>,
-    },
-    /// Two length addresses are equal.
-    EqualLength {
-        a: String,
-        b: String,
-        name: Option<String>,
+        constraint: ConstraintSpec,
     },
     /// Delete a geometry (with its constraints) or a constraint.
     Delete {
@@ -68,6 +39,41 @@ pub enum Command {
         name: String,
         role: GeometryRole,
     },
+}
+
+/// A command of the declarative subset (files): creates and constraints,
+/// each with its final name.
+#[derive(Clone, Debug, PartialEq)]
+pub enum DeclCommand {
+    Create {
+        name: String,
+        role: GeometryRole,
+        geometry: GeometrySpec,
+    },
+    Constrain {
+        name: String,
+        constraint: ConstraintSpec,
+    },
+}
+
+impl From<DeclCommand> for Command {
+    fn from(c: DeclCommand) -> Self {
+        match c {
+            DeclCommand::Create {
+                name,
+                role,
+                geometry,
+            } => Command::Create {
+                name: Some(name),
+                role,
+                geometry,
+            },
+            DeclCommand::Constrain { name, constraint } => Command::Constrain {
+                name: Some(name),
+                constraint,
+            },
+        }
+    }
 }
 
 /// What a successful command did.
@@ -126,6 +132,11 @@ pub enum CommandError {
         a: String,
         b: String,
     },
+    /// A number is not finite or outside the range of its field.
+    InvalidValue {
+        field: &'static str,
+        reason: &'static str,
+    },
 }
 
 impl fmt::Display for CommandError {
@@ -150,6 +161,9 @@ impl fmt::Display for CommandError {
             CommandError::AlreadyJoined { a, b } => {
                 write!(f, "already joined: {a} and {b} are one point")
             }
+            CommandError::InvalidValue { field, reason } => {
+                write!(f, "invalid value for {field}: {reason}")
+            }
         }
     }
 }
@@ -167,6 +181,26 @@ impl From<AddressError> for CommandError {
         CommandError::Address(e)
     }
 }
+
+/// Why the drawing cannot be written as declarative commands.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ExportError {
+    /// An operand of the constraint has no address (e.g. a `Uniform` curve
+    /// parameter); only drawings built outside the command layer have these.
+    NotAddressable { constraint: String },
+}
+
+impl fmt::Display for ExportError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ExportError::NotAddressable { constraint } => {
+                write!(f, "{constraint} has an operand without address")
+            }
+        }
+    }
+}
+
+impl std::error::Error for ExportError {}
 
 /// Why undo or redo did nothing.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

@@ -9,7 +9,9 @@ use constraint_runtime::{
     VectorsParallel,
 };
 use eframe::egui::{self, Color32, Pos2, Rect, Sense, Stroke};
-use sketch_session::{Command, Session};
+use sketch_session::{
+    Command, ConstraintSpec, FixParams, GeometrySpec, PointPair, SegmentParams, Session, VecPair,
+};
 
 use crate::viewport::Viewport;
 
@@ -250,11 +252,10 @@ impl App {
                     let a = self.segment_clicks[0];
                     let b = self.segment_clicks[1];
                     self.segment_clicks.clear();
-                    let cmd = Command::CreateSegment {
-                        start: a,
-                        end: b,
-                        role: GeometryRole::Result,
+                    let cmd = Command::Create {
                         name: None,
+                        role: GeometryRole::Result,
+                        geometry: GeometrySpec::Segment(SegmentParams { start: a, end: b }),
                     };
                     self.run(cmd, String::new());
                 } else {
@@ -269,7 +270,11 @@ impl App {
                         let b = self.address(&self.pick_points[1]);
                         self.pick_points.clear();
                         let detail = format!(" ({a} = {b})");
-                        self.run(Command::Join { a, b, name: None }, detail);
+                        let join = ConstraintSpec::Congruence(PointPair {
+                            a: a.into(),
+                            b: b.into(),
+                        });
+                        self.run(constrain(join), detail);
                     } else {
                         self.status = format!("Join: {} → pick second point", self.address(&expr));
                     }
@@ -292,12 +297,16 @@ impl App {
                         let a = self.direction_address(self.pick_geoms[0]);
                         let b = self.direction_address(self.pick_geoms[1]);
                         self.pick_geoms.clear();
-                        let cmd = if self.tool == Tool::Parallel {
-                            Command::Parallel { a, b, name: None }
-                        } else {
-                            Command::Perpendicular { a, b, name: None }
+                        let pair = VecPair {
+                            a: a.into(),
+                            b: b.into(),
                         };
-                        self.run(cmd, detail);
+                        let spec = if self.tool == Tool::Parallel {
+                            ConstraintSpec::VectorsParallel(pair)
+                        } else {
+                            ConstraintSpec::VectorsOrthogonal(pair)
+                        };
+                        self.run(constrain(spec), detail);
                     } else {
                         let tool = if self.tool == Tool::Parallel {
                             "Parallel"
@@ -314,16 +323,23 @@ impl App {
                     let target = self.eval_point(&expr);
                     let point = self.address(&expr);
                     let detail = format!(" ({point})");
-                    let cmd = Command::Fix {
-                        point,
+                    let fix = ConstraintSpec::FixPoint(FixParams {
+                        point: point.into(),
                         target,
-                        name: None,
-                    };
-                    self.run(cmd, detail);
+                    });
+                    self.run(constrain(fix), detail);
                 }
             }
             Tool::Select => {}
         }
+    }
+}
+
+/// Constraint command with an automatic name.
+fn constrain(constraint: ConstraintSpec) -> Command {
+    Command::Constrain {
+        name: None,
+        constraint,
     }
 }
 
@@ -472,3 +488,7 @@ impl eframe::App for App {
         });
     }
 }
+
+#[cfg(test)]
+#[path = "tests_app.rs"]
+mod tests_app;

@@ -5,13 +5,13 @@
 //! command restores it, a successful one pushes it onto the undo stack.
 
 use constraint_runtime::{
-    is_valid_name, Address, Arc, Congruence, ConstraintInst, Document, DragSession, EqualLength,
-    FixPoint, Geometry, GeometryRole, HeadingAngle, InteractiveSolve, Length, LengthExpr,
-    NameError, ObjectId, Point2, PointExpr, Segment, SolveError, TurnAngle, VecExpr,
-    VectorsOrthogonal, VectorsParallel,
+    is_valid_name, ConstraintInst, Document, DragSession, InteractiveSolve, NameError, ObjectId,
+    Point2, SolveError,
 };
 
-use crate::command::{Command, CommandError, Family, HistoryError, Outcome};
+use crate::catalog::{ConstraintSpec, GeometrySpec};
+use crate::command::{Command, CommandError, DeclCommand, ExportError, HistoryError, Outcome};
+use crate::kinds::Resolver;
 
 /// A drawing being edited: the only mutation path for front-ends.
 pub struct Session {
@@ -41,6 +41,29 @@ impl Session {
 
     pub fn document(&self) -> &Document {
         &self.doc
+    }
+
+    /// The drawing as declarative commands: geometries, then constraints, each
+    /// in creation order, with current names, roles, values and addresses.
+    pub fn declarative_commands(&self) -> Result<Vec<DeclCommand>, ExportError> {
+        let doc = &self.doc;
+        let name = |id| doc.name(id).expect("objects are named").to_owned();
+        let mut out = Vec::new();
+        for g in doc.geometries().values() {
+            out.push(DeclCommand::Create {
+                name: name(ObjectId::Geometry(g.id())),
+                role: g.role(),
+                geometry: GeometrySpec::of(doc, g),
+            });
+        }
+        for e in doc.constraints().values() {
+            let name = name(ObjectId::Constraint(e.id));
+            let Some(constraint) = ConstraintSpec::of(doc, e.body()) else {
+                return Err(ExportError::NotAddressable { constraint: name });
+            };
+            out.push(DeclCommand::Constrain { name, constraint });
+        }
+        Ok(out)
     }
 
     /// Apply `cmd` atomically: on error the drawing is exactly as before.
@@ -99,7 +122,7 @@ impl Session {
         if self.is_dragging() {
             return Err(CommandError::Busy);
         }
-        let expr = self.point(point)?;
+        let expr = Resolver::new(&self.doc).point(&point.into())?;
         self.drag_start = Some(self.doc.clone());
         self.drag.pointer_down(&self.doc, expr);
         Ok(())
@@ -140,68 +163,18 @@ impl Session {
 
     fn execute(&mut self, cmd: Command) -> Result<Outcome, CommandError> {
         match cmd {
-            Command::CreateSegment {
-                start,
-                end,
+            Command::Create {
+                name,
                 role,
-                name,
-            } => self.create::<Segment>((start, end), role, name),
-            Command::CreateArc {
-                center,
-                radius,
-                start_heading,
-                sweep,
-                role,
-                name,
+                geometry,
             } => {
-                let init = (
-                    center,
-                    Length::new(radius),
-                    HeadingAngle::new(start_heading),
-                    TurnAngle::new(sweep),
-                );
-                self.create::<Arc>(init, role, name)
+                // No solve: an unconstrained geometry violates nothing.
+                self.check_new_name(name.as_deref())?;
+                let id = geometry.add_to(&mut self.doc, role)?;
+                self.created(ObjectId::Geometry(id), name)
             }
-            Command::Join { a, b, name } => {
-                let c = Congruence {
-                    a: self.point(&a)?,
-                    b: self.point(&b)?,
-                };
-                if self.doc.point_class(&c.a).contains(&c.b) {
-                    return Err(CommandError::AlreadyJoined { a, b });
-                }
-                self.constrain(c, name)
-            }
-            Command::Parallel { a, b, name } => {
-                let c = VectorsParallel {
-                    a: self.vector(&a)?,
-                    b: self.vector(&b)?,
-                };
-                self.constrain(c, name)
-            }
-            Command::Perpendicular { a, b, name } => {
-                let c = VectorsOrthogonal {
-                    a: self.vector(&a)?,
-                    b: self.vector(&b)?,
-                };
-                self.constrain(c, name)
-            }
-            Command::Fix {
-                point,
-                target,
-                name,
-            } => {
-                let c = FixPoint {
-                    point: self.point(&point)?,
-                    target,
-                };
-                self.constrain(c, name)
-            }
-            Command::EqualLength { a, b, name } => {
-                let c = EqualLength {
-                    a: self.length(&a)?,
-                    b: self.length(&b)?,
-                };
+            Command::Constrain { name, constraint } => {
+                let c = constraint.build(&Resolver::new(&self.doc))?;
                 self.constrain(c, name)
             }
             Command::Delete { name } => {
@@ -233,22 +206,10 @@ impl Session {
         }
     }
 
-    /// New geometry; no solve (an unconstrained geometry violates nothing).
-    fn create<K: Geometry>(
-        &mut self,
-        init: K::Init,
-        role: GeometryRole,
-        name: Option<String>,
-    ) -> Result<Outcome, CommandError> {
-        self.check_new_name(name.as_deref())?;
-        let id = self.doc.add_geometry::<K>(role, init);
-        self.created(ObjectId::Geometry(id), name)
-    }
-
     /// New constraint, then the eager structural solve.
     fn constrain(
         &mut self,
-        c: impl Into<ConstraintInst>,
+        c: ConstraintInst,
         name: Option<String>,
     ) -> Result<Outcome, CommandError> {
         self.check_new_name(name.as_deref())?;
@@ -286,34 +247,6 @@ impl Session {
         self.doc
             .lookup(name)
             .ok_or_else(|| CommandError::UnknownName(name.to_owned()))
-    }
-
-    fn point(&self, address: &str) -> Result<PointExpr, CommandError> {
-        match self.doc.resolve_address(address)? {
-            Address::Point(e) => Ok(e),
-            _ => Err(wrong_family(address, Family::Point)),
-        }
-    }
-
-    fn vector(&self, address: &str) -> Result<VecExpr, CommandError> {
-        match self.doc.resolve_address(address)? {
-            Address::Vector(e) => Ok(e),
-            _ => Err(wrong_family(address, Family::Vector)),
-        }
-    }
-
-    fn length(&self, address: &str) -> Result<LengthExpr, CommandError> {
-        match self.doc.resolve_address(address)? {
-            Address::Length(e) => Ok(e),
-            _ => Err(wrong_family(address, Family::Length)),
-        }
-    }
-}
-
-fn wrong_family(address: &str, expected: Family) -> CommandError {
-    CommandError::WrongFamily {
-        address: address.to_owned(),
-        expected,
     }
 }
 
