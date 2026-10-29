@@ -37,7 +37,7 @@ A component SHALL be conflicted if the structural residual of its constraints, e
 
 ### Requirement: Structural constraints are hard invariants
 
-Congruence, VectorsParallel, VectorsOrthogonal, FixPoint, and EqualLength SHALL be structural constraints. A solve SHALL cover a set of components and SHALL NOT change the values of other components. After every successful solve that commits a new document state, all structural residuals of the components it covers SHALL be satisfied within solve tolerance. The system SHALL NOT commit values for a component from a solve that leaves that component's structural residuals unsatisfied beyond that tolerance.
+Congruence, VectorsParallel, VectorsOrthogonal, FixPoint, and EqualLength SHALL be structural constraints. A solve SHALL cover a set of components and SHALL NOT change the values of other components. After every successful solve that commits a new document state, all structural residuals of the components it covers SHALL be satisfied within solve tolerance. The system SHALL NOT commit values for a component from a solve that leaves its structural residuals unsatisfied beyond that tolerance.
 
 #### Scenario: Successful commit preserves structural satisfaction
 
