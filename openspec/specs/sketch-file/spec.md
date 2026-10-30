@@ -8,7 +8,7 @@ Defines the native file of a drawing: a versioned list of declarative commands t
 
 ### Requirement: Sketch file envelope
 
-A sketch file SHALL be UTF-8 JSON text holding one object. In version 2 it SHALL have exactly the fields `format` (the string `"illustrator-sketch"`), `version` (an integer), `scale` and `font_size` (numbers), `preamble` (a string) and `commands` (an array of commands in the declarative subset of sketch-commands, in their interchange form). The three settings fields hold the document settings and SHALL obey their value ranges. In version 1 it SHALL have exactly `format`, `version` and `commands`. The recommended file name extension SHALL be `.sketch.json`; readers SHALL recognize a file by its content, not by its name.
+A sketch file SHALL be UTF-8 JSON text holding one object. In version 2 it SHALL have exactly the fields `format` (the string `"illustrator-sketch"`), `version` (an integer), `scale` and `font_size` (numbers), `preamble` (a string) and `commands` (an array of commands in the declarative subset of sketch-commands, in their interchange form). The three settings fields hold the document settings and SHALL obey their value ranges.
 
 #### Scenario: Minimal file
 
@@ -58,7 +58,7 @@ Saving SHALL write the drawing's document settings and its declarative command l
 
 ### Requirement: Files are recognized by content and version
 
-Loading SHALL fail with `not a sketch file` for bytes that are not JSON text, with `unknown format` for JSON whose `format` is missing or different, and with `unsupported version` for a version this reader does not know, naming that version. Versions 1 and 2 SHALL be supported. A reader SHALL read every JSON layout of a file, not only the layout it writes.
+Loading SHALL fail with `not a sketch file` for bytes that are not JSON text, with `unknown format` for JSON whose `format` is missing or different, and with `unsupported version` for a version this reader does not know, naming that version. Versions 1 and 2 SHALL be supported. A reader SHALL read every JSON layout of a file, not only the layout it writes. Readers SHALL recognize a file by its content, not by its name; the recommended file name extension SHALL be `.sketch.json`.
 
 #### Scenario: Compressed or binary bytes
 
@@ -141,7 +141,7 @@ The displacement of a component SHALL be the largest distance, in drawing units,
 
 ### Requirement: Version 1 files load with default settings
 
-A version 1 file SHALL load as before, and its drawing SHALL get the default document settings (document-settings). Saving it again SHALL write version 2.
+A version 1 file SHALL have exactly the fields `format`, `version` and `commands`. It SHALL load as before, and its drawing SHALL get the default document settings (document-settings). Saving it again SHALL write version 2.
 
 #### Scenario: Old file, new settings
 
