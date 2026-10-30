@@ -37,12 +37,12 @@ See proposal.md for the motivation and the specs for the requirements. This desi
 - `LineExprs` and `EndpointExprs`/`CircularExprs` change their supertrait from `CurveExprs` to `Geometry`. This is safe because their factories don't use curve formulas.
 - **New** `AnchorExprs: Geometry` with `origin_expr`, a new `PointFormula::Origin`, and `Caps.anchor`.
 - In `Geometry`, `point` / `vec` / `length` (and their Jacobians) get the same panicking defaults that `heading` / `turn` already have. A label implements only `point` (Origin) and `vec` (Direction).
-- **Curve paths switch to id-based factories:**
-  - Mesh tessellation takes the geometry id and samples through `doc.on_curve_expr(id, t)`, skipping when it returns `None`.
+- **Curve paths are gated by capability, not by kind:**
+  - Mesh tessellation is no longer generic over the kind. It takes the geometry's `Caps`, returns nothing without `caps.curve`, and otherwise builds the on-curve and tangent expressions directly from the formula tags. This is the same pattern it already used for endpoints with `caps.endpoints`, and it needs no lookup per sample.
   - `curve_length_exprs` uses `filter_map(|id| doc.length_expr(id))`.
   - This removes `with_kind!` from both.
 
-*Alternative:* a second dispatch macro `with_curve_kind!` that lists only curve kinds and keeps the monomorphized mesh path. Rejected: it is a second kind list that must be kept in sync, and the spec already asks callers outside the kinds to go through capability queries and id-based factories. The extra cost is one map lookup per sample, which is negligible for a handful of geometries with ≤ 64 samples each.
+*Alternative:* a second dispatch macro `with_curve_kind!` that lists only curve kinds and keeps the monomorphized mesh path. Rejected: it is a second kind list that must be kept in sync, and the spec already asks callers outside the kinds to go through capability queries.
 
 *Alternative:* treat the label as a degenerate curve (its baseline as a ray). Rejected: `at(t)`, `tangent`, `length` and drag length floors would all get meanings nobody wants. A zero-length floor would even fight the label.
 
@@ -67,7 +67,8 @@ The direction is a **unit** vector, unlike a segment's `end − start`. `Vectors
 - **New `Document` API:**
   - `add_geometry_with::<K>(role, init, attrs)`, which debug-asserts that the variant matches the kind;
   - `label_attrs(id) -> Option<&LabelAttrs>`;
-  - `set_label_attrs(id, LabelAttrs) -> bool`.
+  - `set_label_attrs(id, LabelAttrs) -> bool`;
+  - `set_geometry_attrs(id, KindAttrs) -> bool`, a setter independent of the kind, used by `set`.
 - `LabelAttrs { source: String, markup: Markup, halign: HAlign, valign: VAlign, offset: Vec2, size: Option<f64> }` with core enums. `offset` is a free vector in the label frame, in pt, never in world units, which its doc comment states. `size: None` means inherited.
 
 *Alternative:* a side table `HashMap<GeometryId, LabelAttrs>` in `Document`. Rejected:
@@ -98,9 +99,10 @@ Kept in the instance, attributes are cloned with the snapshot and dropped with t
     2. a kind mismatch gives `WrongObjectType { expected: <tag> }`;
     3. clone the attrs, apply, write back.
   - No frozen check and no solve.
-- **`size: null`:** `SetParams.size: Option<Option<f64>>` through a small `wire::double_option` module: absent → `None`, `null` → `Some(None)`. Its schema is `{"type": ["number", "null"], "exclusiveMinimum": 0}`.
+- **`size: null`:** `SetParams.size: Option<Option<f64>>` through a small `wire::finite_or_null` module: absent → `None`, `null` → `Some(None)`. Its schema is `{"type": ["number", "null"], "exclusiveMinimum": 0}`.
+- **No other `null`:** every other optional field of `set` / `set_document` goes through `wire::present`, so `null` there is a reading error rather than being read as absent. Its schema is the plain field type (`#[schemars(with = "T")]`).
 - **Non-empty rule:** checked after deserializing in `from_fields` (a reading error, "no attribute given"). The schema expresses it as `minProperties` (reserved fields + 1).
-- **`set_document`:** a fixed op with `SetDocumentFields { scale, font_size, preamble }`, all `Option`, `deny_unknown_fields`, non-empty. `Command::SetDocument(SettingsPatch)`. Ranges are validated with `InvalidValue { field }`.
+- **`set_document`:** a fixed op with `SetDocumentFields { scale, font_size, preamble }`, all `Option`, `deny_unknown_fields`, non-empty. `Command::SetDocument { scale, font_size, preamble }`. Ranges are validated with `InvalidValue { field }`.
 - **Wire enums:** `Markup` / `HAlign` / `VAlign` get lowercase serde mirrors in `wire.rs`, like `Role`, so `constraint_runtime` stays serde-free.
 - **Rest of the interchange machinery:** `json.rs` adds `"set"` / `"set_document"` to `OPS` and to `command()`. `decl_command()` keeps rejecting them. `schema.rs` adds the set branches (op `set`, kind const) and the `set_document` fixed branch. The schemas under `sketch_session/schema/` are regenerated with `UPDATE_SCHEMA=1`.
 
@@ -128,7 +130,6 @@ No label UI.
 
 - **Labels flip upside down.** `VectorsParallel` allows anti-parallel solutions, so a label made parallel to a segment may come out at θ + π (#42 / #44). This is accepted for now; the spec states that there is no automatic flip. An "always upright" attribute can come later.
 - **`GeometryInst` loses `Copy`.** Compile errors will point at every place that copied it implicitly. They are expected to be few (`catalog.rs`, tests).
-- **Mesh speed.** Id-based sampling adds a map lookup per sample. → If profiling ever shows it, cache `caps` per geometry before sampling; the spec does not change.
 - **Breaking interchange.**
   - Clients that hard-code the op list break.
   - Version 1 readers cannot read version 2 files. There are none outside this repository.
