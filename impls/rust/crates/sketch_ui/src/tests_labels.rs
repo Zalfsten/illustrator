@@ -1,9 +1,12 @@
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
 use constraint_runtime::{Document, Markup, Mesh, MeshFilter};
 use eframe::egui::Pos2;
-use label_layout::{Contour, Paint, Segment, Shape, TypesetError, TypesetLine, Typesetter};
+use label_layout::{
+    Contour, Immediate, LineRequest, LineResult, LineTypesetter, Paint, Segment, Shape,
+    TypesetError, TypesetLine, Typesetter, TypesetterState,
+};
 use sketch_session::{Command, Session};
 
 use super::*;
@@ -12,7 +15,7 @@ use super::*;
 /// on `\foo`; counts its calls.
 struct Fake(Rc<Cell<usize>>);
 
-impl Typesetter for Fake {
+impl LineTypesetter for Fake {
     fn typeset_line(
         &self,
         line: &str,
@@ -71,9 +74,33 @@ fn viewport(scale: f64) -> Viewport {
     Viewport::new(scale, Pos2::new(100.0, 100.0))
 }
 
-fn fake() -> (LabelCache, Rc<Cell<usize>>) {
+/// A cache with the typesetter it is painted with.
+struct Env {
+    cache: LabelCache,
+    ts: Option<Box<dyn Typesetter>>,
+}
+
+impl Env {
+    fn none() -> Self {
+        Env {
+            cache: LabelCache::new(),
+            ts: None,
+        }
+    }
+
+    fn paint(&mut self, doc: &Document, vp: &Viewport, filter: MeshFilter) -> Vec<PaintItem> {
+        label_paint(doc, vp, filter, &mut self.cache, self.ts.as_deref())
+    }
+}
+
+/// The counting fake behind an immediate port.
+fn fake() -> (Env, Rc<Cell<usize>>) {
     let calls = Rc::new(Cell::new(0));
-    (LabelCache::new(Some(Box::new(Fake(calls.clone())))), calls)
+    let env = Env {
+        cache: LabelCache::new(),
+        ts: Some(Box::new(Immediate::new(Fake(calls.clone())))),
+    };
+    (env, calls)
 }
 
 fn typeset_vertices(items: &[PaintItem]) -> &[Pos2] {
@@ -96,7 +123,7 @@ fn label_follows_its_geometry() {
     s.drag_to(Point2::new(1.0, 1.0)).unwrap();
     s.drag_end(Point2::new(1.0, 1.0)).unwrap();
     let doc = s.document();
-    let items = label_paint(doc, &vp, MeshFilter::RESULT_ONLY, &mut cache);
+    let items = cache.paint(doc, &vp, MeshFilter::RESULT_ONLY);
     let end = match doc.resolve_address("seg1.end").unwrap() {
         constraint_runtime::Address::Point(e) => e.evaluate(doc, doc.vector()),
         other => panic!("{other:?}"),
@@ -113,9 +140,9 @@ fn label_follows_its_geometry() {
 fn zoom_keeps_proportions() {
     let s = joined("ab", "result");
     let (mut cache, _) = fake();
-    let extent = |scale: f64, cache: &mut LabelCache| {
+    let extent = |scale: f64, cache: &mut Env| {
         let vp = viewport(scale);
-        let items = label_paint(s.document(), &vp, MeshFilter::RESULT_ONLY, cache);
+        let items = cache.paint(s.document(), &vp, MeshFilter::RESULT_ONLY);
         let v = typeset_vertices(&items);
         let (min, max) = v
             .iter()
@@ -139,15 +166,13 @@ fn hidden_construction_label() {
     let s = joined("ab", "construction");
     let (mut cache, _) = fake();
     let vp = viewport(100.0);
-    assert!(label_paint(s.document(), &vp, MeshFilter::RESULT_ONLY, &mut cache).is_empty());
+    assert!(cache
+        .paint(s.document(), &vp, MeshFilter::RESULT_ONLY)
+        .is_empty());
     assert_eq!(
-        label_paint(
-            s.document(),
-            &vp,
-            MeshFilter::INCLUDE_CONSTRUCTION,
-            &mut cache
-        )
-        .len(),
+        cache
+            .paint(s.document(), &vp, MeshFilter::INCLUDE_CONSTRUCTION)
+            .len(),
         1
     );
 }
@@ -159,7 +184,7 @@ fn labels_are_painted_beside_the_mesh() {
     let doc = s.document();
     let mesh = Mesh::from_document(doc, doc.vector(), MeshFilter::RESULT_ONLY);
     assert_eq!(mesh.edges.len(), 1);
-    let items = label_paint(doc, &viewport(100.0), MeshFilter::RESULT_ONLY, &mut cache);
+    let items = cache.paint(doc, &viewport(100.0), MeshFilter::RESULT_ONLY);
     assert_eq!(items.len(), 1);
 }
 
@@ -168,8 +193,8 @@ fn unchanged_lines_are_typeset_once() {
     let s = joined(r"a\\b", "result");
     let (mut cache, calls) = fake();
     let vp = viewport(100.0);
-    label_paint(s.document(), &vp, MeshFilter::RESULT_ONLY, &mut cache);
-    label_paint(s.document(), &vp, MeshFilter::RESULT_ONLY, &mut cache);
+    cache.paint(s.document(), &vp, MeshFilter::RESULT_ONLY);
+    cache.paint(s.document(), &vp, MeshFilter::RESULT_ONLY);
     assert_eq!(calls.get(), 2, "two lines, typeset once each");
 }
 
@@ -178,16 +203,16 @@ fn unused_lines_are_dropped() {
     let mut s = joined("a", "result");
     let (mut cache, calls) = fake();
     let vp = viewport(100.0);
-    label_paint(s.document(), &vp, MeshFilter::RESULT_ONLY, &mut cache);
+    cache.paint(s.document(), &vp, MeshFilter::RESULT_ONLY);
     s.apply(
         Command::from_json(r#"{"op": "set", "kind": "label", "name": "t", "source": "b"}"#)
             .unwrap(),
     )
     .unwrap();
-    label_paint(s.document(), &vp, MeshFilter::RESULT_ONLY, &mut cache);
-    assert_eq!(cache.lines.len(), 1);
+    cache.paint(s.document(), &vp, MeshFilter::RESULT_ONLY);
+    assert_eq!(cache.cache.lines.len(), 1);
     s.undo().unwrap();
-    label_paint(s.document(), &vp, MeshFilter::RESULT_ONLY, &mut cache);
+    cache.paint(s.document(), &vp, MeshFilter::RESULT_ONLY);
     assert_eq!(calls.get(), 3, "`a` was dropped and typeset again");
 }
 
@@ -196,12 +221,12 @@ fn failure_is_marked_in_place() {
     let s = joined(r"$\foo$", "result");
     let (mut cache, _) = fake();
     let vp = viewport(100.0);
-    let items = label_paint(s.document(), &vp, MeshFilter::RESULT_ONLY, &mut cache);
+    let items = cache.paint(s.document(), &vp, MeshFilter::RESULT_ONLY);
     match &items[..] {
-        [PaintItem::Fallback { lines, error, .. }] => {
+        [PaintItem::Fallback { lines, reason, .. }] => {
             assert_eq!(
-                error,
-                &Some(TypesetError::Unsupported {
+                reason,
+                &FallbackReason::Failed(TypesetError::Unsupported {
                     construct: r"\foo".into()
                 })
             );
@@ -218,13 +243,13 @@ fn failure_is_marked_in_place() {
 #[test]
 fn no_typesetter_available() {
     let s = joined(r"a\\b", "result");
-    let mut cache = LabelCache::new(None);
+    let mut cache = Env::none();
     let vp = viewport(100.0);
-    let items = label_paint(s.document(), &vp, MeshFilter::RESULT_ONLY, &mut cache);
+    let items = cache.paint(s.document(), &vp, MeshFilter::RESULT_ONLY);
     match &items[..] {
         [PaintItem::Fallback {
             lines,
-            error: None,
+            reason: FallbackReason::NoTypesetter,
             frame,
             ..
         }] => {
@@ -240,4 +265,177 @@ fn no_typesetter_available() {
         }
         other => panic!("{other:?}"),
     }
+}
+
+// --- Asynchronous typesetting: pending state ---
+
+/// An asynchronous fake: requests wait until `complete` answers them with
+/// [`Fake`]; counts requests.
+struct Manual {
+    state: RefCell<TypesetterState>,
+    waiting: RefCell<Vec<LineRequest>>,
+    done: RefCell<Vec<(LineRequest, LineResult)>>,
+    requests: Cell<usize>,
+}
+
+impl Manual {
+    fn new(state: TypesetterState) -> Rc<Self> {
+        Rc::new(Manual {
+            state: RefCell::new(state),
+            waiting: RefCell::new(Vec::new()),
+            done: RefCell::new(Vec::new()),
+            requests: Cell::new(0),
+        })
+    }
+
+    /// Answer every waiting request.
+    fn complete(&self) {
+        let engine = Fake(Rc::new(Cell::new(0)));
+        for req in self.waiting.borrow_mut().drain(..) {
+            let r = engine.typeset_line(&req.line, req.markup, req.size_pt(), &req.preamble);
+            self.done.borrow_mut().push((req, r));
+        }
+        *self.state.borrow_mut() = TypesetterState::Ready;
+    }
+}
+
+struct Shared(Rc<Manual>);
+
+impl Typesetter for Shared {
+    fn request(&self, req: LineRequest) {
+        self.0.requests.set(self.0.requests.get() + 1);
+        self.0.waiting.borrow_mut().push(req);
+    }
+    fn take_completed(&self) -> Vec<(LineRequest, LineResult)> {
+        std::mem::take(&mut self.0.done.borrow_mut())
+    }
+    fn state(&self) -> TypesetterState {
+        self.0.state.borrow().clone()
+    }
+}
+
+fn manual(state: TypesetterState) -> (Env, Rc<Manual>) {
+    let m = Manual::new(state);
+    let env = Env {
+        cache: LabelCache::new(),
+        ts: Some(Box::new(Shared(m.clone()))),
+    };
+    (env, m)
+}
+
+fn set_source(s: &mut Session, source: &str) {
+    let cmd = format!(
+        r#"{{"op": "set", "kind": "label", "name": "t", "source": {}}}"#,
+        serde_json::to_string(source).unwrap()
+    );
+    s.apply(Command::from_json(&cmd).unwrap()).unwrap();
+}
+
+#[test]
+fn typesetter_still_loading() {
+    let s = joined("ab", "result");
+    let (mut env, _) = manual(TypesetterState::Loading);
+    let items = env.paint(s.document(), &viewport(100.0), MeshFilter::RESULT_ONLY);
+    assert!(
+        matches!(
+            &items[..],
+            [PaintItem::Fallback {
+                reason: FallbackReason::Pending,
+                ..
+            }]
+        ),
+        "{items:?}"
+    );
+    assert!(env.cache.any_pending());
+}
+
+#[test]
+fn changed_line_keeps_the_last_rendering() {
+    let mut s = joined("ab", "result");
+    let (mut env, m) = manual(TypesetterState::Ready);
+    let vp = viewport(100.0);
+    env.paint(s.document(), &vp, MeshFilter::RESULT_ONLY);
+    m.complete();
+    let first = env.paint(s.document(), &vp, MeshFilter::RESULT_ONLY);
+    assert!(!env.cache.any_pending());
+    set_source(&mut s, "abcd");
+    let while_pending = env.paint(s.document(), &vp, MeshFilter::RESULT_ONLY);
+    assert_eq!(
+        while_pending, first,
+        "previous rendering while the new line is pending"
+    );
+    assert!(env.cache.any_pending());
+    m.complete();
+    let after = env.paint(s.document(), &vp, MeshFilter::RESULT_ONLY);
+    assert_ne!(typeset_vertices(&after), typeset_vertices(&first));
+}
+
+#[test]
+fn label_moves_while_pending() {
+    let mut s = joined("ab", "result");
+    let (mut env, m) = manual(TypesetterState::Ready);
+    let vp = viewport(100.0);
+    env.paint(s.document(), &vp, MeshFilter::RESULT_ONLY);
+    m.complete();
+    env.paint(s.document(), &vp, MeshFilter::RESULT_ONLY);
+    set_source(&mut s, "abcd");
+    s.drag_begin("seg1.end").unwrap();
+    s.drag_to(Point2::new(1.0, 1.0)).unwrap();
+    s.drag_end(Point2::new(1.0, 1.0)).unwrap();
+    let doc = s.document();
+    let items = env.paint(doc, &vp, MeshFilter::RESULT_ONLY);
+    let end = match doc.resolve_address("seg1.end").unwrap() {
+        constraint_runtime::Address::Point(e) => e.evaluate(doc, doc.vector()),
+        other => panic!("{other:?}"),
+    };
+    let corner = vp.to_screen(end);
+    assert!(env.cache.any_pending());
+    assert!(
+        typeset_vertices(&items).iter().any(|v| near(*v, corner)),
+        "{items:?}"
+    );
+}
+
+#[test]
+fn immediate_typesetter_shows_no_pending_form() {
+    let s = joined(r"a\\b", "result");
+    let (mut env, _) = fake();
+    let items = env.paint(s.document(), &viewport(100.0), MeshFilter::RESULT_ONLY);
+    assert!(
+        matches!(&items[..], [PaintItem::Typeset { .. }]),
+        "{items:?}"
+    );
+    assert!(!env.cache.any_pending());
+}
+
+#[test]
+fn typesetter_fails_to_load() {
+    let mut s = joined("ab", "result");
+    s.apply(
+        Command::from_json(
+            r#"{"op": "create", "kind": "label", "origin": [0, 1], "heading": 0, "source": "c"}"#,
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    let (mut env, m) = manual(TypesetterState::Failed("offline".into()));
+    let items = env.paint(s.document(), &viewport(100.0), MeshFilter::RESULT_ONLY);
+    assert_eq!(items.len(), 2);
+    for item in &items {
+        assert!(
+            matches!(item, PaintItem::Fallback { reason: FallbackReason::LoadFailed(msg), .. } if msg == "offline"),
+            "{item:?}"
+        );
+    }
+    assert_eq!(m.requests.get(), 0, "no requests to a failed typesetter");
+}
+
+#[test]
+fn a_pending_line_is_requested_once() {
+    let s = joined("ab", "result");
+    let (mut env, m) = manual(TypesetterState::Loading);
+    let vp = viewport(100.0);
+    env.paint(s.document(), &vp, MeshFilter::RESULT_ONLY);
+    env.paint(s.document(), &vp, MeshFilter::RESULT_ONLY);
+    assert_eq!(m.requests.get(), 1);
 }

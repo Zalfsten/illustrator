@@ -5,6 +5,8 @@ members = [
     "crates/sketch_session",
     "crates/label_layout",
     "crates/label_typst",
+    "crates/label_worker",
+    "crates/label_web",
     "crates/sketch_ui",
 ]
 default-members = [

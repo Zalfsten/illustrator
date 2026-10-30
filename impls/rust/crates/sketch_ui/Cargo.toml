@@ -12,11 +12,13 @@ label_layout = { path = "../label_layout" }
 eframe = { version = "0.29", default-features = true }
 egui = "0.29"
 
-# The Typst engine is native only; the browser shows labels untypeset (#60).
+# The Typst engine is linked natively; the browser runs it in the label_worker
+# Web Worker through label_web (#60).
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 label_typst = { path = "../label_typst" }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
+label_web = { path = "../label_web" }
 wasm-bindgen = "0.2.128"
 wasm-bindgen-futures = "0.4.78"
 web-sys = { version = "0.3.105", features = ["Window", "Document", "Element", "HtmlCanvasElement"] }

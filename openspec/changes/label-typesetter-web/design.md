@@ -116,22 +116,39 @@ Messages are JSON text, written and read with `serde_json`, through **mirror typ
 
 - A `cdylib` with `wasm-bindgen`, depending on `label_typst` and `label_layout`.
 - Its start function sets `onmessage` on the `DedicatedWorkerGlobalScope`, parses a `WireRequest` from the message string, typesets it with `TypstTypesetter`, and posts the `WorkerMessage::Line` as a JSON string. It sends `WorkerMessage::Ready` after warming up: one dummy line to load the font book and library, the 87 ms cold start, inside the worker.
-- **Build: Trunk worker asset** in `index.html`: `<link data-trunk rel="rust" href="../label_worker/Cargo.toml" data-type="worker" data-loader-shim>`, so Trunk builds it with wasm-bindgen and emits a loader shim.
+- **Build: Trunk worker asset** in `index.html`: `<link data-trunk rel="rust" href="../label_worker/Cargo.toml" data-type="worker">`, so Trunk builds it with wasm-bindgen (no-modules) for a worker. The spike used `data-loader-shim`; the final build starts the worker with an own boot script (below).
   - Because nothing references the worker module, the browser fetches it only when the client does `new Worker(url)`.
-  - **To check in the spike:** the emitted file names, whether the URL is predictable (file hashes; `filehash = false` for this asset or the whole build), and that release `wasm-opt -Oz` finishes in acceptable time on the 30 MB module.
-- **Fallback if Trunk cannot do this** (task 1.3 is the gate): build the worker in a Trunk `pre_build` hook with `cargo build --target wasm32-unknown-unknown -p label_worker` and `wasm-bindgen --target no-modules`, and copy it to a fixed name with `copy-file`. design.md is updated before going on.
+  - **Spike result (task 1.2, Trunk 0.22.0):**
+    - **Files:** Trunk emits `label_worker_loader.js` (`importScripts("./label_worker.js"); wasm_bindgen("./label_worker_bg.wasm")`), `label_worker.js` and `label_worker_bg.wasm`, **without** file hashes. The main module keeps its hashed names.
+    - **No preloading:** the generated `index.html` has no script, preload or modulepreload entry for the worker. The URL to pass to `new Worker` is `label_worker_loader.js`, relative to the page, so it also works under the Pages base path `/illustrator/`.
+    - **Build time:** `trunk build --release`, including `wasm-opt -Oz` (version_131) on both modules, takes 1 min 37 s in the dev container with a warm cargo cache for dependencies.
+    - **Sizes (gzip -9):** main module 2.96 MB raw / **1.38 MB gzip** (as before); worker 27.3 MB raw / **10.8 MB gzip**.
+  - **Spike result (task 1.3, headless Chromium via Playwright, `trunk serve` debug build):**
+    - **Fetched on demand:** the worker files are requested only when `new Worker("label_worker_loader.js")` runs, 2.1 s after page load in the test (the timer delay), not with the page.
+    - **Round trip works:** the worker typesets `leg $\ell = \frac{3}{2}$` and posts back, with no panic from rayon or threads. Cold start to first answer took 752 ms, of which 379 ms was typesetting (debug build, unoptimized). The release build is faster.
+    - **UI not blocked:** the UI thread kept painting throughout (150 animation frames, largest gap 33 ms in headless Chromium).
+    - **Gate passed:** the Trunk worker asset is the build route. The pre-build-hook fallback (build with cargo + `wasm-bindgen --target no-modules` in a `pre_build` hook) is not needed.
+- **Own boot script instead of the loader shim** (found in task 4.3).
+  - **The problem:** Trunk's `label_worker_loader.js` calls `wasm_bindgen(...)` and drops the returned promise. If the `.wasm` fails to load, the rejection stays inside the worker and the page never learns of it, so the label would stay "pending" forever.
+  - **The fix:** `index.html` declares the worker asset **without** `data-loader-shim` and copies `sketch_ui/label_worker_boot.js` (`rel="copy-file"`). That script does `importScripts("./label_worker.js")` and then `wasm_bindgen({ module_or_path: … })`. A failed load is rethrown with `setTimeout(() => { throw … })`. The resulting uncaught error reaches the page as the worker's `error` event, with the message.
+  - **The URL** for `new Worker` is `label_worker_boot.js`.
+- **The client's `onerror`** takes a plain `Event`. A worker script that fails to load fires a plain `Event`; an uncaught error inside the worker fires an `ErrorEvent`, whose message is reported.
+- **Checked in the browser** (task 4.3, Playwright blocking the files):
+  - the blocked boot script gives "typesetter could not be loaded: worker script failed to load";
+  - the blocked `.wasm` gives "… typesetter module failed to load: TypeError: Failed to fetch";
+  - in both cases the labels show orange.
 
 ### 6. Worker client (`label_web`, wasm only)
 
-- `WorkerTypesetter { inner: Rc<RefCell<Core>>, worker: OnceCell<Worker>, url, wake }` implements `Typesetter`.
+- `WorkerTypesetter { url, wake, core: Rc<RefCell<Core>>, worker: OnceCell<Worker> }` implements `Typesetter`.
 - **`Core` is pure Rust and natively testable:**
-  - `next_id`, `pending: HashMap<u32, LineRequest>`, and `queued: Vec<(u32, LineRequest)>` for requests made before the worker is ready;
+  - `next_id`, `in_flight: HashMap<u32, LineRequest>`, and `queued: Vec<WireRequest>` for requests made before the worker is ready;
   - `completed: Vec<…>`;
   - `state`.
   
   It handles "request" (buffer while loading), "ready" (flush the queue), "response" (match the id), and "error" (→ `Failed`).
 - **The first `request`** creates the worker with `onmessage` / `onerror` closures that feed `Core` and call `wake`. Requests before that only change `state` to `Loading`.
-- **Duplicate requests** for the same line while one is in flight are not sent twice: `Core` keeps a set of in-flight requests.
+- **Duplicate requests** for the same line while one is in flight are not sent twice: `Core` checks `in_flight`. Messages it cannot read are ignored.
 
 ### 7. CI and Pages
 

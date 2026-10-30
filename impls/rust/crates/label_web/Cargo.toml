@@ -1,0 +1,14 @@
+[package]
+name = "label_web"
+version = "0.1.0"
+edition = "2021"
+description = "Browser typesetter for label_layout: a client of the label_worker Web Worker (#60)"
+license = "GPL-3.0-or-later"
+
+[dependencies]
+label_layout = { path = "../label_layout" }
+wasm-bindgen = "0.2.128"
+web-sys = { version = "0.3.105", features = ["Worker", "MessageEvent", "ErrorEvent", "Event"] }
+
+[dev-dependencies]
+constraint_runtime = { path = "../constraint_runtime" }

@@ -1,0 +1,17 @@
+[package]
+name = "label_worker"
+version = "0.1.0"
+edition = "2021"
+description = "Web Worker that typesets label lines with label_typst (browser only, #60)"
+license = "GPL-3.0-or-later"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+constraint_runtime = { path = "../constraint_runtime" }
+label_layout = { path = "../label_layout" }
+label_typst = { path = "../label_typst" }
+wasm-bindgen = "0.2.128"
+js-sys = "0.3.105"
+web-sys = { version = "0.3.105", features = ["DedicatedWorkerGlobalScope", "MessageEvent"] }
