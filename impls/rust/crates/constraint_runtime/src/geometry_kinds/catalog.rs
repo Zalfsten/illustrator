@@ -5,6 +5,7 @@ use std::ops::Range;
 use crate::geometry::{
     Caps, Chart, Geometry, GeometryCaps, GeometryId, GeometryRole, GeometryShell,
 };
+use crate::geometry_kinds::LabelAttrs;
 use crate::vector::Vector;
 
 /// Closed set of geometry kinds (discriminant only; kinds carry no data).
@@ -14,6 +15,7 @@ use crate::vector::Vector;
 pub enum GeometryKind {
     Segment,
     Arc,
+    Label,
 }
 
 /// Run `$body` with `$K` bound to the [`Geometry`] type of `$kind`.
@@ -29,6 +31,10 @@ macro_rules! with_kind {
             }
             $crate::geometry_kinds::GeometryKind::Arc => {
                 type $K = $crate::geometry_kinds::Arc;
+                $body
+            }
+            $crate::geometry_kinds::GeometryKind::Label => {
+                type $K = $crate::geometry_kinds::Label;
                 $body
             }
         }
@@ -50,16 +56,28 @@ impl GeometryKind {
     }
 }
 
-/// Document-held geometry: shared shell plus kind tag.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+/// Non-parameter attributes of a geometry, by kind (see [`Geometry::default_attrs`]).
+#[derive(Clone, Debug, Default, PartialEq)]
+pub enum KindAttrs {
+    /// Kinds without attributes.
+    #[default]
+    None,
+    Label(LabelAttrs),
+}
+
+/// Document-held geometry: shared shell, kind tag and kind attributes.
+#[derive(Clone, Debug, PartialEq)]
 pub struct GeometryInst {
     shell: GeometryShell,
     kind: GeometryKind,
+    attrs: KindAttrs,
 }
 
 impl GeometryInst {
+    /// Instance with the kind's default attributes.
     pub fn new(kind: GeometryKind, shell: GeometryShell) -> Self {
-        Self { shell, kind }
+        let attrs = with_kind!(kind, K => K::default_attrs());
+        Self { shell, kind, attrs }
     }
 
     /// Instance of kind `K` (tag taken from [`Geometry::KIND`]).
@@ -85,6 +103,19 @@ impl GeometryInst {
 
     pub fn set_role(&mut self, role: GeometryRole) {
         self.shell.role = role;
+    }
+
+    pub fn attrs(&self) -> &KindAttrs {
+        &self.attrs
+    }
+
+    /// Replace the attributes; `false` (unchanged) if `attrs` is of another kind.
+    pub fn set_attrs(&mut self, attrs: KindAttrs) -> bool {
+        if std::mem::discriminant(&attrs) != std::mem::discriminant(&self.attrs) {
+            return false;
+        }
+        self.attrs = attrs;
+        true
     }
 
     pub fn parameter_count(&self) -> usize {

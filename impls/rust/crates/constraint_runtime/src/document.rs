@@ -14,7 +14,7 @@ use crate::geometry::{
     Caps, Chart, Formula, Geometry, GeometryId, GeometryRole, GeometryShell, LengthFormula,
     PointFormula, VecFormula,
 };
-use crate::geometry_kinds::{with_kind, GeometryInst};
+use crate::geometry_kinds::{with_kind, GeometryInst, KindAttrs, LabelAttrs};
 use crate::id::IdMap;
 use crate::names::{NameError, Names, ObjectId};
 use crate::vector::Vector;
@@ -39,6 +39,29 @@ impl IdentificationEdge {
     }
 }
 
+/// Drawing-wide settings (document-settings spec). Ranges are checked by the
+/// command layer, not here.
+#[derive(Clone, Debug, PartialEq)]
+pub struct DocumentSettings {
+    /// Millimetres per world unit.
+    pub scale: f64,
+    /// Font size of labels that inherit theirs, in pt.
+    pub font_size: f64,
+    /// LaTeX source with macros for every label in `latex` markup.
+    pub preamble: String,
+}
+
+/// 1 world unit = 1 cm, 10 pt, no preamble.
+impl Default for DocumentSettings {
+    fn default() -> Self {
+        Self {
+            scale: 10.0,
+            font_size: 10.0,
+            preamble: String::new(),
+        }
+    }
+}
+
 /// Document = discrete sketch (geometries, constraints, incidence) + committed Vector.
 #[derive(Clone, Debug, Default)]
 pub struct Document {
@@ -54,6 +77,7 @@ pub struct Document {
     pub vector: Vector,
     /// User-visible names of all geometries and constraints (never on the solve path).
     names: Names,
+    settings: DocumentSettings,
 }
 
 /// Objects dropped by [`Document::remove_geometry`] / [`Document::remove_constraint`].
@@ -132,6 +156,14 @@ impl Document {
         self.names.rename(id, new)
     }
 
+    pub fn settings(&self) -> &DocumentSettings {
+        &self.settings
+    }
+
+    pub fn set_settings(&mut self, settings: DocumentSettings) {
+        self.settings = settings;
+    }
+
     /// Capability set of geometry `id` (`None` if `id` is not in the document).
     pub fn caps(&self, id: GeometryId) -> Option<Caps> {
         self.geometry(id).map(|g| g.kind().caps())
@@ -205,6 +237,12 @@ impl Document {
         self.capability_expr(id, |c| c.circular, LengthFormula::Radius)
     }
 
+    /// [`AnchorExprs::origin_expr`](crate::geometry::AnchorExprs::origin_expr) by id;
+    /// `None` without the anchor capability.
+    pub fn origin_expr(&self, id: GeometryId) -> Option<PointExpr> {
+        self.capability_expr(id, |c| c.anchor, PointFormula::Origin)
+    }
+
     pub fn constraints(&self) -> &IdMap<ConstraintId, ConstraintEntry> {
         &self.constraints
     }
@@ -240,14 +278,51 @@ impl Document {
     /// Chart pack receives only kind init (no identity). Id and Vector offset are
     /// assigned here from [`IdMap::next_id`] and the current Vector length.
     pub fn add_geometry<K: Geometry>(&mut self, role: GeometryRole, init: K::Init) -> GeometryId {
+        self.add_geometry_with::<K>(role, init, K::default_attrs())
+    }
+
+    /// [`Document::add_geometry`] with explicit attributes; `attrs` must be of
+    /// kind `K` (as [`Geometry::default_attrs`]).
+    pub fn add_geometry_with<K: Geometry>(
+        &mut self,
+        role: GeometryRole,
+        init: K::Init,
+        attrs: KindAttrs,
+    ) -> GeometryId {
         let packed = K::pack(K::canonical(init));
         debug_assert_eq!(packed.as_ref().len(), K::PARAMETER_COUNT);
         let id = self.geometries.next_id();
         let param_offset = self.vector.len();
+        let mut g = GeometryInst::of::<K>(GeometryShell::new(id, role, param_offset));
+        let matches = g.set_attrs(attrs);
+        debug_assert!(matches, "attributes of another kind for {:?}", K::KIND);
         self.vector.extend_from_slice(packed.as_ref());
-        self.push_geometry(GeometryInst::of::<K>(GeometryShell::new(id, role, param_offset)));
+        self.push_geometry(g);
         debug_assert_eq!(self.vector.len(), self.parameter_count());
         id
+    }
+
+    /// Replace the attributes of geometry `id`; `false` (unchanged) if it does
+    /// not exist or `attrs` belongs to another kind.
+    pub fn set_geometry_attrs(&mut self, id: GeometryId, attrs: KindAttrs) -> bool {
+        self.geometries
+            .get_mut(id)
+            .is_some_and(|g| g.set_attrs(attrs))
+    }
+
+    /// Text attributes of label `id` (`None` if it is not a label).
+    pub fn label_attrs(&self, id: GeometryId) -> Option<&LabelAttrs> {
+        match self.geometry(id)?.attrs() {
+            KindAttrs::Label(a) => Some(a),
+            KindAttrs::None => None,
+        }
+    }
+
+    /// Replace the text attributes of label `id`; `false` if it is not a label.
+    pub fn set_label_attrs(&mut self, id: GeometryId, attrs: LabelAttrs) -> bool {
+        self.geometries
+            .get_mut(id)
+            .is_some_and(|g| g.set_attrs(KindAttrs::Label(attrs)))
     }
 
     /// Register a geometry whose parameters already live in an external Vector.

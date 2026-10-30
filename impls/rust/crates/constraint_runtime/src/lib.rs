@@ -33,17 +33,19 @@ pub use constraint::{ConstraintEntry, ConstraintId, ConstraintKind};
 pub use constraint_kinds::{
     Congruence, ConstraintInst, EqualLength, FixPoint, VectorsOrthogonal, VectorsParallel,
 };
-pub use document::{Document, Removal};
+pub use document::{Document, DocumentSettings, Removal};
 pub use expr::{
     Expr, HeadingAngleExpr, LengthExpr, PointExpr, TurnAngleExpr, VecExpr, VecJet,
     MAX_FORMULA_LOCAL_DOF,
 };
 pub use geom::{CurveParam, HeadingAngle, Length, Point2, TurnAngle, Vec2};
 pub use geometry::{
-    Caps, Chart, ChartSlot, CircularExprs, CurveExprs, EndpointExprs, Geometry, GeometryCaps,
+    AnchorExprs, Caps, Chart, ChartSlot, CircularExprs, CurveExprs, EndpointExprs, Geometry, GeometryCaps,
     GeometryId, GeometryRole, GeometryShell, LineExprs, StateAtom,
 };
-pub use geometry_kinds::{Arc, GeometryInst, GeometryKind, Segment};
+pub use geometry_kinds::{
+    Arc, GeometryInst, GeometryKind, HAlign, KindAttrs, Label, LabelAttrs, Markup, Segment, VAlign,
+};
 pub use id::IdMap;
 pub use interact::{DragSession, InteractiveSolve, SoftTerms, SolveError};
 pub use matrix::{Block, BlockSparseMatrix, DenseMatrix};

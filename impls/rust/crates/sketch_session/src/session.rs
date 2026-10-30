@@ -13,8 +13,8 @@
 use std::collections::HashSet;
 
 use constraint_runtime::{
-    is_valid_name, Component, ConstraintInst, CurveParam, Document, DragSession, GeometryId,
-    InteractiveSolve, NameError, ObjectId, Point2, SolveError, Vector,
+    is_valid_name, Component, ConstraintInst, CurveParam, Document, DocumentSettings, DragSession,
+    GeometryId, InteractiveSolve, NameError, ObjectId, Point2, PointExpr, SolveError, Vector,
 };
 
 use crate::catalog::{ConstraintSpec, GeometrySpec};
@@ -82,6 +82,11 @@ impl Session {
         }
         report.conflicts = s.conflicts();
         (s, report)
+    }
+
+    /// Document settings of the drawing (scale, font size, preamble).
+    pub fn settings(&self) -> &DocumentSettings {
+        self.doc.settings()
     }
 
     pub fn document(&self) -> &Document {
@@ -270,6 +275,35 @@ impl Session {
                 self.doc.rename(id, &new_name)?;
                 Ok(Outcome::default())
             }
+            // No solve and no frozen check: attributes never change values.
+            Command::Set { name, attrs } => match self.object(&name)? {
+                ObjectId::Geometry(id) => {
+                    attrs.apply_to(&mut self.doc, id, &name)?;
+                    Ok(Outcome::default())
+                }
+                ObjectId::Constraint(_) => Err(CommandError::WrongObjectType {
+                    name,
+                    expected: "geometry",
+                }),
+            },
+            Command::SetDocument {
+                scale,
+                font_size,
+                preamble,
+            } => {
+                let mut settings = self.doc.settings().clone();
+                if let Some(v) = scale {
+                    settings.scale = crate::kinds::positive("scale", v)?;
+                }
+                if let Some(v) = font_size {
+                    settings.font_size = crate::kinds::positive("font_size", v)?;
+                }
+                if let Some(p) = preamble {
+                    settings.preamble = p;
+                }
+                self.doc.set_settings(settings);
+                Ok(Outcome::default())
+            }
             Command::SetRole { name, role } => match self.object(&name)? {
                 ObjectId::Geometry(id) => {
                     self.doc.set_geometry_role(id, role);
@@ -386,18 +420,25 @@ impl Session {
     }
 }
 
-/// Largest distance a curve point of `c` moved from `before` to the committed
-/// values, compared at the same curve position (sampled).
+/// Largest distance a point of `c` moved from `before` to the committed
+/// values: curve points compared at the same curve position (sampled), and
+/// the origin of geometries without a curve (labels).
 fn displacement(doc: &Document, c: &Component, before: &Vector) -> f64 {
     let mut max: f64 = 0.0;
+    let mut moved = |p: PointExpr| {
+        let d = p.evaluate(doc, doc.vector()) - p.evaluate(doc, before);
+        max = max.max(d.length());
+    };
     for &g in &c.geometries {
+        if doc.on_curve_expr(g, CurveParam::Normalized(0.0)).is_none() {
+            if let Some(origin) = doc.origin_expr(g) {
+                moved(origin);
+            }
+            continue;
+        }
         for k in 0..=DISPLACEMENT_SAMPLES {
             let t = f64::from(k) / f64::from(DISPLACEMENT_SAMPLES);
-            let Some(p) = doc.on_curve_expr(g, CurveParam::Normalized(t)) else {
-                break;
-            };
-            let moved = p.evaluate(doc, doc.vector()) - p.evaluate(doc, before);
-            max = max.max(moved.length());
+            moved(doc.on_curve_expr(g, CurveParam::Normalized(t)).expect("a curve"));
         }
     }
     max

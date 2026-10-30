@@ -1,6 +1,6 @@
 //! Addresses of points, free vectors and lengths on named geometries.
 //!
-//! Grammar: `<name>.<suffix>` with suffix `start`, `end`, `center`, `at(t)`
+//! Grammar: `<name>.<suffix>` with suffix `start`, `end`, `center`, `origin`, `at(t)`
 //! (points); `direction`, `tangent(t)`, `normal(t)` (free vectors); `length`,
 //! `radius` (lengths). `t` is a normalized curve parameter in \([0, 1]\); no
 //! whitespace. Resolution goes through the capability-based factories on
@@ -92,6 +92,7 @@ impl Document {
             ("start", None) => (self.start_expr(id).map(Point), "endpoints"),
             ("end", None) => (self.end_expr(id).map(Point), "endpoints"),
             ("center", None) => (self.center_expr(id).map(Point), "circular"),
+            ("origin", None) => (self.origin_expr(id).map(Point), "anchor"),
             ("at", Some(t)) => (self.on_curve_expr(id, normalized(t)?).map(Point), "curve"),
             ("direction", None) => (self.direction_expr(id).map(Vector), "line"),
             ("tangent", Some(t)) => (self.tangent_expr(id, normalized(t)?).map(Vector), "curve"),
@@ -113,6 +114,7 @@ impl Document {
             PointFormula::Start => "start".into(),
             PointFormula::End => "end".into(),
             PointFormula::Center => "center".into(),
+            PointFormula::Origin => "origin".into(),
             PointFormula::OnCurve {
                 param: CurveParam::Normalized(t),
             } => format!("at({t})"),

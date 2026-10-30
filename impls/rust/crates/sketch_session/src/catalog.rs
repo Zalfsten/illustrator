@@ -6,15 +6,15 @@
 //! error in the reverse mapping (`of`).
 
 use constraint_runtime::{
-    Arc, Congruence, ConstraintInst, Document, EqualLength, FixPoint, GeometryId, GeometryInst,
-    GeometryKind, GeometryRole, Segment, VectorsOrthogonal, VectorsParallel,
+    Arc, Congruence, ConstraintInst, Document, EqualLength, FixPoint, Geometry, GeometryId,
+    GeometryInst, GeometryKind, GeometryRole, Label, Segment, VectorsOrthogonal, VectorsParallel,
 };
 use schemars::Schema;
 use serde::{de::Error as _, Serialize, Serializer};
 use serde_json::Value;
 
 use crate::command::CommandError;
-use crate::kinds::{ConstraintCommand, GeometryCommand, Resolver};
+use crate::kinds::{AttributeCommand, ConstraintCommand, GeometryCommand, Resolver};
 use crate::schema::inline_schema;
 use crate::wire::Role;
 
@@ -32,11 +32,89 @@ pub(crate) struct Tagged<'a, P> {
 }
 
 macro_rules! command_catalog {
-    (create: $($g:ident),+ ; constrain: $($c:ident),+ $(;)?) => {
+    (create: $($g:ident),+ ; constrain: $($c:ident),+ ; set: $($a:ident),+ $(;)?) => {
         /// Kind and parameters of a `create` command.
         #[derive(Clone, Debug, PartialEq)]
         pub enum GeometrySpec {
             $($g(<$g as GeometryCommand>::Params),)+
+        }
+
+        /// Kind and attribute fields of a `set` command.
+        #[derive(Clone, Debug, PartialEq)]
+        pub enum AttrSpec {
+            $($a(<$a as AttributeCommand>::SetParams),)+
+        }
+
+        impl AttrSpec {
+            /// Interchange tags of the kinds with attributes.
+            pub const TAGS: &'static [&'static str] = &[$(<$a as GeometryCommand>::TAG),+];
+
+            pub fn tag(&self) -> &'static str {
+                match self {
+                    $(Self::$a(_) => <$a as GeometryCommand>::TAG,)+
+                }
+            }
+
+            /// Change the attributes of geometry `id` (named `name`); the
+            /// geometry must be of this kind.
+            pub(crate) fn apply_to(
+                &self,
+                doc: &mut Document,
+                id: GeometryId,
+                name: &str,
+            ) -> Result<(), CommandError> {
+                let g = doc.expect_geometry(id);
+                match self {
+                    $(Self::$a(p) => {
+                        if g.kind() != <$a as Geometry>::KIND {
+                            return Err(CommandError::WrongObjectType {
+                                name: name.to_owned(),
+                                expected: <$a as GeometryCommand>::TAG,
+                            });
+                        }
+                        let mut attrs = g.attrs().clone();
+                        <$a as AttributeCommand>::apply(p, &mut attrs)?;
+                        doc.set_geometry_attrs(id, attrs);
+                        Ok(())
+                    })+
+                }
+            }
+
+            pub(crate) fn from_fields(kind: &str, fields: Value) -> Result<Self, serde_json::Error> {
+                $(if kind == <$a as GeometryCommand>::TAG {
+                    let p: <$a as AttributeCommand>::SetParams = serde_json::from_value(fields)?;
+                    if <$a as AttributeCommand>::is_empty(&p) {
+                        return Err(serde_json::Error::custom("no attribute given"));
+                    }
+                    return Ok(Self::$a(p));
+                })+
+                Err(serde_json::Error::unknown_variant(kind, Self::TAGS))
+            }
+
+            pub(crate) fn serialize_tagged<S: Serializer>(
+                &self,
+                name: &str,
+                s: S,
+            ) -> Result<S::Ok, S::Error> {
+                match self {
+                    $(Self::$a(params) => Tagged {
+                        op: "set",
+                        kind: <$a as GeometryCommand>::TAG,
+                        name: Some(name),
+                        role: None,
+                        params,
+                    }
+                    .serialize(s),)+
+                }
+            }
+
+            /// `(tag, inline attribute schema)` per kind.
+            pub(crate) fn kind_schemas() -> Vec<(&'static str, Schema)> {
+                vec![$((
+                    <$a as GeometryCommand>::TAG,
+                    inline_schema::<<$a as AttributeCommand>::SetParams>(),
+                ),)+]
+            }
         }
 
         /// Kind and parameters of a `constrain` command.
@@ -64,7 +142,8 @@ macro_rules! command_catalog {
                 match self {
                     $(Self::$g(p) => {
                         let init = <$g as GeometryCommand>::init(p)?;
-                        Ok(doc.add_geometry::<$g>(role, init))
+                        let attrs = <$g as GeometryCommand>::attrs(p)?;
+                        Ok(doc.add_geometry_with::<$g>(role, init, attrs))
                     })+
                 }
             }
@@ -73,7 +152,10 @@ macro_rules! command_catalog {
             pub(crate) fn of(doc: &Document, g: &GeometryInst) -> Self {
                 match g.kind() {
                     $(GeometryKind::$g => {
-                        Self::$g(<$g as GeometryCommand>::params(g.unpack::<$g>(doc.vector())))
+                        Self::$g(<$g as GeometryCommand>::params(
+                            g.unpack::<$g>(doc.vector()),
+                            g.attrs(),
+                        ))
                     })+
                 }
             }
@@ -174,6 +256,7 @@ macro_rules! command_catalog {
 }
 
 command_catalog! {
-    create: Segment, Arc;
+    create: Segment, Arc, Label;
     constrain: Congruence, VectorsParallel, VectorsOrthogonal, FixPoint, EqualLength;
+    set: Label;
 }

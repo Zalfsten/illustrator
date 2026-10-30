@@ -1,6 +1,7 @@
 //! JSON Schemas of the interchange form, composed from the command catalog.
 //!
-//! One `oneOf` branch per fixed operation and per `create` / `constrain` kind;
+//! One `oneOf` branch per fixed operation and per `create` / `constrain` /
+//! `set` kind;
 //! each branch is a closed object (`additionalProperties: false`), matching
 //! the strict reader in [`crate::json`].
 
@@ -8,8 +9,8 @@ use schemars::generate::SchemaSettings;
 use schemars::{json_schema, JsonSchema, Schema};
 use serde_json::{json, Map, Value};
 
-use crate::catalog::{ConstraintSpec, GeometrySpec};
-use crate::json::{DeleteFields, RenameFields, SetRoleFields, RESERVED};
+use crate::catalog::{AttrSpec, ConstraintSpec, GeometrySpec};
+use crate::json::{DeleteFields, RenameFields, SetDocumentFields, SetRoleFields, RESERVED};
 use crate::wire::Role;
 
 /// Schema of `T` with all subschemas inlined (no `$ref`).
@@ -26,6 +27,7 @@ pub(crate) fn reserved_clashes() -> Vec<(&'static str, String)> {
     GeometrySpec::kind_schemas()
         .into_iter()
         .chain(ConstraintSpec::kind_schemas())
+        .chain(AttrSpec::kind_schemas())
         .flat_map(|(tag, s)| parts(s).0.into_iter().map(move |(field, _)| (tag, field)))
         .filter(|(_, field)| RESERVED.contains(&field.as_str()))
         .collect()
@@ -37,6 +39,16 @@ pub fn command_schema() -> Schema {
     branches.push(fixed("delete", inline_schema::<DeleteFields>()));
     branches.push(fixed("rename", inline_schema::<RenameFields>()));
     branches.push(fixed("set_role", inline_schema::<SetRoleFields>()));
+    // `set`: op, kind, name and at least one attribute.
+    for (tag, attrs) in AttrSpec::kind_schemas() {
+        let mut b = branch("set", tag, None, attrs, true);
+        b["minProperties"] = json!(4);
+        branches.push(b);
+    }
+    // `set_document`: op and at least one setting.
+    let mut b = fixed("set_document", inline_schema::<SetDocumentFields>());
+    b["minProperties"] = json!(2);
+    branches.push(b);
     root("Command", "One command of a drawing session.", branches)
 }
 

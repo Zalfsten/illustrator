@@ -1,6 +1,6 @@
 //! `create` kind `arc`.
 
-use constraint_runtime::{Arc, HeadingAngle, Length, Point2, TurnAngle};
+use constraint_runtime::{Arc, HeadingAngle, KindAttrs, Length, Point2, TurnAngle};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -50,7 +50,7 @@ impl GeometryCommand for Arc {
         ))
     }
 
-    fn params((center, radius, start, sweep): Self::Init) -> ArcParams {
+    fn params((center, radius, start, sweep): Self::Init, _attrs: &KindAttrs) -> ArcParams {
         ArcParams {
             center,
             radius: radius.value(),

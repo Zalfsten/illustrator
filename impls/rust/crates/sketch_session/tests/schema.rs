@@ -7,7 +7,7 @@
 use std::path::PathBuf;
 
 use serde_json::Value;
-use sketch_session::{command_schema, declarative_schema, ConstraintSpec, GeometrySpec};
+use sketch_session::{command_schema, declarative_schema, AttrSpec, ConstraintSpec, GeometrySpec};
 
 fn check_file(file: &str, schema: &Value) {
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -71,12 +71,20 @@ fn command_schema_lists_every_operation_and_kind() {
             "{tag}"
         );
     }
-    for op in ["delete", "rename", "set_role"] {
+    for tag in AttrSpec::TAGS {
+        assert!(
+            b.iter()
+                .any(|(op, k, _)| op == "set" && k.as_deref() == Some(tag)),
+            "{tag}"
+        );
+    }
+    assert_eq!(AttrSpec::TAGS, ["label"]);
+    for op in ["delete", "rename", "set_role", "set_document"] {
         assert!(b.iter().any(|(o, k, _)| o == op && k.is_none()), "{op}");
     }
     assert_eq!(
         b.len(),
-        GeometrySpec::TAGS.len() + ConstraintSpec::TAGS.len() + 3
+        GeometrySpec::TAGS.len() + ConstraintSpec::TAGS.len() + AttrSpec::TAGS.len() + 4
     );
 }
 
@@ -108,6 +116,12 @@ const VALID: &[&str] = &[
     r#"{"op": "create", "kind": "arc", "center": [0, 0], "radius": 0, "start_heading": 0, "sweep": 1}"#,
     r#"{"op": "delete", "name": "seg1"}"#,
     r#"{"op": "set_role", "name": "seg1", "role": "result"}"#,
+    r#"{"op": "create", "kind": "label", "origin": [1, 0], "heading": 0, "source": "$x$", "offset": [2, 3]}"#,
+    r#"{"op": "create", "kind": "label", "name": "t", "origin": [0, 0], "heading": 1, "source": "a", "markup": "text", "halign": "center", "valign": "last", "size": 8}"#,
+    r#"{"op": "set", "kind": "label", "name": "lbl1", "valign": "last"}"#,
+    r#"{"op": "set", "kind": "label", "name": "lbl1", "size": null}"#,
+    r#"{"op": "set_document", "scale": 5}"#,
+    r#"{"op": "set_document", "preamble": "\\newcommand{\\R}{\\mathbb{R}}"}"#,
 ];
 
 const INVALID: &[&str] = &[
@@ -118,6 +132,14 @@ const INVALID: &[&str] = &[
     r#"{"op": "create", "kind": "arc", "center": [0, 0], "radius": -1, "start_heading": 0, "sweep": 1}"#,
     r#"{"op": "create", "kind": "segment", "name": "seg.1", "start": [0, 0], "end": [1, 0]}"#,
     r#"{"op": "constrain", "kind": "parallel", "role": "result", "a": "x", "b": "y"}"#,
+    r#"{"op": "create", "kind": "label", "origin": [0, 0], "heading": 0}"#,
+    r#"{"op": "create", "kind": "label", "origin": [0, 0], "heading": 0, "source": "", "size": 0}"#,
+    r#"{"op": "create", "kind": "label", "origin": [0, 0], "heading": 0, "source": "", "halign": "middle"}"#,
+    r#"{"op": "set", "kind": "label", "name": "lbl1"}"#,
+    r#"{"op": "set", "kind": "label", "source": "x"}"#,
+    r#"{"op": "set", "kind": "segment", "name": "seg1", "start": [0, 0]}"#,
+    r#"{"op": "set_document"}"#,
+    r#"{"op": "set_document", "scale": 0}"#,
 ];
 
 #[test]
@@ -145,6 +167,8 @@ fn declarative_schema_rejects_what_the_subset_excludes() {
     for text in [
         r#"{"op": "constrain", "kind": "parallel", "a": "seg1.direction", "b": "seg2.direction"}"#,
         r#"{"op": "rename", "name": "seg1", "new_name": "x_axis"}"#,
+        r#"{"op": "set", "kind": "label", "name": "lbl1", "source": "x"}"#,
+        r#"{"op": "set_document", "scale": 5}"#,
     ] {
         let instance: Value = serde_json::from_str(text).unwrap();
         assert!(!v.is_valid(&instance), "{text}");

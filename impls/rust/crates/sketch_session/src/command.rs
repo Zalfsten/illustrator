@@ -7,7 +7,7 @@ use std::fmt;
 
 use constraint_runtime::{AddressError, GeometryRole, NameError};
 
-use crate::catalog::{ConstraintSpec, GeometrySpec};
+use crate::catalog::{AttrSpec, ConstraintSpec, GeometrySpec};
 
 /// One edit of the drawing. Optional `name`s replace the automatic name.
 ///
@@ -38,6 +38,17 @@ pub enum Command {
     SetRole {
         name: String,
         role: GeometryRole,
+    },
+    /// Change attributes (not parameters) of a geometry of the kind in `attrs`.
+    Set {
+        name: String,
+        attrs: AttrSpec,
+    },
+    /// Change the document settings that are `Some`.
+    SetDocument {
+        scale: Option<f64>,
+        font_size: Option<f64>,
+        preamble: Option<String>,
     },
 }
 
@@ -201,8 +212,8 @@ pub struct Conflict {
 }
 
 /// A component the session-start solve changed: its geometries (creation
-/// order) and the largest distance a curve point moved, compared at the same
-/// curve position, in drawing units.
+/// order) and the largest distance a point moved (curve points at the same
+/// curve position, label origins), in drawing units.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Adjusted {
     pub geometries: Vec<String>,

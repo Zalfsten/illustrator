@@ -1,6 +1,6 @@
 //! `create` kind `segment`.
 
-use constraint_runtime::{Point2, Segment};
+use constraint_runtime::{KindAttrs, Point2, Segment};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -27,7 +27,7 @@ impl GeometryCommand for Segment {
         Ok((finite_point("start", p.start)?, finite_point("end", p.end)?))
     }
 
-    fn params((start, end): (Point2, Point2)) -> SegmentParams {
+    fn params((start, end): (Point2, Point2), _attrs: &KindAttrs) -> SegmentParams {
         SegmentParams { start, end }
     }
 }

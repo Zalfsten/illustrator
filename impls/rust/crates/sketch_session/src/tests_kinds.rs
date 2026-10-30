@@ -1,9 +1,11 @@
 use constraint_runtime::{
-    Arc, Congruence, Document, FixPoint, GeometryRole, Point2, Segment, VectorsParallel,
+    Arc, Congruence, Document, FixPoint, GeometryRole, KindAttrs, Label, Point2, Segment, Vec2,
+    VectorsParallel,
 };
 
 use super::*;
 use crate::command::CommandError;
+use crate::wire::{WireHAlign, WireMarkup, WireVAlign};
 
 fn invalid(field: &'static str) -> impl Fn(&CommandError) -> bool {
     move |e| matches!(e, CommandError::InvalidValue { field: f, .. } if *f == field)
@@ -24,9 +26,46 @@ fn geometry_params_round_trip_through_init() {
         start: Point2::new(0.1, -0.0),
         end: Point2::new(1e-300, 3.0),
     };
-    assert_eq!(Segment::params(Segment::init(&s).unwrap()), s);
+    let none = KindAttrs::None;
+    assert_eq!(Segment::params(Segment::init(&s).unwrap(), &none), s);
     let a = arc(0.5, -1.25, 2.5);
-    assert_eq!(Arc::params(Arc::init(&a).unwrap()), a);
+    assert_eq!(Arc::params(Arc::init(&a).unwrap(), &none), a);
+}
+
+fn label(source: &str) -> LabelParams {
+    LabelParams {
+        origin: Point2::new(1.0, 0.0),
+        heading: 0.25,
+        source: source.into(),
+        markup: WireMarkup::Text,
+        halign: WireHAlign::Right,
+        valign: WireVAlign::Last,
+        offset: Vec2::new(2.0, -0.0),
+        size: Some(8.0),
+    }
+}
+
+#[test]
+fn label_params_round_trip_through_init_and_attrs() {
+    for size in [Some(8.0), None] {
+        let p = LabelParams {
+            size,
+            ..label("line 1\nline 2")
+        };
+        let back = Label::params(Label::init(&p).unwrap(), &Label::attrs(&p).unwrap());
+        assert_eq!(back, p);
+    }
+}
+
+#[test]
+fn label_size_must_be_positive() {
+    for size in [0.0, -1.0, f64::NAN] {
+        let p = LabelParams {
+            size: Some(size),
+            ..label("x")
+        };
+        assert!(invalid("size")(&Label::attrs(&p).unwrap_err()), "{size}");
+    }
 }
 
 #[test]

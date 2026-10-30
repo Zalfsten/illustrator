@@ -112,6 +112,102 @@
     {
       "additionalProperties": false,
       "properties": {
+        "halign": {
+          "default": "left",
+          "description": "Label horizontal alignment: `\"left\"`, `\"center\"` or `\"right\"`.",
+          "enum": [
+            "left",
+            "center",
+            "right"
+          ],
+          "type": "string"
+        },
+        "heading": {
+          "description": "Heading of the baseline, radians from +x.",
+          "format": "double",
+          "type": "number"
+        },
+        "kind": {
+          "const": "label"
+        },
+        "markup": {
+          "default": "latex",
+          "description": "Label markup: `\"latex\"` or `\"text\"`.",
+          "enum": [
+            "latex",
+            "text"
+          ],
+          "type": "string"
+        },
+        "name": {
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+          "type": "string"
+        },
+        "offset": {
+          "default": [
+            0.0,
+            0.0
+          ],
+          "description": "Offset of the reference point from the origin, in pt, in the label frame.",
+          "items": {
+            "type": "number"
+          },
+          "maxItems": 2,
+          "minItems": 2,
+          "type": "array"
+        },
+        "op": {
+          "const": "create"
+        },
+        "origin": {
+          "description": "Point [x, y].",
+          "items": {
+            "type": "number"
+          },
+          "maxItems": 2,
+          "minItems": 2,
+          "type": "array"
+        },
+        "role": {
+          "description": "Geometry role: `\"result\"` or `\"construction\"`.",
+          "enum": [
+            "result",
+            "construction"
+          ],
+          "type": "string"
+        },
+        "size": {
+          "description": "Size in pt, greater than zero; absent to inherit the document font size.",
+          "exclusiveMinimum": 0,
+          "type": "number"
+        },
+        "source": {
+          "description": "Text, read according to `markup`.",
+          "type": "string"
+        },
+        "valign": {
+          "default": "first",
+          "description": "Label vertical anchor: `\"first\"` or `\"last\"`.",
+          "enum": [
+            "first",
+            "last"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "op",
+        "kind",
+        "origin",
+        "heading",
+        "source"
+      ],
+      "title": "create label",
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
         "a": {
           "description": "Address of a point, e.g. seg1.end or arc1.center.",
           "type": "string"
@@ -331,6 +427,102 @@
         "role"
       ],
       "title": "set_role",
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "minProperties": 4,
+      "properties": {
+        "halign": {
+          "description": "Label horizontal alignment: `\"left\"`, `\"center\"` or `\"right\"`.",
+          "enum": [
+            "left",
+            "center",
+            "right"
+          ],
+          "type": "string"
+        },
+        "kind": {
+          "const": "label"
+        },
+        "markup": {
+          "description": "Label markup: `\"latex\"` or `\"text\"`.",
+          "enum": [
+            "latex",
+            "text"
+          ],
+          "type": "string"
+        },
+        "name": {
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+          "type": "string"
+        },
+        "offset": {
+          "description": "Free vector [dx, dy].",
+          "items": {
+            "type": "number"
+          },
+          "maxItems": 2,
+          "minItems": 2,
+          "type": "array"
+        },
+        "op": {
+          "const": "set"
+        },
+        "size": {
+          "description": "Size in pt, greater than zero; null to inherit the document font size.",
+          "exclusiveMinimum": 0,
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "source": {
+          "type": "string"
+        },
+        "valign": {
+          "description": "Label vertical anchor: `\"first\"` or `\"last\"`.",
+          "enum": [
+            "first",
+            "last"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "op",
+        "kind",
+        "name"
+      ],
+      "title": "set label",
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "minProperties": 2,
+      "properties": {
+        "font_size": {
+          "description": "Font size of labels that inherit theirs, in pt, greater than zero.",
+          "exclusiveMinimum": 0,
+          "type": "number"
+        },
+        "op": {
+          "const": "set_document"
+        },
+        "preamble": {
+          "description": "LaTeX source with macros for every label in latex markup.",
+          "type": "string"
+        },
+        "scale": {
+          "description": "Millimetres per world unit, greater than zero.",
+          "exclusiveMinimum": 0,
+          "type": "number"
+        }
+      },
+      "required": [
+        "op"
+      ],
+      "title": "set_document",
       "type": "object"
     }
   ],

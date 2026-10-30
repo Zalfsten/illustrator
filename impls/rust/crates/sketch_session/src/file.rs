@@ -1,5 +1,5 @@
 //! The native sketch file: a versioned envelope around the drawing's
-//! declarative command list.
+//! document settings and declarative command list.
 //!
 //! Saving writes a fixed layout (one command per line, so a change to one
 //! object changes one line); loading reads any JSON layout, executes the
@@ -8,7 +8,7 @@
 
 use std::fmt;
 
-use constraint_runtime::Document;
+use constraint_runtime::{Document, DocumentSettings};
 use serde_json::{Map, Value};
 
 use crate::command::{CommandError, DeclCommand, ExportError, LoadReport};
@@ -17,8 +17,11 @@ use crate::session::{Mode, Session};
 
 /// Value of the envelope's `format` field.
 pub const FORMAT: &str = "illustrator-sketch";
-/// The file version this implementation writes.
-pub const VERSION: u64 = 1;
+/// The file version this implementation writes; it reads 1 to this one.
+pub const VERSION: u64 = 2;
+
+/// Envelope fields of the document settings (since version 2).
+const SETTINGS_FIELDS: [&str; 3] = ["scale", "font_size", "preamble"];
 
 /// Why the drawing cannot be saved.
 #[derive(Debug)]
@@ -58,7 +61,16 @@ impl Session {
     /// The drawing as a sketch file in the standard layout.
     pub fn save(&self) -> Result<Vec<u8>, SaveError> {
         let commands = self.declarative_commands().map_err(SaveError::Export)?;
+        let settings = self.settings();
+        let json = |v: Value| serde_json::to_string(&v).expect("JSON values serialize");
         let mut out = format!("{{\n  \"format\": \"{FORMAT}\",\n  \"version\": {VERSION},\n");
+        for (field, value) in [
+            ("scale", Value::from(settings.scale)),
+            ("font_size", Value::from(settings.font_size)),
+            ("preamble", Value::from(settings.preamble.as_str())),
+        ] {
+            out.push_str(&format!("  \"{field}\": {},\n", json(value)));
+        }
         if commands.is_empty() {
             out.push_str("  \"commands\": []\n}\n");
             return Ok(out.into_bytes());
@@ -89,10 +101,11 @@ impl Session {
             None => return Err(missing("version")),
             Some(v) => v
                 .as_u64()
-                .filter(|&v| v == VERSION)
+                .filter(|v| (1..=VERSION).contains(v))
                 .ok_or_else(|| LoadError::UnsupportedVersion(v.to_string()))?,
         };
         let mut envelope = migrate(version, envelope)?;
+        let settings = settings(&mut envelope)?;
         let Some(commands) = envelope.remove("commands") else {
             return Err(missing("commands"));
         };
@@ -103,7 +116,9 @@ impl Session {
             return Err(LoadError::Envelope("`commands` is not an array".into()));
         };
 
-        let mut session = Session::new(Document::new());
+        let mut doc = Document::new();
+        doc.set_settings(settings);
+        let mut session = Session::new(doc);
         for (index, value) in commands.into_iter().enumerate() {
             let fail = |error| LoadError::Command { index, error };
             let cmd: DeclCommand = serde_json::from_value(value)
@@ -116,10 +131,42 @@ impl Session {
     }
 }
 
-/// Bring an envelope of `version` to the current version (identity today).
-fn migrate(version: u64, envelope: Map<String, Value>) -> Result<Map<String, Value>, LoadError> {
-    debug_assert_eq!(version, VERSION);
+/// Bring an envelope of `version` to the current version.
+///
+/// Version 1 has no settings fields; it gets the default settings.
+fn migrate(version: u64, mut envelope: Map<String, Value>) -> Result<Map<String, Value>, LoadError> {
+    if version == 1 {
+        if let Some(field) = SETTINGS_FIELDS.iter().find(|f| envelope.contains_key(**f)) {
+            return Err(LoadError::Envelope(format!("unknown field `{field}`")));
+        }
+        let d = DocumentSettings::default();
+        envelope.insert("scale".into(), d.scale.into());
+        envelope.insert("font_size".into(), d.font_size.into());
+        envelope.insert("preamble".into(), d.preamble.into());
+    }
     Ok(envelope)
+}
+
+/// Take the settings fields out of a current-version envelope and check them.
+fn settings(envelope: &mut Map<String, Value>) -> Result<DocumentSettings, LoadError> {
+    let mut take = |field: &str| envelope.remove(field).ok_or_else(|| missing(field));
+    let positive = |field: &str, v: Value| match v.as_f64() {
+        Some(x) if x.is_finite() && x > 0.0 => Ok(x),
+        Some(_) => Err(LoadError::Envelope(format!(
+            "invalid value of `{field}`: not greater than zero"
+        ))),
+        None => Err(LoadError::Envelope(format!("`{field}` is not a number"))),
+    };
+    let scale = positive("scale", take("scale")?)?;
+    let font_size = positive("font_size", take("font_size")?)?;
+    let Value::String(preamble) = take("preamble")? else {
+        return Err(LoadError::Envelope("`preamble` is not a string".into()));
+    };
+    Ok(DocumentSettings {
+        scale,
+        font_size,
+        preamble,
+    })
 }
 
 fn missing(field: &str) -> LoadError {

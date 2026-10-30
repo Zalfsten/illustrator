@@ -55,7 +55,10 @@ fn saved_bytes_of_two_joined_segments() {
     let s = session(&[SEG1, SEG2, JOIN1]);
     let expected = r#"{
   "format": "illustrator-sketch",
-  "version": 1,
+  "version": 2,
+  "scale": 10.0,
+  "font_size": 10.0,
+  "preamble": "",
   "commands": [
     {"op":"create","kind":"segment","name":"seg1","role":"result","start":[0.0,0.0],"end":[1.0,0.0]},
     {"op":"create","kind":"segment","name":"seg2","role":"result","start":[1.0,0.0],"end":[1.0,1.0]},
@@ -70,7 +73,7 @@ fn saved_bytes_of_two_joined_segments() {
 fn saved_bytes_of_an_empty_drawing() {
     let s = Session::new(Document::new());
     let expected =
-        "{\n  \"format\": \"illustrator-sketch\",\n  \"version\": 1,\n  \"commands\": []\n}\n";
+        "{\n  \"format\": \"illustrator-sketch\",\n  \"version\": 2,\n  \"scale\": 10.0,\n  \"font_size\": 10.0,\n  \"preamble\": \"\",\n  \"commands\": []\n}\n";
     assert_eq!(String::from_utf8(s.save().unwrap()).unwrap(), expected);
 }
 
@@ -163,8 +166,8 @@ fn other_json_is_an_unknown_format() {
 
 #[test]
 fn newer_version() {
-    match load_err(br#"{"format": "illustrator-sketch", "version": 2, "commands": []}"#) {
-        LoadError::UnsupportedVersion(v) => assert_eq!(v, "2"),
+    match load_err(br#"{"format": "illustrator-sketch", "version": 3, "commands": []}"#) {
+        LoadError::UnsupportedVersion(v) => assert_eq!(v, "3"),
         other => panic!("{other:?}"),
     }
     assert!(matches!(
@@ -320,4 +323,90 @@ fn contradicting_file_is_held() {
     assert_eq!(report.conflicts[0].geometries, ["seg1"]);
     let values: Vec<f64> = s.document().vector().iter().copied().collect();
     assert_eq!(values, [0.0, 0.0, 1.0, 0.0]);
+}
+
+// --- Version 2: document settings ---
+
+fn envelope_err(bytes: &[u8]) -> String {
+    match load_err(bytes) {
+        LoadError::Envelope(e) => e,
+        other => panic!("{other:?}"),
+    }
+}
+
+#[test]
+fn minimal_version_2_file() {
+    let (s, _) = Session::load(
+        br#"{"format": "illustrator-sketch", "version": 2, "scale": 5, "font_size": 11, "preamble": "\\def\\x{y}", "commands": []}"#,
+    )
+    .unwrap();
+    assert_eq!(s.settings().scale, 5.0);
+    assert_eq!(s.settings().font_size, 11.0);
+    assert_eq!(s.settings().preamble, "\\def\\x{y}");
+    assert!(s.document().geometries().is_empty());
+}
+
+#[test]
+fn version_1_loads_with_default_settings_and_saves_as_2() {
+    let (s, _) = Session::load(&file(&[SEG1])).unwrap();
+    assert_eq!(s.settings(), &constraint_runtime::DocumentSettings::default());
+    let saved = String::from_utf8(s.save().unwrap()).unwrap();
+    assert!(saved.contains("\"version\": 2,"), "{saved}");
+}
+
+#[test]
+fn settings_fields_in_version_1_are_rejected() {
+    let e = envelope_err(br#"{"format": "illustrator-sketch", "version": 1, "scale": 5, "commands": []}"#);
+    assert!(e.contains("unknown field `scale`"), "{e}");
+}
+
+#[test]
+fn missing_or_invalid_settings_are_rejected() {
+    let e = envelope_err(
+        br#"{"format": "illustrator-sketch", "version": 2, "scale": 10, "font_size": 10, "commands": []}"#,
+    );
+    assert!(e.contains("missing field `preamble`"), "{e}");
+    let e = envelope_err(
+        br#"{"format": "illustrator-sketch", "version": 2, "scale": 0, "font_size": 10, "preamble": "", "commands": []}"#,
+    );
+    assert!(e.contains("`scale`"), "{e}");
+    let e = envelope_err(
+        br#"{"format": "illustrator-sketch", "version": 2, "scale": 10, "font_size": "10", "preamble": "", "commands": []}"#,
+    );
+    assert!(e.contains("`font_size`"), "{e}");
+    let e = envelope_err(
+        br#"{"format": "illustrator-sketch", "version": 2, "scale": 10, "font_size": 10, "preamble": "", "commands": [], "author": "x"}"#,
+    );
+    assert!(e.contains("unknown field `author`"), "{e}");
+}
+
+#[test]
+fn multi_line_preamble_and_label_round_trip_byte_identical() {
+    let mut s = session(&[
+        SEG1,
+        r#"{"op": "create", "kind": "label", "name": "t", "origin": [1, 0], "heading": 0.5, "source": "velocity\\\\\n$\\vec v$", "markup": "latex", "valign": "last", "offset": [2, -1], "size": 8}"#,
+        r#"{"op": "constrain", "kind": "join", "name": "j", "a": "t.origin", "b": "seg1.end"}"#,
+    ]);
+    s.apply(Command::from_json(r#"{"op": "set_document", "scale": 25.4, "preamble": "\\newcommand{\\R}{\\mathbb{R}}\n\\newcommand{\\N}{\\mathbb{N}}"}"#).unwrap())
+        .unwrap();
+    let first = s.save().unwrap();
+    let text = String::from_utf8(first.clone()).unwrap();
+    assert_eq!(text.lines().filter(|l| l.contains("\"preamble\"")).count(), 1, "{text}");
+    assert_eq!(text.lines().filter(|l| l.contains("\"kind\":\"label\"")).count(), 1, "{text}");
+    let (loaded, report) = Session::load(&first).unwrap();
+    assert_eq!(report, LoadReport::default());
+    assert_eq!(loaded.settings(), s.settings());
+    assert_eq!(loaded.save().unwrap(), first);
+}
+
+#[test]
+fn moved_label_reports_its_origin_displacement() {
+    let bytes = file(&[
+        r#"{"op": "create", "kind": "label", "name": "t", "origin": [1, 0], "heading": 0.3, "source": "x"}"#,
+        r#"{"op": "constrain", "kind": "fix", "name": "f", "point": "t.origin", "target": [1.2, 0]}"#,
+    ]);
+    let (_, report) = Session::load(&bytes).unwrap();
+    assert_eq!(report.adjusted.len(), 1);
+    assert_eq!(report.adjusted[0].geometries, ["t"]);
+    assert!((report.adjusted[0].displacement - 0.2).abs() < 1e-6, "{report:?}");
 }

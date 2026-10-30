@@ -1,9 +1,10 @@
 //! Headless acceptance scenarios.
 
 use constraint_runtime::{
-    AssembledSystem, Congruence, CurveExprs, CurveParam, Document, DragSession, EndpointExprs,
-    EqualLength, FixPoint, GeometryRole, InteractiveSolve, LineExprs, Point2, Segment,
-    SoftContribution, SystemEval, Vector, VectorsOrthogonal, VectorsParallel, SOLVE_TOL,
+    AnchorExprs, AssembledSystem, Congruence, CurveExprs, CurveParam, Document, DragSession,
+    EndpointExprs, EqualLength, FixPoint, GeometryRole, HeadingAngle, InteractiveSolve, Label,
+    LineExprs, Point2, Segment, SoftContribution, SystemEval, Vector, VectorsOrthogonal,
+    VectorsParallel, SOLVE_TOL,
 };
 
 fn residual_ok(doc: &Document) -> bool {
@@ -237,4 +238,63 @@ fn equal_length_keeps_two_segments_same_length() {
         .value();
     assert!((l0 - l1).abs() < 1e-4, "l0={l0} l1={l1}");
     assert!((l0 - 3.0).abs() < 1e-4, "expected length 3, got {l0}");
+}
+
+/// labels "Labels follow constraints on their frame": a label joined to an
+/// endpoint and parallel to its segment follows a drag of that endpoint
+/// (its component has a label, which gets no length floor).
+#[test]
+fn label_follows_dragged_endpoint() {
+    let mut doc = Document::new();
+    let seg = doc.add_geometry::<Segment>(GeometryRole::Result, (Point2::new(0.0, 0.0), Point2::new(1.0, 0.0)));
+    let lbl = doc.add_geometry::<Label>(
+        GeometryRole::Result,
+        (Point2::new(1.2, 0.1), HeadingAngle::new(0.3)),
+    );
+    doc.add_constraint(FixPoint {
+        point: Segment::start_expr(seg),
+        target: Point2::new(0.0, 0.0),
+    });
+    doc.add_constraint(Congruence {
+        a: Label::origin_expr(lbl),
+        b: Segment::end_expr(seg),
+    });
+    doc.add_constraint(VectorsParallel {
+        a: Label::direction_expr(lbl),
+        b: Segment::direction_expr(seg),
+    });
+
+    let mut interact = InteractiveSolve::new();
+    interact.structural_only(&mut doc).expect("initial solve");
+    assert!(residual_ok(&doc));
+
+    let mut drag = DragSession::new();
+    drag.pointer_down(&doc, Segment::end_expr(seg));
+    drag.pointer_move(&mut interact, &mut doc, (1.5, 1.5)).expect("move");
+    drag.pointer_up(&mut interact, &mut doc, (2.0, 2.0)).expect("up");
+
+    assert!(residual_ok(&doc));
+    let p = doc.vector();
+    let end = Segment::end_expr(seg).evaluate(&doc, p);
+    assert!((end.x - 2.0).abs() < 1e-3 && (end.y - 2.0).abs() < 1e-3, "{end:?}");
+    let origin = Label::origin_expr(lbl).evaluate(&doc, p);
+    assert!((origin.x - end.x).abs() < 1e-6 && (origin.y - end.y).abs() < 1e-6);
+    let d = Label::direction_expr(lbl).evaluate(&doc, p);
+    assert!(d.cross(Segment::direction_expr(seg).evaluate(&doc, p)).abs() < 1e-6);
+}
+
+#[test]
+fn fixed_label_origin_holds_after_solve() {
+    let mut doc = Document::new();
+    let lbl = doc.add_geometry::<Label>(
+        GeometryRole::Result,
+        (Point2::new(0.0, 0.0), HeadingAngle::new(0.0)),
+    );
+    doc.add_constraint(FixPoint {
+        point: Label::origin_expr(lbl),
+        target: Point2::new(3.0, -1.0),
+    });
+    InteractiveSolve::new().structural_only(&mut doc).expect("solve");
+    let o = Label::origin_expr(lbl).evaluate(&doc, doc.vector());
+    assert!((o.x - 3.0).abs() < 1e-6 && (o.y + 1.0).abs() < 1e-6, "{o:?}");
 }
