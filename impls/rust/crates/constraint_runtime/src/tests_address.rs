@@ -194,3 +194,49 @@ fn uniform_parameters_have_no_address() {
     assert_eq!(doc.point_address(&Segment::on_curve_expr(seg, u)), None);
     assert_eq!(doc.vec_address(&Segment::tangent_expr(seg, u)), None);
 }
+
+/// `lbl1` at (1, 2) with heading 0.
+fn doc_with_label() -> (Document, GeometryId) {
+    let (mut doc, ..) = doc();
+    let lbl = doc.add_geometry::<crate::geometry_kinds::Label>(
+        GeometryRole::Result,
+        (Point2::new(1.0, 2.0), HeadingAngle::new(0.0)),
+    );
+    (doc, lbl)
+}
+
+#[test]
+fn label_origin_and_direction_addresses() {
+    use crate::geometry::AnchorExprs;
+    use crate::geometry_kinds::Label;
+    let (doc, lbl) = doc_with_label();
+    assert_eq!(resolve(&doc, "lbl1.origin"), Address::Point(Label::origin_expr(lbl)));
+    assert_eq!(
+        resolve(&doc, "lbl1.direction"),
+        Address::Vector(Label::direction_expr(lbl))
+    );
+    assert_eq!(
+        doc.point_address(&Label::origin_expr(lbl)).as_deref(),
+        Some("lbl1.origin")
+    );
+}
+
+#[test]
+fn origin_and_endpoints_need_their_capabilities() {
+    let (doc, _) = doc_with_label();
+    for (a, name, capability) in [
+        ("lbl1.start", "lbl1", "endpoints"),
+        ("lbl1.at(0.5)", "lbl1", "curve"),
+        ("lbl1.length", "lbl1", "curve"),
+        ("seg1.origin", "seg1", "anchor"),
+    ] {
+        assert_eq!(
+            doc.resolve_address(a),
+            Err(AddressError::MissingCapability {
+                name: name.into(),
+                capability
+            }),
+            "{a}"
+        );
+    }
+}

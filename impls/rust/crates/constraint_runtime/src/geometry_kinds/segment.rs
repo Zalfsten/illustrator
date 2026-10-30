@@ -26,7 +26,7 @@ chart_atoms! {
 }
 
 // Capability factory impls + runtime Caps.
-geometry_caps!(Segment: endpoints, line);
+geometry_caps!(Segment: curve, endpoints, line);
 
 impl Geometry for Segment {
     const KIND: GeometryKind = GeometryKind::Segment;
@@ -40,7 +40,9 @@ impl Geometry for Segment {
             }
             PointFormula::Start => a,
             PointFormula::End => b,
-            PointFormula::Center => unreachable!("segment has no circular carrier"),
+            PointFormula::Center | PointFormula::Origin => {
+                unreachable!("segment has no circular carrier or frame")
+            }
         }
     }
 
@@ -60,7 +62,9 @@ impl Geometry for Segment {
             PointFormula::Start | PointFormula::End => {
                 j.set_scaled(scale, [[1.0, 0.0], [0.0, 1.0]]);
             }
-            PointFormula::Center => unreachable!("segment has no circular carrier"),
+            PointFormula::Center | PointFormula::Origin => {
+                unreachable!("segment has no circular carrier or frame")
+            }
         }
     }
 
@@ -69,7 +73,9 @@ impl Geometry for Segment {
             PointFormula::OnCurve { .. } => Self::start.span(Self::end),
             PointFormula::Start => Self::start.range(),
             PointFormula::End => Self::end.range(),
-            PointFormula::Center => unreachable!("segment has no circular carrier"),
+            PointFormula::Center | PointFormula::Origin => {
+                unreachable!("segment has no circular carrier or frame")
+            }
         }
     }
 

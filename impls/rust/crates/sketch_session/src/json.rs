@@ -16,12 +16,20 @@ use serde_json::{Map, Value};
 
 use constraint_runtime::GeometryRole;
 
-use crate::catalog::{ConstraintSpec, GeometrySpec};
+use crate::catalog::{AttrSpec, ConstraintSpec, GeometrySpec};
 use crate::command::{Command, DeclCommand};
-use crate::wire::Role;
+use crate::wire::{self, Role};
 
 /// Operations of the interchange form.
-pub const OPS: &[&str] = &["create", "constrain", "delete", "rename", "set_role"];
+pub const OPS: &[&str] = &[
+    "create",
+    "constrain",
+    "delete",
+    "rename",
+    "set_role",
+    "set",
+    "set_document",
+];
 
 /// Field names no kind may use for its parameters.
 pub const RESERVED: &[&str] = &["op", "kind", "name", "role"];
@@ -47,6 +55,32 @@ pub(crate) struct RenameFields {
 pub(crate) struct SetRoleFields {
     pub name: String,
     pub role: Role,
+}
+
+/// Fields of `set_document` (each optional, at least one present).
+#[derive(Default, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct SetDocumentFields {
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "wire::finite_option"
+    )]
+    /// Millimetres per world unit, greater than zero.
+    #[schemars(schema_with = "wire::positive_schema")]
+    pub scale: Option<f64>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "wire::finite_option"
+    )]
+    /// Font size of labels that inherit theirs, in pt, greater than zero.
+    #[schemars(schema_with = "wire::positive_schema")]
+    pub font_size: Option<f64>,
+    /// LaTeX source with macros for every label in latex markup.
+    #[serde(default, skip_serializing_if = "Option::is_none", with = "wire::present")]
+    #[schemars(with = "String")]
+    pub preamble: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -151,6 +185,20 @@ impl Serialize for Command {
                 },
             }
             .serialize(s),
+            Command::Set { name, attrs } => attrs.serialize_tagged(name, s),
+            Command::SetDocument {
+                scale,
+                font_size,
+                preamble,
+            } => WithOp {
+                op: "set_document",
+                fields: SetDocumentFields {
+                    scale: *scale,
+                    font_size: *font_size,
+                    preamble: preamble.clone(),
+                },
+            }
+            .serialize(s),
         }
     }
 }
@@ -218,6 +266,23 @@ fn command(m: &mut Map<String, Value>) -> JsonResult<Command> {
             Command::SetRole {
                 name: f.name,
                 role: f.role.into(),
+            }
+        }
+        "set" => {
+            let kind = required_str(m, "kind")?;
+            let name = required_str(m, "name")?;
+            let attrs = AttrSpec::from_fields(&kind, Value::Object(std::mem::take(m)))?;
+            Command::Set { name, attrs }
+        }
+        "set_document" => {
+            let f: SetDocumentFields = rest(m)?;
+            if f == SetDocumentFields::default() {
+                return Err(serde_json::Error::custom("no setting given"));
+            }
+            Command::SetDocument {
+                scale: f.scale,
+                font_size: f.font_size,
+                preamble: f.preamble,
             }
         }
         other => return Err(serde_json::Error::unknown_variant(other, OPS)),

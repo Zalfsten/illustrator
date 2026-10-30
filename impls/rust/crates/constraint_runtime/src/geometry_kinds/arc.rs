@@ -39,7 +39,7 @@ chart_atoms! {
 }
 
 // Capability factory impls + runtime Caps.
-geometry_caps!(Arc: endpoints, circular);
+geometry_caps!(Arc: curve, endpoints, circular);
 
 impl Arc {
     /// Heading at the arc start (chart atom).
@@ -64,7 +64,9 @@ impl Arc {
             PointFormula::OnCurve { param } => param.chart_t(),
             PointFormula::Start => 0.0,
             PointFormula::End => 1.0,
-            PointFormula::Center => unreachable!("center is not a curve location"),
+            PointFormula::Center | PointFormula::Origin => {
+                unreachable!("not a curve location")
+            }
         }
     }
 }
@@ -128,6 +130,7 @@ impl Geometry for Arc {
                 );
             }
             PointFormula::Center => unreachable!("handled above"),
+            PointFormula::Origin => unreachable!("arc has no frame"),
         }
     }
 
@@ -137,6 +140,7 @@ impl Geometry for Arc {
             PointFormula::Start => Self::center.span(Self::start),
             PointFormula::OnCurve { .. } | PointFormula::End => Self::center.span(Self::sweep),
             PointFormula::Center => Self::center.range(),
+            PointFormula::Origin => unreachable!("arc has no frame"),
         }
     }
 

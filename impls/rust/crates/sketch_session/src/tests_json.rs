@@ -1,7 +1,11 @@
-use constraint_runtime::{GeometryRole, Point2};
+use constraint_runtime::{GeometryRole, Point2, Vec2};
 
 use super::*;
-use crate::kinds::{ArcParams, FixParams, LenPair, PointPair, SegmentParams, VecPair};
+use crate::catalog::AttrSpec;
+use crate::kinds::{
+    ArcParams, FixParams, LabelParams, LabelSet, LenPair, PointPair, SegmentParams, VecPair,
+};
+use crate::wire::{WireHAlign, WireMarkup, WireVAlign};
 
 fn read(text: &str) -> Command {
     Command::from_json(text).unwrap_or_else(|e| panic!("{text}: {e}"))
@@ -71,7 +75,7 @@ fn unknown_kind_is_rejected() {
 
 #[test]
 fn kind_tags_are_independent_of_name_prefixes() {
-    assert_eq!(GeometrySpec::TAGS, ["segment", "arc"]);
+    assert_eq!(GeometrySpec::TAGS, ["segment", "arc", "label"]);
     assert_eq!(
         ConstraintSpec::TAGS,
         ["join", "parallel", "perpendicular", "fix", "equal_length"]
@@ -90,6 +94,47 @@ fn segment_in_interchange_form() {
             geometry: segment(Point2::new(0.0, 0.0), Point2::new(3.0, 0.0)),
         }
     );
+}
+
+#[test]
+fn label_in_interchange_form() {
+    assert_eq!(
+        read(
+            r#"{"op": "create", "kind": "label", "origin": [1, 0], "heading": 0,
+                "source": "$x$", "offset": [2, 3]}"#
+        ),
+        Command::Create {
+            name: None,
+            role: GeometryRole::Result,
+            geometry: GeometrySpec::Label(LabelParams {
+                origin: Point2::new(1.0, 0.0),
+                heading: 0.0,
+                source: "$x$".into(),
+                markup: WireMarkup::Latex,
+                halign: WireHAlign::Left,
+                valign: WireVAlign::First,
+                offset: Vec2::new(2.0, 3.0),
+                size: None,
+            }),
+        }
+    );
+}
+
+#[test]
+fn label_without_source_is_rejected() {
+    let e = read_err(r#"{"op": "create", "kind": "label", "origin": [0, 0], "heading": 0}"#);
+    assert!(e.contains("source"), "{e}");
+}
+
+#[test]
+fn label_with_bad_enum_unknown_field_or_null_size_is_rejected() {
+    for text in [
+        r#"{"op": "create", "kind": "label", "origin": [0, 0], "heading": 0, "source": "", "halign": "middle"}"#,
+        r#"{"op": "create", "kind": "label", "origin": [0, 0], "heading": 0, "source": "", "colour": "red"}"#,
+        r#"{"op": "create", "kind": "label", "origin": [0, 0], "heading": 0, "source": "", "size": null}"#,
+    ] {
+        read_err(text);
+    }
 }
 
 #[test]
@@ -214,6 +259,8 @@ fn rename_is_outside_the_subset() {
         r#"{"op": "rename", "name": "seg1", "new_name": "x_axis"}"#,
         r#"{"op": "delete", "name": "seg1"}"#,
         r#"{"op": "set_role", "name": "seg1", "role": "result"}"#,
+        r#"{"op": "set", "kind": "label", "name": "lbl1", "source": "x"}"#,
+        r#"{"op": "set_document", "scale": 5}"#,
     ] {
         let e = DeclCommand::from_json(text).unwrap_err().to_string();
         assert!(e.contains("declarative"), "{e}");
@@ -269,6 +316,20 @@ fn every_command(v: f64) -> Vec<Command> {
                 sweep: -v,
             }),
         },
+        Command::Create {
+            name: Some("lbl".into()),
+            role: GeometryRole::Result,
+            geometry: GeometrySpec::Label(LabelParams {
+                origin: p,
+                heading: v,
+                source: "a\\b\n$\\vec v$ \"q\"".into(),
+                markup: WireMarkup::Text,
+                halign: WireHAlign::Center,
+                valign: WireVAlign::Last,
+                offset: Vec2::new(-v, v),
+                size: Some(v.abs().max(1.0)),
+            }),
+        },
         Command::Constrain {
             name: Some("j".into()),
             constraint: ConstraintSpec::Congruence(PointPair {
@@ -315,6 +376,29 @@ fn every_command(v: f64) -> Vec<Command> {
             name: "seg1".into(),
             role: GeometryRole::Construction,
         },
+        Command::Set {
+            name: "lbl1".into(),
+            attrs: AttrSpec::Label(LabelSet {
+                source: Some("x\n\\y".into()),
+                markup: Some(WireMarkup::Text),
+                halign: Some(WireHAlign::Right),
+                valign: Some(WireVAlign::Last),
+                offset: Some(Vec2::new(v, -v)),
+                size: Some(Some(v.abs().max(1.0))),
+            }),
+        },
+        Command::Set {
+            name: "lbl1".into(),
+            attrs: AttrSpec::Label(LabelSet {
+                size: Some(None),
+                ..Default::default()
+            }),
+        },
+        Command::SetDocument {
+            scale: Some(v.abs().max(1.0)),
+            font_size: None,
+            preamble: Some("\\newcommand{\\R}{\\mathbb{R}}\n".into()),
+        },
     ]
 }
 
@@ -350,10 +434,10 @@ fn negative_zero_survives() {
 #[test]
 fn non_finite_value_cannot_be_written() {
     for v in [f64::NAN, f64::INFINITY] {
-        for cmd in &every_command(v)[..2] {
+        for cmd in &every_command(v)[..3] {
             assert!(cmd.to_json().is_err(), "{cmd:?}");
         }
-        assert!(every_command(v)[5].to_json().is_err());
+        assert!(every_command(v)[6].to_json().is_err());
     }
 }
 
@@ -380,4 +464,72 @@ fn written_form_is_flat_with_reserved_fields_first() {
 #[test]
 fn no_kind_uses_a_reserved_field_name() {
     assert_eq!(crate::schema::reserved_clashes(), vec![]);
+}
+
+// --- set and set_document ---
+
+#[test]
+fn set_in_interchange_form() {
+    assert_eq!(
+        read(r#"{"op": "set", "kind": "label", "name": "lbl1", "valign": "last"}"#),
+        Command::Set {
+            name: "lbl1".into(),
+            attrs: AttrSpec::Label(LabelSet {
+                valign: Some(WireVAlign::Last),
+                ..Default::default()
+            }),
+        }
+    );
+}
+
+#[test]
+fn set_needs_an_attribute_a_name_and_a_kind_with_attributes() {
+    let e = read_err(r#"{"op": "set", "kind": "label", "name": "lbl1"}"#);
+    assert!(e.contains("no attribute"), "{e}");
+    read_err(r#"{"op": "set", "kind": "label", "source": "x"}"#);
+    read_err(r#"{"op": "set", "name": "lbl1", "source": "x"}"#);
+    read_err(r#"{"op": "set", "kind": "segment", "name": "seg1", "start": [0, 0]}"#);
+    read_err(r#"{"op": "set", "kind": "label", "name": "lbl1", "origin": [0, 0]}"#);
+}
+
+#[test]
+fn null_size_reads_as_inherit() {
+    assert_eq!(
+        read(r#"{"op": "set", "kind": "label", "name": "lbl1", "size": null}"#),
+        Command::Set {
+            name: "lbl1".into(),
+            attrs: AttrSpec::Label(LabelSet {
+                size: Some(None),
+                ..Default::default()
+            }),
+        }
+    );
+}
+
+#[test]
+fn set_document_in_interchange_form() {
+    assert_eq!(
+        read(r#"{"op": "set_document", "scale": 5}"#),
+        Command::SetDocument {
+            scale: Some(5.0),
+            font_size: None,
+            preamble: None,
+        }
+    );
+    let e = read_err(r#"{"op": "set_document"}"#);
+    assert!(e.contains("no setting"), "{e}");
+    read_err(r#"{"op": "set_document", "zoom": 2}"#);
+}
+
+#[test]
+fn null_is_only_accepted_for_size() {
+    for text in [
+        r#"{"op": "set", "kind": "label", "name": "lbl1", "source": null}"#,
+        r#"{"op": "set", "kind": "label", "name": "lbl1", "markup": null, "source": "x"}"#,
+        r#"{"op": "set", "kind": "label", "name": "lbl1", "offset": null}"#,
+        r#"{"op": "set_document", "preamble": null}"#,
+        r#"{"op": "set_document", "scale": null}"#,
+    ] {
+        read_err(text);
+    }
 }

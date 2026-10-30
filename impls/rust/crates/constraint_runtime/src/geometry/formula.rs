@@ -19,7 +19,7 @@ use super::capabilities::{
 };
 use super::chart::Chart;
 use crate::geom::{HeadingAngle, Length, Point2, TurnAngle, Vec2};
-use crate::geometry_kinds::GeometryKind;
+use crate::geometry_kinds::{GeometryKind, KindAttrs};
 use crate::matrix::DenseMatrix;
 
 /// Formula-local columns covering the whole chart block.
@@ -46,6 +46,11 @@ pub trait Geometry: Chart + GeometryCaps + Sized + 'static {
     /// Prefix of automatic object names (`seg` → `seg1`, `seg2`, …).
     const NAME_PREFIX: &'static str;
 
+    /// Non-parameter attributes a new geometry of this kind starts with.
+    fn default_attrs() -> KindAttrs {
+        KindAttrs::None
+    }
+
     /// Canonical chart values describing the same curve (identity by default).
     ///
     /// Applied to committed State and to initial values on add; solver iterates
@@ -54,22 +59,40 @@ pub trait Geometry: Chart + GeometryCaps + Sized + 'static {
         init
     }
 
-    fn point(f: PointFormula, c: Self::Init) -> Point2;
-    fn point_jacobian(f: PointFormula, c: Self::Init, j: &mut DenseMatrix<'_>, scale: f64);
+    fn point(f: PointFormula, c: Self::Init) -> Point2 {
+        let _ = (f, c);
+        unsupported(Self::KIND, "point")
+    }
+    fn point_jacobian(f: PointFormula, c: Self::Init, j: &mut DenseMatrix<'_>, scale: f64) {
+        let _ = (f, c, j, scale);
+        unsupported(Self::KIND, "point")
+    }
     fn point_params(f: PointFormula) -> Range<usize> {
         let _ = f;
         all_params::<Self>()
     }
 
-    fn vec(f: VecFormula, c: Self::Init) -> Vec2;
-    fn vec_jacobian(f: VecFormula, c: Self::Init, j: &mut DenseMatrix<'_>, scale: f64);
+    fn vec(f: VecFormula, c: Self::Init) -> Vec2 {
+        let _ = (f, c);
+        unsupported(Self::KIND, "vector")
+    }
+    fn vec_jacobian(f: VecFormula, c: Self::Init, j: &mut DenseMatrix<'_>, scale: f64) {
+        let _ = (f, c, j, scale);
+        unsupported(Self::KIND, "vector")
+    }
     fn vec_params(f: VecFormula) -> Range<usize> {
         let _ = f;
         all_params::<Self>()
     }
 
-    fn length(f: LengthFormula, c: Self::Init) -> Length;
-    fn length_jacobian(f: LengthFormula, c: Self::Init, j: &mut DenseMatrix<'_>, scale: f64);
+    fn length(f: LengthFormula, c: Self::Init) -> Length {
+        let _ = (f, c);
+        unsupported(Self::KIND, "length")
+    }
+    fn length_jacobian(f: LengthFormula, c: Self::Init, j: &mut DenseMatrix<'_>, scale: f64) {
+        let _ = (f, c, j, scale);
+        unsupported(Self::KIND, "length")
+    }
     fn length_params(f: LengthFormula) -> Range<usize> {
         let _ = f;
         all_params::<Self>()

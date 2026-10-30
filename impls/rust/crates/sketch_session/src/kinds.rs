@@ -7,8 +7,8 @@
 use std::fmt::Debug;
 
 use constraint_runtime::{
-    Address, ConstraintInst, ConstraintKind, Document, Geometry, LengthExpr, Point2, PointExpr,
-    VecExpr,
+    Address, ConstraintInst, ConstraintKind, Document, Geometry, KindAttrs, LengthExpr, Point2,
+    PointExpr, VecExpr,
 };
 use schemars::JsonSchema;
 use serde::{de::DeserializeOwned, Serialize};
@@ -20,6 +20,7 @@ mod arc;
 mod equal_length;
 mod fix;
 mod join;
+mod label;
 mod parallel;
 mod perpendicular;
 mod segment;
@@ -28,6 +29,7 @@ pub use arc::ArcParams;
 pub use equal_length::LenPair;
 pub use fix::FixParams;
 pub use join::PointPair;
+pub use label::{LabelParams, LabelSet};
 pub use parallel::VecPair;
 pub use segment::SegmentParams;
 
@@ -45,8 +47,28 @@ pub trait GeometryCommand: Geometry {
     /// Chart values for `p`, or `InvalidValue` (non-finite or out of range).
     fn init(p: &Self::Params) -> Result<Self::Init, CommandError>;
 
-    /// Parameters that re-create `init` (export).
-    fn params(init: Self::Init) -> Self::Params;
+    /// Non-parameter attributes for `p` (kinds without attributes keep the
+    /// default), or `InvalidValue`.
+    fn attrs(p: &Self::Params) -> Result<KindAttrs, CommandError> {
+        let _ = p;
+        Ok(Self::default_attrs())
+    }
+
+    /// Parameters that re-create `init` with `attrs` (export).
+    fn params(init: Self::Init, attrs: &KindAttrs) -> Self::Params;
+}
+
+/// A geometry kind whose attributes can be changed by `set`.
+pub trait AttributeCommand: GeometryCommand {
+    /// Fields of `set` (all optional, `deny_unknown_fields`).
+    type SetParams: Params;
+
+    /// Whether `p` carries no attribute (rejected when read).
+    fn is_empty(p: &Self::SetParams) -> bool;
+
+    /// Change the attributes `p` carries, or `InvalidValue` (then `attrs` may
+    /// be partly changed; callers work on a copy).
+    fn apply(p: &Self::SetParams, attrs: &mut KindAttrs) -> Result<(), CommandError>;
 }
 
 /// A constraint kind that can be added by command.
@@ -114,6 +136,18 @@ pub fn finite(field: &'static str, v: f64) -> Result<f64, CommandError> {
         Err(CommandError::InvalidValue {
             field,
             reason: "not a finite number",
+        })
+    }
+}
+
+/// `v`, or `InvalidValue` for `field` unless it is finite and greater than zero.
+pub fn positive(field: &'static str, v: f64) -> Result<f64, CommandError> {
+    if finite(field, v)? > 0.0 {
+        Ok(v)
+    } else {
+        Err(CommandError::InvalidValue {
+            field,
+            reason: "not greater than zero",
         })
     }
 }

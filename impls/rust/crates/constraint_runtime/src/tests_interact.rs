@@ -342,3 +342,27 @@ fn drag_next_to_a_conflicted_component() {
     assert!((start - Point2::new(5.0, 0.0)).length() <= 1e-6);
     assert_eq!(block_bits(&doc, s1), frozen);
 }
+
+#[test]
+fn length_floors_cover_only_curves() {
+    use crate::geometry::AnchorExprs;
+    use crate::geometry_kinds::Label;
+
+    let mut doc = Document::new();
+    let seg = doc.add_geometry::<Segment>(
+        GeometryRole::Result,
+        (Point2::new(0.0, 0.0), Point2::new(1.0, 0.0)),
+    );
+    let lbl = doc.add_geometry::<Label>(
+        GeometryRole::Result,
+        (Point2::new(1.0, 0.0), HeadingAngle::new(0.0)),
+    );
+    doc.add_constraint(Congruence {
+        a: Segment::end_expr(seg),
+        b: Label::origin_expr(lbl),
+    });
+    let scope = doc.component_of(seg);
+    assert!(scope.contains(lbl));
+    let lengths = curve_length_exprs(&doc, &scope);
+    assert_eq!(lengths, vec![doc.length_expr(seg).unwrap()]);
+}

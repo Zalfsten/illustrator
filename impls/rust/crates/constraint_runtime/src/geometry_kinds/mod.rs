@@ -10,9 +10,11 @@
 
 pub mod arc;
 pub mod catalog;
+pub mod label;
 pub mod segment;
 
 pub use arc::Arc;
 pub(crate) use catalog::with_kind;
-pub use catalog::{GeometryInst, GeometryKind};
+pub use catalog::{GeometryInst, GeometryKind, KindAttrs};
+pub use label::{HAlign, Label, LabelAttrs, Markup, VAlign};
 pub use segment::Segment;

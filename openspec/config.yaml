@@ -118,19 +118,27 @@ context: |
     - capabilities.rs: kind-agnostic formula tags (PointFormula,
       VecFormula, LengthFormula, HeadingFormula, TurnFormula) and opt-in
       factories CurveExprs / EndpointExprs, plus invariant capabilities
-      LineExprs (direction) and CircularExprs (center, radius |R|); a kind
+      LineExprs (direction), CircularExprs (center, radius |R|) and
+      AnchorExprs (origin); every capability is opt-in, curve included
+      (geometry_caps!(Segment: curve, endpoints, line)), and a kind
       declares them once with geometry_caps! (trait impls + runtime Caps);
       dynamic ids use Document::caps and Option-returning id-based
       factories (Document::direction_expr, …)
   - id.rs: IdMap<Id, T> (typed id → value storage; shared by geometry and
     constraint namespaces)
-  - geometry_kinds/: catalog.rs (data-less GeometryKind enum, GeometryInst,
-    with_kind! dispatch); per kind file: chart_atoms! layout +
+  - geometry_kinds/: catalog.rs (data-less GeometryKind enum, GeometryInst
+    with KindAttrs — non-parameter attributes, default per kind via
+    Geometry::default_attrs — and with_kind! dispatch); per kind file:
+    chart_atoms! layout +
     geometry_caps! (opt-in factory traits + Caps) + impl Geometry
     (Jacobians via set_scaled) with NAME_PREFIX (seg, arc). Kinds
     today: Segment (2×Point2), Arc (center Point2, Length radius ≥ 0 in
     committed State via Geometry::canonical on add / commit, HeadingAngle
-    start, TurnAngle sweep).
+    start, TurnAngle sweep), Label (prefix lbl; origin Point2 + heading
+    HeadingAngle; caps anchor + line, no curve; LabelAttrs: source,
+    Markup, HAlign, VAlign, offset in pt in the label frame, size or
+    inherited). Document also holds DocumentSettings (scale mm per world
+    unit, font_size pt, preamble).
   - mesh.rs: Display Mesh from Document+State; open curves tessellated via
     on_curve + adaptive subdivision until tangent turn per interval ≤
     MAX_CHORD_TURN (π/8), max 64 samples; endpoint hits use geometric

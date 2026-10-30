@@ -940,3 +940,260 @@ fn contradicting_component_is_reported_as_conflict_not_adjusted() {
     assert_eq!(report.conflicts, s.conflicts());
     assert_eq!(report.conflicts[0].geometries, ["seg1", "seg2"]);
 }
+
+// --- Labels and set ---
+
+fn label_cmd(source: &str) -> Command {
+    Command::Create {
+        name: None,
+        role: GeometryRole::Result,
+        geometry: GeometrySpec::Label(crate::kinds::LabelParams {
+            origin: Point2::new(1.0, 0.0),
+            heading: 0.0,
+            source: source.into(),
+            markup: Default::default(),
+            halign: Default::default(),
+            valign: Default::default(),
+            offset: Vec2::zero(),
+            size: None,
+        }),
+    }
+}
+
+fn set_label(name: &str, set: crate::kinds::LabelSet) -> Command {
+    Command::Set {
+        name: name.into(),
+        attrs: crate::catalog::AttrSpec::Label(set),
+    }
+}
+
+fn label_attrs<'a>(s: &'a Session, name: &str) -> &'a constraint_runtime::LabelAttrs {
+    let doc = s.document();
+    let Some(ObjectId::Geometry(g)) = doc.lookup(name) else {
+        panic!("{name} is not a geometry");
+    };
+    doc.label_attrs(g).unwrap()
+}
+
+#[test]
+fn create_a_label_with_an_automatic_name() {
+    let mut s = Session::new(Document::new());
+    let out = s.apply(label_cmd("A")).unwrap();
+    assert_eq!(out.created.as_deref(), Some("lbl1"));
+    assert_eq!(label_attrs(&s, "lbl1").source, "A");
+}
+
+#[test]
+fn set_changes_a_labels_source_only() {
+    let mut s = Session::new(Document::new());
+    s.apply(label_cmd("a")).unwrap();
+    let values = values_of(&s, &["lbl1"]);
+    let mut before = label_attrs(&s, "lbl1").clone();
+    s.apply(set_label(
+        "lbl1",
+        crate::kinds::LabelSet {
+            source: Some("$\\alpha$".into()),
+            ..Default::default()
+        },
+    ))
+    .unwrap();
+    before.source = "$\\alpha$".into();
+    assert_eq!(label_attrs(&s, "lbl1"), &before);
+    assert_eq!(values_of(&s, &["lbl1"]), values);
+}
+
+#[test]
+fn several_attributes_are_one_undo_step() {
+    use crate::wire::WireHAlign;
+    let mut s = Session::new(Document::new());
+    s.apply(label_cmd("a")).unwrap();
+    let before = label_attrs(&s, "lbl1").clone();
+    s.apply(set_label(
+        "lbl1",
+        crate::kinds::LabelSet {
+            halign: Some(WireHAlign::Center),
+            offset: Some(Vec2::new(0.0, 3.0)),
+            ..Default::default()
+        },
+    ))
+    .unwrap();
+    assert_eq!(label_attrs(&s, "lbl1").offset, Vec2::new(0.0, 3.0));
+    s.undo().unwrap();
+    assert_eq!(label_attrs(&s, "lbl1"), &before);
+    s.redo().unwrap();
+    assert_eq!(label_attrs(&s, "lbl1").halign, constraint_runtime::HAlign::Center);
+}
+
+#[test]
+fn set_on_a_constraint_or_another_kind_is_the_wrong_object_type() {
+    let mut s = two_segments();
+    s.apply(parallel("seg1.direction", "seg2.direction")).unwrap();
+    let source = || crate::kinds::LabelSet {
+        source: Some("x".into()),
+        ..Default::default()
+    };
+    let before = content(&s);
+    for (name, expected) in [("par1", "geometry"), ("seg1", "label")] {
+        let e = s.apply(set_label(name, source())).unwrap_err();
+        assert_eq!(
+            e,
+            CommandError::WrongObjectType {
+                name: name.into(),
+                expected
+            }
+        );
+    }
+    assert_eq!(content(&s), before);
+}
+
+#[test]
+fn null_size_restores_inheritance_and_zero_is_invalid() {
+    let mut s = Session::new(Document::new());
+    s.apply(label_cmd("a")).unwrap();
+    let size = |v| crate::kinds::LabelSet {
+        size: Some(v),
+        ..Default::default()
+    };
+    s.apply(set_label("lbl1", size(Some(8.0)))).unwrap();
+    assert_eq!(label_attrs(&s, "lbl1").size, Some(8.0));
+    let e = s.apply(set_label("lbl1", size(Some(0.0)))).unwrap_err();
+    assert!(matches!(e, CommandError::InvalidValue { field: "size", .. }), "{e:?}");
+    assert_eq!(label_attrs(&s, "lbl1").size, Some(8.0));
+    s.apply(set_label("lbl1", size(None))).unwrap();
+    assert_eq!(label_attrs(&s, "lbl1").size, None);
+}
+
+#[test]
+fn set_inside_a_frozen_component_succeeds_without_changing_values() {
+    let mut doc = conflicted_document();
+    let lbl = doc.add_geometry::<constraint_runtime::Label>(
+        GeometryRole::Result,
+        (Point2::new(1.0, 0.0), constraint_runtime::HeadingAngle::new(0.0)),
+    );
+    let origin = point_in(&doc, &format!("{}.origin", doc.geometry_name(lbl).unwrap()));
+    doc.add_constraint(constraint_runtime::Congruence {
+        a: origin,
+        b: point_in(&doc, "seg1.end"),
+    });
+    let mut s = Session::new(doc);
+    assert_eq!(s.conflicts().len(), 1);
+    let values = s.document().vector().clone();
+    s.apply(set_label(
+        "lbl1",
+        crate::kinds::LabelSet {
+            source: Some("frozen".into()),
+            ..Default::default()
+        },
+    ))
+    .unwrap();
+    assert_eq!(label_attrs(&s, "lbl1").source, "frozen");
+    assert_eq!(s.document().vector().as_slice(), values.as_slice());
+}
+
+// --- Document settings ---
+
+fn set_document(scale: Option<f64>, font_size: Option<f64>, preamble: Option<&str>) -> Command {
+    Command::SetDocument {
+        scale,
+        font_size,
+        preamble: preamble.map(Into::into),
+    }
+}
+
+#[test]
+fn fresh_session_has_default_settings() {
+    let s = Session::new(Document::new());
+    assert_eq!(s.settings(), &constraint_runtime::DocumentSettings::default());
+    assert_eq!(s.settings().scale, 10.0);
+    assert_eq!(s.settings().font_size, 10.0);
+    assert_eq!(s.settings().preamble, "");
+}
+
+#[test]
+fn set_document_changes_only_given_settings() {
+    let mut s = Session::new(Document::new());
+    s.apply(set_document(Some(5.0), None, None)).unwrap();
+    assert_eq!(s.settings().scale, 5.0);
+    assert_eq!(s.settings().font_size, 10.0);
+    s.apply(set_document(None, Some(12.0), Some("\\newcommand{\\R}{\\mathbb{R}}")))
+        .unwrap();
+    assert_eq!(s.settings().scale, 5.0);
+    assert_eq!(s.settings().font_size, 12.0);
+    assert_eq!(s.settings().preamble, "\\newcommand{\\R}{\\mathbb{R}}");
+}
+
+#[test]
+fn out_of_range_settings_are_rejected() {
+    let mut s = Session::new(Document::new());
+    for (cmd, field) in [
+        (set_document(Some(-1.0), None, None), "scale"),
+        (set_document(Some(0.0), None, None), "scale"),
+        (set_document(None, Some(0.0), None), "font_size"),
+        (set_document(None, Some(f64::NAN), None), "font_size"),
+    ] {
+        let e = s.apply(cmd).unwrap_err();
+        assert!(
+            matches!(e, CommandError::InvalidValue { field: f, .. } if f == field),
+            "{e:?}"
+        );
+    }
+    assert_eq!(s.settings(), &constraint_runtime::DocumentSettings::default());
+    assert!(!s.can_undo());
+}
+
+#[test]
+fn undo_and_redo_a_settings_change() {
+    let mut s = Session::new(Document::new());
+    s.apply(set_document(Some(20.0), None, None)).unwrap();
+    s.undo().unwrap();
+    assert_eq!(s.settings().scale, 10.0);
+    s.redo().unwrap();
+    assert_eq!(s.settings().scale, 20.0);
+}
+
+#[test]
+fn exported_label_carries_its_attributes_after_set() {
+    use crate::wire::WireMarkup;
+    let mut s = Session::new(Document::new());
+    s.apply(label_cmd("a")).unwrap();
+    s.apply(set_label(
+        "lbl1",
+        crate::kinds::LabelSet {
+            source: Some("b".into()),
+            markup: Some(WireMarkup::Text),
+            ..Default::default()
+        },
+    ))
+    .unwrap();
+    let list = s.declarative_commands().unwrap();
+    let text = list[0].to_json().unwrap();
+    let v: serde_json::Value = serde_json::from_str(&text).unwrap();
+    assert_eq!(v["source"], "b");
+    assert_eq!(v["markup"], "text");
+    for field in ["halign", "valign", "offset", "origin", "heading"] {
+        assert!(v.get(field).is_some(), "{field} missing in {text}");
+    }
+    assert!(v.get("size").is_none(), "inherited size written: {text}");
+}
+
+#[test]
+fn exported_labels_re_execute_to_the_same_list() {
+    let mut s = Session::new(Document::new());
+    s.apply(segment((0.0, 0.0), (1.0, 0.0))).unwrap();
+    s.apply(label_cmd("own size")).unwrap();
+    s.apply(label_cmd("inherited")).unwrap();
+    s.apply(set_label(
+        "lbl1",
+        crate::kinds::LabelSet {
+            size: Some(Some(8.0)),
+            ..Default::default()
+        },
+    ))
+    .unwrap();
+    s.apply(join("lbl1.origin", "seg1.end")).unwrap();
+    s.apply(parallel("lbl2.direction", "seg1.direction")).unwrap();
+    let list = s.declarative_commands().unwrap();
+    let own: serde_json::Value = serde_json::from_str(&list[1].to_json().unwrap()).unwrap();
+    assert_eq!(own["size"], 8.0);
+    assert!(close(&list_value(&replay(&list)), &list_value(&list), 1e-9));
+}

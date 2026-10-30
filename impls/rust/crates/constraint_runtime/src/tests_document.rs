@@ -464,3 +464,92 @@ fn restoring_a_snapshot_restores_names() {
     assert_eq!(doc.lookup("x_axis"), None);
     assert_eq!(doc.lookup("seg2"), None);
 }
+
+fn label_at(doc: &mut Document, x: f64) -> GeometryId {
+    doc.add_geometry::<crate::geometry_kinds::Label>(
+        GeometryRole::Result,
+        (Point2::new(x, 0.0), HeadingAngle::new(0.0)),
+    )
+}
+
+#[test]
+fn new_label_gets_default_attrs_and_segments_none() {
+    let mut doc = Document::new();
+    let seg = doc.add_geometry::<Segment>(GeometryRole::Result, (Point2::new(0.0, 0.0), Point2::new(1.0, 0.0)));
+    let lbl = label_at(&mut doc, 0.0);
+    assert_eq!(doc.label_attrs(lbl), Some(&LabelAttrs::default()));
+    assert_eq!(doc.label_attrs(seg), None);
+    assert_eq!(doc.expect_geometry(seg).attrs(), &KindAttrs::None);
+}
+
+#[test]
+fn set_label_attrs_round_trips_and_rejects_other_kinds() {
+    let mut doc = Document::new();
+    let seg = doc.add_geometry::<Segment>(GeometryRole::Result, (Point2::new(0.0, 0.0), Point2::new(1.0, 0.0)));
+    let lbl = label_at(&mut doc, 0.0);
+    let attrs = LabelAttrs {
+        source: "$x$".into(),
+        size: Some(8.0),
+        ..LabelAttrs::default()
+    };
+    assert!(doc.set_label_attrs(lbl, attrs.clone()));
+    assert_eq!(doc.label_attrs(lbl), Some(&attrs));
+    assert!(!doc.set_label_attrs(seg, attrs));
+    assert_eq!(doc.expect_geometry(seg).attrs(), &KindAttrs::None);
+}
+
+#[test]
+fn add_geometry_with_stores_given_attrs() {
+    let mut doc = Document::new();
+    let attrs = LabelAttrs {
+        source: "A".into(),
+        ..LabelAttrs::default()
+    };
+    let lbl = doc.add_geometry_with::<crate::geometry_kinds::Label>(
+        GeometryRole::Result,
+        (Point2::new(0.0, 0.0), HeadingAngle::new(0.0)),
+        KindAttrs::Label(attrs.clone()),
+    );
+    assert_eq!(doc.label_attrs(lbl), Some(&attrs));
+}
+
+#[test]
+fn removing_a_label_drops_its_attrs_and_keeps_others() {
+    let mut doc = Document::new();
+    let a = label_at(&mut doc, 0.0);
+    let b = label_at(&mut doc, 1.0);
+    doc.set_label_attrs(b, LabelAttrs { source: "b".into(), ..LabelAttrs::default() });
+    doc.remove_geometry(a).unwrap();
+    assert_eq!(doc.label_attrs(a), None);
+    assert_eq!(doc.label_attrs(b).unwrap().source, "b");
+}
+
+#[test]
+fn cloned_document_keeps_independent_attrs() {
+    let mut doc = Document::new();
+    let lbl = label_at(&mut doc, 0.0);
+    let snapshot = doc.clone();
+    doc.set_label_attrs(lbl, LabelAttrs { source: "changed".into(), ..LabelAttrs::default() });
+    assert_eq!(snapshot.label_attrs(lbl).unwrap().source, "");
+}
+
+#[test]
+fn document_settings_default_and_snapshot() {
+    let mut doc = Document::new();
+    assert_eq!(
+        doc.settings(),
+        &DocumentSettings {
+            scale: 10.0,
+            font_size: 10.0,
+            preamble: String::new(),
+        }
+    );
+    let snapshot = doc.clone();
+    doc.set_settings(DocumentSettings {
+        scale: 20.0,
+        ..DocumentSettings::default()
+    });
+    assert_eq!(doc.settings().scale, 20.0);
+    doc = snapshot;
+    assert_eq!(doc.settings().scale, 10.0);
+}

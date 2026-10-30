@@ -199,7 +199,7 @@ fn arc_mesh_without_endpoints() -> (Document, GeometryId, Mesh) {
         ..<Arc as GeometryCaps>::CAPS
     };
     let mut mesh = Mesh::default();
-    append_curve_mesh::<Arc>(
+    append_curve_mesh(
         caps,
         &doc,
         doc.vector(),
@@ -235,4 +235,29 @@ fn curve_without_endpoints_yields_no_endpoint_hit() {
     assert_eq!(mesh.endpoint_exprs().count(), 0);
     assert_eq!(mesh.hit_endpoint(t0, 0.5), None);
     assert_eq!(mesh.hit_geometry(t0, 0.5), Some(id));
+}
+
+#[test]
+fn geometry_without_curve_capability_contributes_nothing() {
+    let mut doc = Document::new();
+    let id = doc.add_geometry::<Segment>(
+        GeometryRole::Result,
+        (Point2::new(0.0, 0.0), Point2::new(1.0, 0.0)),
+    );
+    let caps = Caps {
+        curve: false,
+        ..<Segment as GeometryCaps>::CAPS
+    };
+    let mut mesh = Mesh::default();
+    append_curve_mesh(
+        caps,
+        &doc,
+        doc.vector(),
+        id,
+        GeometryRole::Result,
+        &mut mesh.edges,
+        &mut mesh.endpoints,
+    );
+    assert!(mesh.edges.is_empty());
+    assert_eq!(mesh.endpoint_exprs().count(), 0);
 }

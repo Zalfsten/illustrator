@@ -14,14 +14,16 @@ pub mod schema;
 pub mod session;
 pub mod wire;
 
-pub use catalog::{ConstraintSpec, GeometrySpec};
+pub use catalog::{AttrSpec, ConstraintSpec, GeometrySpec};
 pub use command::{
     Adjusted, Command, CommandError, Conflict, DeclCommand, ExportError, Family, HistoryError,
     LoadReport, Outcome,
 };
 pub use file::{CommandLoadError, LoadError, SaveError, FORMAT, VERSION};
 pub use json::{ReadError, WriteError};
-pub use kinds::{ArcParams, FixParams, LenPair, PointPair, SegmentParams, VecPair};
+pub use kinds::{
+    ArcParams, FixParams, LabelParams, LabelSet, LenPair, PointPair, SegmentParams, VecPair,
+};
 pub use schema::{command_schema, declarative_schema};
 pub use session::Session;
 pub use wire::{LenAddr, PointAddr, Role, VecAddr};

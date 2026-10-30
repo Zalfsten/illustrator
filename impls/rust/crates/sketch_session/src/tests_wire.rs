@@ -69,3 +69,35 @@ fn addresses_are_plain_strings() {
         "\"seg1.direction\""
     );
 }
+
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
+struct Size {
+    #[serde(default, skip_serializing_if = "Option::is_none", with = "finite_or_null")]
+    size: Option<Option<f64>>,
+}
+
+#[test]
+fn size_absent_null_or_number() {
+    let read = |t: &str| serde_json::from_str::<Size>(t).unwrap().size;
+    assert_eq!(read("{}"), None);
+    assert_eq!(read(r#"{"size": null}"#), Some(None));
+    assert_eq!(read(r#"{"size": 8}"#), Some(Some(8.0)));
+    for size in [None, Some(None), Some(Some(8.5))] {
+        let text = serde_json::to_string(&Size { size }).unwrap();
+        assert_eq!(read(&text), size, "{text}");
+    }
+    assert!(serde_json::to_string(&Size { size: Some(Some(f64::NAN)) }).is_err());
+}
+
+#[test]
+fn label_enums_use_lowercase_tags() {
+    assert_eq!(serde_json::to_string(&WireMarkup::Latex).unwrap(), "\"latex\"");
+    assert_eq!(serde_json::to_string(&WireHAlign::Center).unwrap(), "\"center\"");
+    assert_eq!(serde_json::to_string(&WireVAlign::Last).unwrap(), "\"last\"");
+    assert_eq!(serde_json::from_str::<WireMarkup>("\"text\"").unwrap(), WireMarkup::Text);
+    for bad in ["\"Latex\"", "\"LEFT\"", "\"middle\""] {
+        assert!(serde_json::from_str::<WireMarkup>(bad).is_err(), "{bad}");
+        assert!(serde_json::from_str::<WireHAlign>(bad).is_err(), "{bad}");
+        assert!(serde_json::from_str::<WireVAlign>(bad).is_err(), "{bad}");
+    }
+}

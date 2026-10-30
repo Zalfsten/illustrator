@@ -1,16 +1,16 @@
 //! Display Mesh: tessellation of Document + Vector into drawable edges.
 //!
 //! Derived view only — not authoritative for parameters or constraints.
-//! Curves are sampled via [`CurveExprs::on_curve_expr`]; subdivision stops
-//! when the unsigned turn between endpoint tangents of each parameter interval
-//! is at most [`MAX_CHORD_TURN`]. Endpoint hit targets exist only for kinds
-//! with the endpoints capability.
+//! Curves are sampled via the curve capability's on-curve expressions;
+//! subdivision stops when the unsigned turn between endpoint tangents of each
+//! parameter interval is at most [`MAX_CHORD_TURN`]. Geometries without the
+//! curve capability (labels) contribute nothing. Endpoint hit targets exist
+//! only for kinds with the endpoints capability.
 
 use crate::document::Document;
-use crate::expr::PointExpr;
+use crate::expr::{PointExpr, VecExpr};
 use crate::geom::{CurveParam, Point2, Vec2};
-use crate::geometry::{Caps, CurveExprs, GeometryCaps, GeometryId, GeometryRole, PointFormula};
-use crate::geometry_kinds::with_kind;
+use crate::geometry::{Caps, GeometryId, GeometryRole, PointFormula, VecFormula};
 use crate::vector::Vector;
 
 /// Max unsigned turn (radians) between tangents at the ends of one chord interval.
@@ -71,11 +71,8 @@ impl Mesh {
             if !filter.include_construction && g.role() == GeometryRole::Construction {
                 continue;
             }
-            let id = g.id();
-            let role = g.role();
-            with_kind!(g.kind(), K => {
-                append_curve_mesh::<K>(K::CAPS, doc, p, id, role, &mut edges, &mut endpoints)
-            });
+            let caps = g.kind().caps();
+            append_curve_mesh(caps, doc, p, g.id(), g.role(), &mut edges, &mut endpoints);
         }
         Self { edges, endpoints }
     }
@@ -114,11 +111,12 @@ impl Mesh {
     }
 }
 
-/// Polyline for one curve; endpoint hit targets only with `caps.endpoints`.
+/// Polyline for one curve; nothing without `caps.curve`, endpoint hit
+/// targets only with `caps.endpoints`.
 ///
-/// `caps` is `C::CAPS` in production; tests pass a reduced set to cover kinds
-/// without endpoints.
-fn append_curve_mesh<C: CurveExprs>(
+/// `caps` is the kind's capability set in production; tests pass a reduced set
+/// to cover kinds without endpoints.
+fn append_curve_mesh(
     caps: Caps,
     doc: &Document,
     p: &Vector,
@@ -127,7 +125,10 @@ fn append_curve_mesh<C: CurveExprs>(
     edges: &mut Vec<MeshEdge>,
     endpoints: &mut Vec<(PointExpr, Point2)>,
 ) {
-    // Same expressions as `EndpointExprs`; `caps.endpoints` says C has them.
+    if !caps.curve {
+        return;
+    }
+    // Same expressions as `EndpointExprs`; `caps.endpoints` says the kind has them.
     let ends = caps.endpoints.then(|| {
         (
             PointExpr::new(id, PointFormula::Start),
@@ -137,18 +138,18 @@ fn append_curve_mesh<C: CurveExprs>(
     let (start_pt, end_pt) = match ends {
         Some((start, end)) => (start.evaluate(doc, p), end.evaluate(doc, p)),
         None => (
-            C::on_curve_expr(id, CurveParam::Normalized(0.0)).evaluate(doc, p),
-            C::on_curve_expr(id, CurveParam::Normalized(1.0)).evaluate(doc, p),
+            on_curve(id, 0.0).evaluate(doc, p),
+            on_curve(id, 1.0).evaluate(doc, p),
         ),
     };
 
-    let ts = sample_normalized_params::<C>(doc, p, id);
+    let ts = sample_normalized_params(doc, p, id);
     let mut prev = start_pt;
     for (i, &t) in ts.iter().enumerate().skip(1) {
         let pt = if i + 1 == ts.len() {
             end_pt
         } else {
-            C::on_curve_expr(id, CurveParam::Normalized(t)).evaluate(doc, p)
+            on_curve(id, t).evaluate(doc, p)
         };
         edges.push(MeshEdge {
             geometry: id,
@@ -164,20 +165,25 @@ fn append_curve_mesh<C: CurveExprs>(
     }
 }
 
+/// Same expressions as `CurveExprs`; callers check `caps.curve`.
+fn on_curve(id: GeometryId, t: f64) -> PointExpr {
+    PointExpr::new(id, PointFormula::OnCurve { param: CurveParam::Normalized(t) })
+}
+
+fn tangent(id: GeometryId, t: f64) -> VecExpr {
+    VecExpr::new(id, VecFormula::TangentAt { param: CurveParam::Normalized(t) })
+}
+
 /// Normalized \(t\) samples in \([0,1]\), inclusive, ordered.
-fn sample_normalized_params<C: CurveExprs>(
-    doc: &Document,
-    p: &Vector,
-    id: GeometryId,
-) -> Vec<f64> {
+fn sample_normalized_params(doc: &Document, p: &Vector, id: GeometryId) -> Vec<f64> {
     let mut ts = vec![0.0, 1.0];
-    refine_interval::<C>(doc, p, id, 0.0, 1.0, &mut ts);
+    refine_interval(doc, p, id, 0.0, 1.0, &mut ts);
     ts.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
     ts.dedup_by(|a, b| (*a - *b).abs() < 1e-15);
     ts
 }
 
-fn refine_interval<C: CurveExprs>(
+fn refine_interval(
     doc: &Document,
     p: &Vector,
     id: GeometryId,
@@ -188,8 +194,8 @@ fn refine_interval<C: CurveExprs>(
     if ts.len() >= MAX_MESH_SAMPLES {
         return;
     }
-    let ta = C::tangent_expr(id, CurveParam::Normalized(t0)).evaluate(doc, p);
-    let tb = C::tangent_expr(id, CurveParam::Normalized(t1)).evaluate(doc, p);
+    let ta = tangent(id, t0).evaluate(doc, p);
+    let tb = tangent(id, t1).evaluate(doc, p);
     if unsigned_turn(ta, tb) <= MAX_CHORD_TURN {
         return;
     }
@@ -198,8 +204,8 @@ fn refine_interval<C: CurveExprs>(
         return;
     }
     ts.push(mid);
-    refine_interval::<C>(doc, p, id, t0, mid, ts);
-    refine_interval::<C>(doc, p, id, mid, t1, ts);
+    refine_interval(doc, p, id, t0, mid, ts);
+    refine_interval(doc, p, id, mid, t1, ts);
 }
 
 /// Unsigned angle between free vectors in \([0,\pi]\); zero if either is degenerate.

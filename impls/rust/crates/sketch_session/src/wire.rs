@@ -1,11 +1,12 @@
-//! Interchange adapters: points as `[x, y]`, finite numbers, typed addresses.
+//! Interchange adapters: points and vectors as pairs, finite numbers, typed
+//! addresses, label enums.
 //!
 //! Writing a non-finite number is an error (serde_json would otherwise write
 //! `null`, which does not read back); reading rejects it as well.
 
 use std::fmt;
 
-use constraint_runtime::GeometryRole;
+use constraint_runtime::{GeometryRole, HAlign, Markup, VAlign};
 use schemars::{json_schema, JsonSchema, Schema, SchemaGenerator};
 use serde::{de, ser, Deserialize, Deserializer, Serialize, Serializer};
 
@@ -63,6 +64,177 @@ pub mod point {
         })
     }
 }
+
+/// Free vector [`Vec2`](constraint_runtime::Vec2) as `[dx, dy]`
+/// (`#[serde(with = "wire::vector")]`).
+pub mod vector {
+    use constraint_runtime::Vec2;
+
+    use super::*;
+
+    pub fn serialize<S: Serializer>(v: &Vec2, s: S) -> Result<S::Ok, S::Error> {
+        [
+            check(v.x, ser::Error::custom)?,
+            check(v.y, ser::Error::custom)?,
+        ]
+        .serialize(s)
+    }
+
+    pub fn deserialize<'de, D: Deserializer<'de>>(d: D) -> Result<Vec2, D::Error> {
+        let [x, y] = <[f64; 2]>::deserialize(d)?;
+        Ok(Vec2::new(
+            check(x, de::Error::custom)?,
+            check(y, de::Error::custom)?,
+        ))
+    }
+
+    /// Schema of a free vector (`#[schemars(schema_with = "wire::vector::schema")]`).
+    pub fn schema(_: &mut SchemaGenerator) -> Schema {
+        json_schema!({
+            "description": "Free vector [dx, dy].",
+            "type": "array",
+            "items": { "type": "number" },
+            "minItems": 2,
+            "maxItems": 2
+        })
+    }
+}
+
+/// Optional finite `f64`, absent when `None`
+/// (`#[serde(default, skip_serializing_if = "Option::is_none", with = "wire::finite_option")]`).
+pub mod finite_option {
+    use super::*;
+
+    pub fn serialize<S: Serializer>(v: &Option<f64>, s: S) -> Result<S::Ok, S::Error> {
+        match v {
+            Some(v) => check(*v, ser::Error::custom)?.serialize(s),
+            None => s.serialize_none(),
+        }
+    }
+
+    pub fn deserialize<'de, D: Deserializer<'de>>(d: D) -> Result<Option<f64>, D::Error> {
+        Ok(Some(check(f64::deserialize(d)?, de::Error::custom)?))
+    }
+}
+
+/// Optional field that, when present, must hold a value (`null` is rejected,
+/// not read as absent)
+/// (`#[serde(default, skip_serializing_if = "Option::is_none", with = "wire::present")]`
+/// plus `#[schemars(with = "T")]`).
+pub mod present {
+    use super::*;
+
+    pub fn serialize<T: Serialize, S: Serializer>(v: &Option<T>, s: S) -> Result<S::Ok, S::Error> {
+        v.serialize(s)
+    }
+
+    pub fn deserialize<'de, T: Deserialize<'de>, D: Deserializer<'de>>(
+        d: D,
+    ) -> Result<Option<T>, D::Error> {
+        T::deserialize(d).map(Some)
+    }
+}
+
+/// Optional free vector, absent when `None`
+/// (`#[serde(default, skip_serializing_if = "Option::is_none", with = "wire::vector_option")]`).
+pub mod vector_option {
+    use constraint_runtime::Vec2;
+
+    use super::*;
+
+    pub fn serialize<S: Serializer>(v: &Option<Vec2>, s: S) -> Result<S::Ok, S::Error> {
+        match v {
+            Some(v) => vector::serialize(v, s),
+            None => s.serialize_none(),
+        }
+    }
+
+    pub fn deserialize<'de, D: Deserializer<'de>>(d: D) -> Result<Option<Vec2>, D::Error> {
+        vector::deserialize(d).map(Some)
+    }
+}
+
+/// Field that may be absent (`None`), `null` (`Some(None)`) or a finite number
+/// (`Some(Some(v))`), e.g. a label size in `set`
+/// (`#[serde(default, skip_serializing_if = "Option::is_none", with = "wire::finite_or_null")]`).
+pub mod finite_or_null {
+    use super::*;
+
+    pub fn serialize<S: Serializer>(v: &Option<Option<f64>>, s: S) -> Result<S::Ok, S::Error> {
+        match v {
+            Some(Some(v)) => check(*v, ser::Error::custom)?.serialize(s),
+            Some(None) | None => s.serialize_none(),
+        }
+    }
+
+    pub fn deserialize<'de, D: Deserializer<'de>>(d: D) -> Result<Option<Option<f64>>, D::Error> {
+        match Option::<f64>::deserialize(d)? {
+            Some(v) => Ok(Some(Some(check(v, de::Error::custom)?))),
+            None => Ok(Some(None)),
+        }
+    }
+
+    /// A positive number or `null` (`#[schemars(schema_with = "wire::finite_or_null::schema")]`).
+    pub fn schema(_: &mut SchemaGenerator) -> Schema {
+        json_schema!({
+            "description": "Size in pt, greater than zero; null to inherit the document font size.",
+            "type": ["number", "null"],
+            "exclusiveMinimum": 0
+        })
+    }
+}
+
+/// A number greater than zero (`#[schemars(schema_with = "wire::positive_schema")]`).
+pub fn positive_schema(_: &mut SchemaGenerator) -> Schema {
+    json_schema!({ "type": "number", "exclusiveMinimum": 0 })
+}
+
+/// Interchange mirror of a core enum (lowercase tags; the core stays serde-free).
+macro_rules! wire_enum {
+    ($(#[$doc:meta])* $name:ident => $core:ident { $($v:ident),+ $(,)? }) => {
+        $(#[$doc])*
+        #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+        #[serde(rename_all = "snake_case")]
+        pub enum $name {
+            $($v,)+
+        }
+
+        impl Default for $name {
+            fn default() -> Self {
+                $core::default().into()
+            }
+        }
+
+        impl From<$core> for $name {
+            fn from(x: $core) -> Self {
+                match x {
+                    $($core::$v => $name::$v,)+
+                }
+            }
+        }
+
+        impl From<$name> for $core {
+            fn from(x: $name) -> Self {
+                match x {
+                    $($name::$v => $core::$v,)+
+                }
+            }
+        }
+    };
+}
+
+wire_enum!(
+    /// Label markup: `"latex"` or `"text"`.
+    WireMarkup => Markup { Latex, Text }
+);
+wire_enum!(
+    /// Label horizontal alignment: `"left"`, `"center"` or `"right"`.
+    WireHAlign => HAlign { Left, Center, Right }
+);
+wire_enum!(
+    /// Label vertical anchor: `"first"` or `"last"`.
+    WireVAlign => VAlign { First, Last }
+);
 
 /// Geometry role: `"result"` or `"construction"`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]

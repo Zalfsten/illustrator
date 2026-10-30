@@ -5,8 +5,6 @@ use crate::components::Component;
 use crate::document::Document;
 use crate::expr::{LengthExpr, PointExpr};
 use crate::geom::Point2;
-use crate::geometry::CurveExprs;
-use crate::geometry_kinds::with_kind;
 use crate::solver::{LmSolver, SolverOptions, SolverPort};
 use crate::vector::Vector;
 use crate::COMMIT_TOL;
@@ -66,11 +64,13 @@ struct SoftDrag {
     lengths: Vec<SoftLengthFloor>,
 }
 
+/// Length expressions of the curves in `scope` (geometries without the curve
+/// capability, e.g. labels, have none).
 fn curve_length_exprs(doc: &Document, scope: &Component) -> Vec<LengthExpr> {
     scope
         .geometries
         .iter()
-        .map(|&id| with_kind!(doc.expect_geometry(id).kind(), K => K::length_expr(id)))
+        .filter_map(|&id| doc.length_expr(id))
         .collect()
 }
 

@@ -4,9 +4,11 @@
 //! - [`EndpointExprs`]: start / end (open/join curves only).
 //! - [`LineExprs`]: direction (curves with a straight carrier).
 //! - [`CircularExprs`]: center / radius (curves with a circular carrier).
+//! - [`AnchorExprs`]: origin (geometries with a placement frame, e.g. labels).
 //!
-//! Direction, center and radius are **curve invariants**: independent of the
-//! curve location `t` and of the chart. Universal relations between curves
+//! Every capability is opt-in, including the curve one: a label is a geometry
+//! without a curve. Direction, center, radius and origin are **invariants**:
+//! independent of a curve location `t` and of the chart. Universal relations
 //! (parallel lines, concentric arcs, equal radii) are pointwise constraints on
 //! them.
 //!
@@ -34,6 +36,8 @@ pub struct Caps {
     pub line: bool,
     /// [`CircularExprs`]: center / radius.
     pub circular: bool,
+    /// [`AnchorExprs`]: origin.
+    pub anchor: bool,
 }
 
 impl Caps {
@@ -42,11 +46,16 @@ impl Caps {
         endpoints: false,
         line: false,
         circular: false,
+        anchor: false,
     };
-    pub const CURVE: Self = Self {
-        curve: true,
-        ..Self::NONE
-    };
+    pub const CURVE: Self = Self::NONE.with_curve();
+
+    pub const fn with_curve(self) -> Self {
+        Self {
+            curve: true,
+            ..self
+        }
+    }
 
     pub const fn with_endpoints(self) -> Self {
         Self {
@@ -65,6 +74,13 @@ impl Caps {
             ..self
         }
     }
+
+    pub const fn with_anchor(self) -> Self {
+        Self {
+            anchor: true,
+            ..self
+        }
+    }
 }
 
 /// Capability set of a kind. Implemented only via `geometry_caps!`, so it
@@ -75,11 +91,12 @@ pub trait GeometryCaps {
 
 /// Declare a kind's capabilities: factory trait impls plus [`GeometryCaps`].
 ///
-/// [`CurveExprs`] is always implied. `endpoints` → [`EndpointExprs`],
-/// `line` → [`LineExprs`], `circular` → [`CircularExprs`].
+/// `curve` → [`CurveExprs`], `endpoints` → [`EndpointExprs`],
+/// `line` → [`LineExprs`], `circular` → [`CircularExprs`], `anchor` →
+/// [`AnchorExprs`].
 ///
 /// ```ignore
-/// geometry_caps!(Segment: endpoints, line);
+/// geometry_caps!(Segment: curve, endpoints, line);
 /// // impl CurveExprs for Segment {}
 /// // impl EndpointExprs for Segment {}
 /// // impl LineExprs for Segment {}
@@ -87,25 +104,28 @@ pub trait GeometryCaps {
 /// ```
 macro_rules! geometry_caps {
     ($ty:ty : $($cap:ident),* $(,)?) => {
-        impl $crate::geometry::CurveExprs for $ty {}
         $($crate::geometry::capabilities::geometry_caps!(@impl $ty; $cap);)*
 
         impl $crate::geometry::GeometryCaps for $ty {
             const CAPS: $crate::geometry::Caps = {
-                let caps = $crate::geometry::Caps::CURVE;
+                let caps = $crate::geometry::Caps::NONE;
                 $(let caps = $crate::geometry::capabilities::geometry_caps!(@with caps; $cap);)*
                 caps
             };
         }
     };
 
+    (@impl $ty:ty; curve) => { impl $crate::geometry::CurveExprs for $ty {} };
     (@impl $ty:ty; endpoints) => { impl $crate::geometry::EndpointExprs for $ty {} };
     (@impl $ty:ty; line) => { impl $crate::geometry::LineExprs for $ty {} };
     (@impl $ty:ty; circular) => { impl $crate::geometry::CircularExprs for $ty {} };
+    (@impl $ty:ty; anchor) => { impl $crate::geometry::AnchorExprs for $ty {} };
 
+    (@with $caps:ident; curve) => { $caps.with_curve() };
     (@with $caps:ident; endpoints) => { $caps.with_endpoints() };
     (@with $caps:ident; line) => { $caps.with_line() };
     (@with $caps:ident; circular) => { $caps.with_circular() };
+    (@with $caps:ident; anchor) => { $caps.with_anchor() };
 }
 pub(crate) use geometry_caps;
 
@@ -121,6 +141,8 @@ pub enum PointFormula {
     End,
     /// Center of a circular carrier (invariant; [`CircularExprs`]).
     Center,
+    /// Origin of a placement frame (invariant; [`AnchorExprs`]).
+    Origin,
 }
 
 /// Free-vector formulas for the curve frame.
@@ -132,7 +154,8 @@ pub enum VecFormula {
     NormalAt {
         param: CurveParam,
     },
-    /// Direction of a straight carrier, independent of `t` (invariant; [`LineExprs`]).
+    /// Direction of a straight carrier or baseline, independent of `t`
+    /// (invariant; [`LineExprs`]).
     Direction,
 }
 
@@ -176,15 +199,15 @@ pub trait CurveExprs: Geometry {
     }
 }
 
-/// Curves with a straight carrier: line direction (invariant along the curve).
-pub trait LineExprs: CurveExprs {
+/// Geometries with a straight carrier or baseline: direction (invariant).
+pub trait LineExprs: Geometry {
     fn direction_expr(id: GeometryId) -> VecExpr {
         VecExpr::new(id, VecFormula::Direction)
     }
 }
 
 /// Curves with a circular carrier: center and radius (invariants of the circle).
-pub trait CircularExprs: CurveExprs {
+pub trait CircularExprs: Geometry {
     fn center_expr(id: GeometryId) -> PointExpr {
         PointExpr::new(id, PointFormula::Center)
     }
@@ -196,12 +219,19 @@ pub trait CircularExprs: CurveExprs {
 }
 
 /// Geometric join endpoints (not for intrinsically periodic closed curves).
-pub trait EndpointExprs: CurveExprs {
+pub trait EndpointExprs: Geometry {
     fn start_expr(id: GeometryId) -> PointExpr {
         PointExpr::new(id, PointFormula::Start)
     }
 
     fn end_expr(id: GeometryId) -> PointExpr {
         PointExpr::new(id, PointFormula::End)
+    }
+}
+
+/// Geometries with a placement frame: its origin (invariant).
+pub trait AnchorExprs: Geometry {
+    fn origin_expr(id: GeometryId) -> PointExpr {
+        PointExpr::new(id, PointFormula::Origin)
     }
 }
