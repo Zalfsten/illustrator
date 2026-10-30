@@ -264,7 +264,16 @@ context: |
   platform.rs (Platform trait, Host struct); main.rs builds Host with
   Immediate<TypstTypesetter> natively and label_web::WorkerTypesetter in
   the browser (label_worker Web Worker, started by label_worker_boot.js
-  on the first label line).
+  on the first label line). Files (platform.rs): open / save (SaveTarget
+  Overwrite | Ask) / can_overwrite / show_document with Send `Done`
+  callbacks and an opaque FileHandle (name + host data); host_native.rs
+  (rfd + pollster on a thread, std::fs) and host_web.rs (file input,
+  Blob download, document.title, beforeunload), declared behind cfg in
+  main.rs; fake_files.rs for tests. files.rs: FileState (handle, baseline
+  bytes, unsaved = session.save() != baseline, the unsaved-changes
+  question, one host request at a time, events through an mpsc channel
+  polled at frame start, never during a drag); the App refreshes it after
+  every history step and fits world_box to the drawing on New / Open.
   Prefer sibling files once a module has unit tests: src/<module>.rs for
   production code and src/tests_<module>.rs for that module's unit tests,
   declared with `#[cfg(test)] #[path = "tests_<module>.rs"] mod tests_<module>;`

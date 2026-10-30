@@ -1,10 +1,17 @@
 //! Minimal egui front-end for the constraint runtime.
 //!
 //! The only platform-specific code lives here: one `main` per host (native
-//! window via `run_native`, browser canvas via `WebRunner`). `App` and
-//! `Viewport` are shared and free of `cfg`.
+//! window via `run_native`, browser canvas via `WebRunner`), and the choice
+//! of host module. `App` and `Viewport` are shared and free of `cfg`.
 
 mod app;
+#[cfg(test)]
+mod fake_files;
+mod files;
+#[cfg(not(target_arch = "wasm32"))]
+mod host_native;
+#[cfg(target_arch = "wasm32")]
+mod host_web;
 mod labels;
 mod platform;
 mod viewport;
@@ -14,7 +21,7 @@ use platform::Host;
 
 #[cfg(not(target_arch = "wasm32"))]
 fn main() -> eframe::Result<()> {
-    // Browser tab title comes from index.html.
+    // The App sets the drawing's title once it starts.
     const TITLE: &str = "Constraint Sketch (v1)";
     let options = eframe::NativeOptions {
         viewport: eframe::egui::ViewportBuilder::default()
@@ -25,9 +32,11 @@ fn main() -> eframe::Result<()> {
     eframe::run_native(
         TITLE,
         options,
-        Box::new(|_cc| {
+        Box::new(|cc| {
             let typesetter = label_layout::Immediate::new(label_typst::TypstTypesetter::new());
-            Ok(Box::new(App::new(Box::new(Host::new(Some(Box::new(typesetter)))))))
+            let files = host_native::NativeFiles::new(cc.egui_ctx.clone());
+            let host = Host::new(Some(Box::new(typesetter)), Box::new(files));
+            Ok(Box::new(App::new(Box::new(host))))
         }),
     )
 }
@@ -55,7 +64,9 @@ fn main() {
                         "label_worker_boot.js",
                         move || ctx.request_repaint(),
                     );
-                    Ok(Box::new(App::new(Box::new(Host::new(Some(Box::new(typesetter)))))))
+                    let files = host_web::WebFiles::new();
+                    let host = Host::new(Some(Box::new(typesetter)), Box::new(files));
+                    Ok(Box::new(App::new(Box::new(host))))
                 }),
             )
             .await

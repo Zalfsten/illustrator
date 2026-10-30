@@ -61,6 +61,29 @@ cargo run -p sketch_ui
 
 Tools: Select/Drag, Segment (two clicks), Join, Parallel, Orthogonal, FixPoint.
 
+## Files
+
+The File menu has New (Ctrl+N), Open… (Ctrl+O), Save (Ctrl+S) and Save As…
+(Ctrl+Shift+S; Cmd on macOS). Drawings are sketch files, by convention named
+`*.sketch.json`. The app starts on the sample drawing, which has no file.
+
+- The title shows the file name (or `untitled`) and `*` while the drawing has
+  unsaved changes: saving it now would give other bytes than the file holds.
+  Undoing back to the saved drawing clears the mark. A file whose values were
+  adjusted on open counts as changed.
+- New, Open and closing the window ask whether to save, discard or cancel
+  while there are unsaved changes.
+- Opening a file shows the load report in the status line (adjusted
+  components with their largest displacement, frozen components); a rejected
+  file leaves the drawing open and names the failing command's position.
+- After New and Open the view fits the drawing.
+
+Natively the dialogs are the system's, through `rfd`. On Linux they go through
+xdg-desktop-portal (no GTK needed); without a portal, as in the Dev Container,
+Open and Save report "no file dialog available". In the browser, Open uses the
+browser's file picker and every save is a download (Save behaves as Save As);
+leaving the page with unsaved changes shows the browser's leave warning.
+
 ## Labels
 
 Labels are typeset in two crates:
@@ -116,7 +139,7 @@ trunk serve
 ### Hosted demo (GitHub Pages)
 
 The browser build of `main` is online at <https://zalfsten.github.io/illustrator/>.
-It is a "try it" demo: the app cannot load or save yet.
+It opens files from disk and saves them as downloads.
 
 `.github/workflows/pages.yml` runs `cargo test --workspace` and
 `scripts/check-wasm.sh` on every pull request and push to `main` (branches
@@ -135,10 +158,14 @@ keeps serving at `/`. One-time repository setting: Settings → Pages → Source
 
 ### Platform boundary
 
-`constraint_runtime`, `label_layout`, `app.rs`, `labels.rs`, `platform.rs` and `viewport.rs` stay platform-neutral: no
-host services (files, threads, wall-clock time, browser APIs) and no
-`cfg(target_arch = ...)`. Platform code lives only in `sketch_ui/src/main.rs`
-(one `main` per host) and in target-specific dependency tables. Host services
-(load/save, clipboard, sharing, ...) will go through the `Platform` trait
-described in the `platform-boundary` change design (D3), introduced with the
-first feature that needs one.
+`constraint_runtime`, `label_layout`, `app.rs`, `files.rs`, `labels.rs`,
+`platform.rs` and `viewport.rs` stay platform-neutral: no host services (files,
+threads, wall-clock time, browser APIs) and no `cfg(target_arch = ...)`.
+`cfg` appears only in `sketch_ui/src/main.rs` (one `main` per host, and the
+choice of host module) and in target-specific dependency tables. Host services
+go through the `Platform` trait in `platform.rs`: the typesetter, and the file
+services (`Files`: open, save, overwrite or download only, document title)
+with completion callbacks that the App drains at frame start.
+`host_native.rs` (rfd dialogs on a thread, `std::fs`) and `host_web.rs` (file
+input, Blob download, page title, `beforeunload`) implement them; tests use
+`fake_files.rs`.
