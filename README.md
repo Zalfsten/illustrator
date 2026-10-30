@@ -34,3 +34,14 @@ In Cursor Agent Chat (Slash-Commands):
 - `/opsx-apply` – Änderung umsetzen
 - `/opsx-archive` – abgeschlossene Änderung archivieren
 - `/opsx-explore` – optional vorab explorieren
+
+## Lizenz
+
+Copyright (C) 2026 the Illustrator contributors.
+
+Dieses Programm ist freie Software: Sie können es unter den Bedingungen der
+GNU General Public License, wie von der Free Software Foundation
+veröffentlicht, weitergeben und/oder ändern, entweder gemäß Version 3 der
+Lizenz oder (nach Ihrer Wahl) jeder späteren Version
+(SPDX: `GPL-3.0-or-later`). Der vollständige Lizenztext steht in
+[LICENSE](LICENSE).
