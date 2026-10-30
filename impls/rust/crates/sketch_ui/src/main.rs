@@ -5,6 +5,7 @@
 //! `Viewport` are shared and free of `cfg`.
 
 mod app;
+mod labels;
 mod viewport;
 
 use app::App;
@@ -22,7 +23,10 @@ fn main() -> eframe::Result<()> {
     eframe::run_native(
         TITLE,
         options,
-        Box::new(|_cc| Ok(Box::new(App::with_sample()))),
+        Box::new(|_cc| {
+            let typesetter = Box::new(label_typst::TypstTypesetter::new());
+            Ok(Box::new(App::new(Some(typesetter))))
+        }),
     )
 }
 
@@ -42,7 +46,8 @@ fn main() {
             .start(
                 canvas,
                 eframe::WebOptions::default(),
-                Box::new(|_cc| Ok(Box::new(App::with_sample()))),
+                // No typesetter in the browser yet (#60): labels show untypeset.
+                Box::new(|_cc| Ok(Box::new(App::new(None)))),
             )
             .await
             .expect("failed to start eframe in the browser");

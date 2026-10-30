@@ -1,0 +1,7 @@
+These Typst files are mitex's definitions (packages/mitex/specs of
+https://github.com/mitex-rs/mitex, version 0.2.4), licensed under the Apache
+License 2.0.
+
+Changes: the import of @preview/xarrow (GPL-3.0-only, written for Typst 0.7)
+is replaced by a one-line definition based on `math.stretch`, so the files load
+without packages in Typst 0.15.

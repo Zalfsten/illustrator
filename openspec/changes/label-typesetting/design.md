@@ -100,15 +100,22 @@ A small scanner, not a full LaTeX parser.
 - **Block anchor:** `valign = first` puts baseline 0 on the reference point; `last` shifts the block so that the last baseline is there.
 - **Horizontal alignment:** each line is shifted by `0`, `−width/2` or `−width` for `left` / `center` / `right`.
 - **Placement** is an affine map from pt in the label frame to world: `world = origin + R(heading) · (offset + p) · k`, where `k = (25.4 / 72.27) / scale` world units per pt.
-- The result is `PlacedLabel { lines: Vec<(TypesetLine-ref, Affine2)> }`. Display and later export apply the same affine map.
+- The pieces are separate, so that typeset lines and the fallback share them:
+  - `line_origins(metrics, attrs, size)` gives each line's origin in the label frame (pt), after alignment and offset;
+  - `frame_map(settings, origin, heading)` gives the frame → world `Affine2`;
+  - `place` composes them into one `Affine2` per line (`frame_map(..).then_translate(origin_i)`).
+  
+  Display and later export apply the same maps.
 
 ### 5. Typst engine (label_typst)
 
 The spike code is ported, changed as follows:
-- **Version pins:** `typst = "=0.15.1"`, `typst-layout = "=0.15.1"`, `mitex = "=0.2.4"`. The assets are copied from the spike: the fonts with their GUST licence texts, and mitex's Typst files (Apache-2.0) with xarrow replaced by `math.stretch`.
-- **`latex` markup:** `mitex::convert_text(preamble + "\n" + line)`, so `\newcommand`s in the preamble are defined for the line, then the rename table. The main source does `eval(.., mode: "markup", scope: mitex-scope)`, followed by the baseline marker.
-- **`text` markup:** the line becomes a Typst string literal, `#text("…")` with `\` and `"` escaped. No mitex is involved.
-- **Fonts:** `#set text(font: "New Computer Modern", size: <size>pt)`, plus `#show math.equation: set text(font: "New Computer Modern Math")`.
+- **Version pins:** `typst = "=0.15.1"`, `typst-layout = "=0.15.1"`, `mitex = "=0.2.4"`. The assets are byte-identical to the spike's:
+  - the two fonts, taken from `typst-assets` 0.15.1, with a NOTICE quoting its licence sections: NewCMMath-Regular is under the GUST Font License, NewCM10-Regular under GPL-3.0-or-later with font exception;
+  - mitex's Typst files (Apache-2.0), with xarrow replaced by `math.stretch` and a NOTICE.
+- **`latex` markup:** `mitex::convert_text(preamble + "\n" + line)`, so `\newcommand`s in the preamble are defined for the line, then the rename table. The table applies only inside `$…$` (outside `[…]` text content). Words of the surrounding markup text, such as "diff", stay unchanged. The main source does `#box(eval(.., mode: "markup", scope: mitex-scope))`, followed by the baseline marker.
+- **`text` markup:** the line becomes a Typst string expression, `#"…"` with `\` and `"` escaped. It goes through the same `eval`; no mitex is involved.
+- **Fonts:** `#set text(font: "New Computer Modern", size: <size>pt)`. Math uses Typst's default math font, New Computer Modern Math, which is the other embedded font.
 - **Errors:**
   - a mitex error starting with `unknown command: ` / `unknown environment: ` → `Unsupported { construct }`;
   - other mitex errors and Typst diagnostics → `Invalid { message }`.
@@ -116,12 +123,13 @@ The spike code is ported, changed as follows:
 
 ### 6. Display in sketch_ui
 
-- **Engine injection:** `App::new(typesetter: Option<Box<dyn Typesetter>>)`. Native `main.rs` passes `Some(Box::new(TypstTypesetter::new()))`, the browser passes `None`. No `cfg` is added outside `main.rs` and the Cargo target table.
-- **Cache:** `HashMap<LineKey, CachedLine>` with `LineKey = (line text, markup, size bits, preamble)`. `CachedLine` holds `Result<TypesetLine, TypesetError>` plus its triangles in pt. Entries not used during a frame are dropped at the end of that frame, so edits do not accumulate.
+- **Engine injection:** `App::new(typesetter: Option<Box<dyn Typesetter>>)`. Native `main.rs` passes `Some(Box::new(TypstTypesetter::new()))`, the browser passes `None`. `App::with_sample()` (tests only) is `new(None)`. No `cfg` is added outside `main.rs` and the Cargo target table.
+- **Cache:** `LabelCache` owns the typesetter and a `HashMap<LineKey, Result<(LineMetrics, Triangles), TypesetError>>` with `LineKey = (line text, markup, size bits, preamble)`. Only metrics and triangles are kept, because display needs nothing else. Entries not used during a frame are dropped at the end of that frame, so edits do not accumulate.
+- **Paint data:** `label_paint(doc, viewport, filter, cache) -> Vec<PaintItem>` (in `labels.rs`) works without a window. It returns `Typeset` (screen triangles) or `Fallback` (lines, dashed frame corners, error). `App::paint_label` turns the items into egui shapes.
 - **Paint:** for each visible label (role filter as for the Mesh):
   - if every line typesets, place the lines and transform the triangles pt → world → screen, then paint them as an `egui::Mesh` in the stroke colour of their role;
   - if any line fails, or there is no typesetter, draw the **fallback** instead.
-- **Fallback:** the source lines as egui text in the UI font, rotated to the heading. Font size in px is `size_pt · k · viewport.scale`. The lines are stacked and aligned with the same `label_layout` functions, using the galley's width, ascent and descent as metrics. They are painted in an orange "not typeset" colour, with a thin dashed frame around the block. The status line names the first failure (for example "lbl2: unsupported \foo").
+- **Fallback:** the source lines as egui text in the UI font, rotated to the heading. Font size in px is `size_pt · k · viewport.scale`. The lines are stacked and aligned with the same `label_layout` functions (`line_origins`, `frame_map`). The metrics are fixed monospace proportions (advance 0.6 em per character, ascent 0.75 em, descent 0.25 em) rather than the galley's measurements, so `label_paint` needs no egui font context and stays testable. The text is drawn in egui's monospace font, so the frame fits it closely; any small mismatch is acceptable for a form marked as not typeset. They are painted in an orange "not typeset" colour, with a thin dashed frame around the block. The status line names the first failure (for example "lbl2: unsupported \foo").
 
 *Alternative:* hide failed labels. Rejected by the spec ("stay visible").
 

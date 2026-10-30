@@ -240,7 +240,22 @@ context: |
   JSON Schemas, checked in under sketch_session/schema/ (tests/schema.rs,
   UPDATE_SCHEMA=1). Session::declarative_commands exports a drawing.
   constraint_runtime stays serde-free.
+  label_layout (engine-neutral, wasm-capable): Typesetter port (one
+  line in, TypesetLine out: Shapes of Contours in pt in the label frame,
+  y up, width as set, visible height/depth; TypesetError Unsupported /
+  Invalid), split_lines (own scanner: `\\` at top level for latex,
+  newline for text), baselines (max(1.2·size, depth+height+1pt)),
+  line_origins + frame_map / place (pt -> world via document scale),
+  tessellate (lyon). label_typst (native only): TypstTypesetter with
+  typst/typst-layout =0.15.1 and mitex =0.2.4 (convert_text, preamble
+  prepended, rename table applied inside math only); assets/ holds the
+  two NewCM fonts (from typst-assets) and mitex's Typst files with
+  xarrow replaced, each with a NOTICE.
   sketch_ui edits only through the Session (sample scene is the baseline).
+  It paints labels via labels.rs (LabelCache per line, swept per frame;
+  label_paint -> PaintItem Typeset triangles or Fallback text in a dashed
+  frame); main.rs injects TypstTypesetter natively and None in the
+  browser.
   Prefer sibling files once a module has unit tests: src/<module>.rs for
   production code and src/tests_<module>.rs for that module's unit tests,
   declared with `#[cfg(test)] #[path = "tests_<module>.rs"] mod tests_<module>;`

@@ -8,8 +8,13 @@ license = "GPL-3.0-or-later"
 [dependencies]
 constraint_runtime = { path = "../constraint_runtime" }
 sketch_session = { path = "../sketch_session" }
+label_layout = { path = "../label_layout" }
 eframe = { version = "0.29", default-features = true }
 egui = "0.29"
+
+# The Typst engine is native only; the browser shows labels untypeset (#60).
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+label_typst = { path = "../label_typst" }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wasm-bindgen = "0.2.128"
