@@ -14,11 +14,10 @@ use sketch_session::{
     Command, ConstraintSpec, FixParams, GeometrySpec, PointPair, SegmentParams, Session, VecPair,
 };
 
+use crate::files::{Answer, Effect, FileCommand, FileState, Step};
 use crate::labels::{label_paint, FallbackReason, LabelCache, PaintItem};
-#[cfg(test)]
-use crate::platform::Host;
 use crate::platform::Platform;
-use crate::viewport::Viewport;
+use crate::viewport::{world_box, Viewport};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Tool {
@@ -51,7 +50,7 @@ const NOT_TYPESET: Color32 = Color32::from_rgb(220, 120, 20);
 /// Colour of labels whose typesetting is pending (and of "loading typesetter…").
 const PENDING: Color32 = Color32::from_rgb(140, 140, 150);
 
-/// Fixed world AABB used to fit the Viewport (sample sketch + margin room).
+/// World AABB of the sample sketch (with margin room) and of an empty drawing.
 const WORLD_MIN: Point2 = Point2 { x: -0.5, y: -0.5 };
 const WORLD_MAX: Point2 = Point2 { x: 2.5, y: 2.5 };
 const VIEW_MARGIN: f32 = 40.0;
@@ -76,13 +75,26 @@ pub struct App {
     label_status: Option<(String, Color32)>,
     /// Last fitted viewport (updated each paint from canvas rect).
     viewport: Viewport,
+    /// World AABB the Viewport is fitted to; set on start, New and Open.
+    world_box: (Point2, Point2),
+    /// The drawing's file and unsaved state, and the file command in progress.
+    files: FileState,
+    /// Closing the window was confirmed (no unsaved changes, or answered).
+    close_confirmed: bool,
 }
 
 impl App {
-    /// The sample scene on a host without a typesetter (labels show untypeset).
+    /// The sample scene on a host without a typesetter (labels show untypeset)
+    /// whose files can be overwritten.
     #[cfg(test)]
     pub fn with_sample() -> Self {
-        Self::new(Box::new(Host::new(None)))
+        Self::with_files(crate::fake_files::FakeFiles::new(true))
+    }
+
+    /// The sample scene on a host without a typesetter, with file services `fake`.
+    #[cfg(test)]
+    pub fn with_files(fake: crate::fake_files::FakeFiles) -> Self {
+        Self::new(Box::new(crate::platform::Host::new(None, Box::new(fake))))
     }
 
     /// The sample scene on the host `platform`.
@@ -170,9 +182,12 @@ impl App {
 
         let presentation = PresentationMode::ResultOnly;
         let logical_points = doc.logical_points(presentation.mesh_filter());
+        let session = Session::new(doc);
+        let mut files = FileState::new(&session);
+        files.refresh(&session, platform.files());
 
         Self {
-            session: Session::new(doc),
+            session,
             tool: Tool::Select,
             presentation,
             pick_points: Vec::new(),
@@ -186,7 +201,78 @@ impl App {
             labels: LabelCache::new(),
             label_status: None,
             viewport: Viewport::new(1.0, Pos2::ZERO),
+            world_box: (WORLD_MIN, WORLD_MAX),
+            files,
+            close_confirmed: false,
         }
+    }
+
+    /// Start a file command (no-op while dragging or while one is in progress).
+    fn file_command(&mut self, cmd: FileCommand) {
+        let step = self
+            .files
+            .command(cmd, &mut self.session, self.platform.files());
+        self.file_step(step);
+    }
+
+    fn file_answer(&mut self, answer: Answer) {
+        let step = self
+            .files
+            .answer(answer, &mut self.session, self.platform.files());
+        self.file_step(step);
+    }
+
+    /// Handle a completed host file request, if any.
+    fn poll_files(&mut self) {
+        let step = self.files.poll(&mut self.session, self.platform.files());
+        self.file_step(step);
+    }
+
+    fn file_step(&mut self, step: Step) {
+        match step.message {
+            Some(Ok(s)) => {
+                self.status = s;
+                self.last_error = None;
+            }
+            Some(Err(e)) => self.last_error = Some(e),
+            None => {}
+        }
+        match step.effect {
+            Some(Effect::Replaced) => self.replaced(),
+            Some(Effect::Close) => self.close_confirmed = true,
+            None => {}
+        }
+    }
+
+    /// After New or Open: drop what belonged to the old drawing, fit the view.
+    fn replaced(&mut self) {
+        self.pick_points.clear();
+        self.pick_geoms.clear();
+        self.segment_clicks.clear();
+        self.labels = LabelCache::new();
+        self.rebuild_logical_points();
+        self.world_box = self.drawing_box().unwrap_or((WORLD_MIN, WORLD_MAX));
+    }
+
+    /// Box around the visible geometry and the origins of visible labels.
+    fn drawing_box(&self) -> Option<(Point2, Point2)> {
+        let doc = self.doc();
+        let filter = self.presentation.mesh_filter();
+        let edges = self.mesh().edges.into_iter().flat_map(|e| [e.a, e.b]);
+        let origins = doc
+            .geometries()
+            .values()
+            .filter(|g| doc.label_attrs(g.id()).is_some())
+            .filter(|g| filter.include_construction || g.role() != GeometryRole::Construction)
+            .filter_map(|g| doc.origin_expr(g.id()))
+            .map(|e| e.evaluate(doc, doc.vector()));
+        world_box(edges.chain(origins))
+    }
+
+    /// After a history step: handles and the unsaved state.
+    fn history_changed(&mut self) {
+        self.rebuild_logical_points();
+        self.files.refresh(&self.session, self.platform.files());
     }
 
     /// Typeset label as a triangle mesh; untypeset label as text in a dashed
@@ -273,6 +359,7 @@ impl App {
                 self.last_error = None;
                 let name = outcome.created.unwrap_or_default();
                 self.status = format!("Added {name}{detail}");
+                self.files.refresh(&self.session, self.platform.files());
             }
             Err(e) => {
                 self.last_error = Some(e.to_string());
@@ -469,10 +556,121 @@ fn add_fixed_length_gauge(doc: &mut Document, origin: Point2, len: f64) -> Geome
     id
 }
 
+/// Keyboard shortcuts of the file commands (Save As before Save: `consume_shortcut`
+/// ignores an extra Shift).
+const FILE_SHORTCUTS: [(egui::Modifiers, egui::Key, FileCommand); 4] = [
+    (
+        egui::Modifiers::COMMAND.plus(egui::Modifiers::SHIFT),
+        egui::Key::S,
+        FileCommand::SaveAs,
+    ),
+    (egui::Modifiers::COMMAND, egui::Key::S, FileCommand::Save),
+    (egui::Modifiers::COMMAND, egui::Key::N, FileCommand::New),
+    (egui::Modifiers::COMMAND, egui::Key::O, FileCommand::Open),
+];
+
+impl App {
+    /// Whether file commands can start now.
+    fn files_enabled(&self) -> bool {
+        !self.session.is_dragging() && !self.files.busy()
+    }
+
+    /// Frame start: completed host requests, the close request, shortcuts.
+    fn file_frame(&mut self, ctx: &egui::Context) {
+        let repaint = ctx.clone();
+        self.files.set_waker(move || repaint.request_repaint());
+        self.poll_files();
+        if ctx.input(|i| i.viewport().close_requested())
+            && !self.close_confirmed
+            && self.files.unsaved()
+        {
+            ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
+            self.file_command(FileCommand::Close);
+        }
+        for (modifiers, key, cmd) in FILE_SHORTCUTS {
+            let shortcut = egui::KeyboardShortcut::new(modifiers, key);
+            if ctx.input_mut(|i| i.consume_shortcut(&shortcut)) {
+                self.file_command(cmd);
+            }
+        }
+        if self.close_confirmed {
+            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+        }
+    }
+
+    /// The File menu; returns the chosen command.
+    fn file_menu(&self, ui: &mut egui::Ui) -> Option<FileCommand> {
+        let enabled = self.files_enabled();
+        let mut chosen = None;
+        ui.menu_button("File", |ui| {
+            let entries = [
+                ("New", FileCommand::New),
+                ("Open…", FileCommand::Open),
+                ("Save", FileCommand::Save),
+                ("Save As…", FileCommand::SaveAs),
+            ];
+            for (text, cmd) in entries {
+                let shortcut = FILE_SHORTCUTS
+                    .iter()
+                    .find(|(_, _, c)| *c == cmd)
+                    .map(|&(m, k, _)| ui.ctx().format_shortcut(&egui::KeyboardShortcut::new(m, k)))
+                    .unwrap_or_default();
+                let button = egui::Button::new(text).shortcut_text(shortcut);
+                if ui.add_enabled(enabled, button).clicked() {
+                    chosen = Some(cmd);
+                    ui.close_menu();
+                }
+            }
+        });
+        chosen
+    }
+
+    /// The unsaved-changes question while it is open.
+    fn unsaved_dialog(&mut self, ctx: &egui::Context) {
+        if !self.files.asking() {
+            return;
+        }
+        let name = self.files.file_name().unwrap_or("untitled").to_owned();
+        let mut answer = None;
+        egui::Window::new("Unsaved changes")
+            .collapsible(false)
+            .resizable(false)
+            .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
+            .show(ctx, |ui| {
+                ui.label(format!("Save the changes to {name}?"));
+                ui.horizontal(|ui| {
+                    for (text, a) in [
+                        ("Save", Answer::Save),
+                        ("Discard", Answer::Discard),
+                        ("Cancel", Answer::Cancel),
+                    ] {
+                        if ui.button(text).clicked() {
+                            answer = Some(a);
+                        }
+                    }
+                });
+            });
+        if let Some(a) = answer {
+            self.file_answer(a);
+        }
+    }
+}
+
 impl eframe::App for App {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        self.file_frame(ctx);
+        self.unsaved_dialog(ctx);
+        // The question is modal: tools and Canvas wait for the answer.
+        let idle = !self.files.asking();
         egui::TopBottomPanel::top("tools").show(ctx, |ui| {
+            if !idle {
+                ui.disable();
+            }
             ui.horizontal(|ui| {
+                if let Some(cmd) = self.file_menu(ui) {
+                    self.file_command(cmd);
+                }
+                ui.separator();
                 ui.label("Tool:");
                 ui.selectable_value(&mut self.tool, Tool::Select, "Select/Drag");
                 ui.selectable_value(&mut self.tool, Tool::Segment, "Segment");
@@ -484,13 +682,13 @@ impl eframe::App for App {
                 if undo.clicked() && self.session.undo().is_ok() {
                     self.status = "Undone".into();
                     self.last_error = None;
-                    self.rebuild_logical_points();
+                    self.history_changed();
                 }
                 let redo = ui.add_enabled(self.session.can_redo(), egui::Button::new("Redo"));
                 if redo.clicked() && self.session.redo().is_ok() {
                     self.status = "Redone".into();
                     self.last_error = None;
-                    self.rebuild_logical_points();
+                    self.history_changed();
                 }
                 if ui.button("Clear picks").clicked() {
                     self.pick_points.clear();
@@ -526,10 +724,15 @@ impl eframe::App for App {
 
         egui::CentralPanel::default().show(ctx, |ui| {
             // Canvas: Mesh (world) → Viewport → screen; drag → Interact in world.
-            let (response, painter) =
-                ui.allocate_painter(ui.available_size(), Sense::click_and_drag());
+            let sense = if idle {
+                Sense::click_and_drag()
+            } else {
+                Sense::hover()
+            };
+            let (response, painter) = ui.allocate_painter(ui.available_size(), sense);
             let canvas: Rect = response.rect;
-            self.viewport = Viewport::fit(canvas, WORLD_MIN, WORLD_MAX, VIEW_MARGIN);
+            let (min, max) = self.world_box;
+            self.viewport = Viewport::fit(canvas, min, max, VIEW_MARGIN);
 
             let mesh = self.mesh();
             for e in &mesh.edges {
@@ -612,6 +815,7 @@ impl eframe::App for App {
                         let world = self.viewport.to_world(pos);
                         let r = self.session.drag_end(world);
                         self.report_drag(r);
+                        self.files.refresh(&self.session, self.platform.files());
                     } else {
                         self.session.drag_cancel();
                     }

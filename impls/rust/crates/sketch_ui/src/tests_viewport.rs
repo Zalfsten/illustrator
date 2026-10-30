@@ -51,3 +51,14 @@ fn fit_maps_bounds_inside_canvas() {
         );
     }
 }
+
+#[test]
+fn world_box_adds_a_margin_and_a_minimum_size() {
+    assert_eq!(world_box([]), None);
+    let (min, max) = world_box([Point2::new(40.0, 20.0), Point2::new(60.0, 30.0)]).unwrap();
+    assert!((min.x - 38.0).abs() < 1e-9 && (max.x - 62.0).abs() < 1e-9);
+    assert!((min.y - 19.0).abs() < 1e-9 && (max.y - 31.0).abs() < 1e-9);
+    let (min, max) = world_box([Point2::new(5.0, 5.0)]).unwrap();
+    assert!((max.x - min.x - 1.2).abs() < 1e-9 && (max.y - min.y - 1.2).abs() < 1e-9);
+    assert!((min.x + max.x - 10.0).abs() < 1e-9, "centred on the point");
+}

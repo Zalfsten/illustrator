@@ -2,6 +2,7 @@ use serde_json::Value;
 use sketch_session::{DeclCommand, Session};
 
 use super::*;
+use crate::fake_files::FakeFiles;
 
 /// Equal up to numbers, which may differ by `tol`.
 fn close(a: &Value, b: &Value, tol: f64) -> bool {
@@ -79,4 +80,66 @@ fn drawing_with_labels_loads_paints_and_drags() {
     };
     let (end, origin) = (at("seg1.end"), at("tip.origin"));
     assert!((end.x - origin.x).abs() < 1e-6 && (end.y - origin.y).abs() < 1e-6);
+}
+
+/// A drawing of one segment from (40, 20) to (60, 30) and a label at (50, 35).
+const FAR_AWAY: &[u8] = br#"{"format": "illustrator-sketch", "version": 2, "scale": 10, "font_size": 10, "preamble": "", "commands": [
+    {"op": "create", "kind": "segment", "name": "far", "start": [40, 20], "end": [60, 30]},
+    {"op": "create", "kind": "label", "name": "tag", "origin": [50, 35], "heading": 0, "source": "far"}
+]}"#;
+
+fn open_far_away() -> (App, FakeFiles) {
+    let fake = FakeFiles::new(true);
+    let mut app = App::with_files(fake.clone());
+    app.pick_points.push(app.logical_points[0].representative);
+    app.segment_clicks.push(Point2::new(1.0, 1.0));
+    app.file_command(FileCommand::Open);
+    fake.open_file("far.sketch.json", FAR_AWAY);
+    app.poll_files();
+    (app, fake)
+}
+
+#[test]
+fn opened_file_replaces_the_drawing_and_resets_picks() {
+    let (app, _) = open_far_away();
+    assert_eq!(app.status, "Opened far.sketch.json");
+    assert_eq!(app.mesh().edges.len(), 1);
+    assert_eq!(app.doc().geometries().len(), 2);
+    assert!(!app.session.can_undo());
+    assert!(app.pick_points.is_empty() && app.segment_clicks.is_empty());
+    assert_eq!(app.logical_points.len(), 2, "the segment's two ends");
+}
+
+#[test]
+fn opened_drawing_lies_inside_the_canvas() {
+    let (app, _) = open_far_away();
+    let canvas = Rect::from_min_max(Pos2::new(0.0, 0.0), Pos2::new(800.0, 600.0));
+    let (min, max) = app.world_box;
+    let vp = Viewport::fit(canvas, min, max, VIEW_MARGIN);
+    for p in [Point2::new(40.0, 20.0), Point2::new(60.0, 30.0), Point2::new(50.0, 35.0)] {
+        assert!(canvas.contains(vp.to_screen(p)), "{p:?} off screen");
+    }
+}
+
+#[test]
+fn new_gives_the_default_box_and_edits_do_not_refit() {
+    let (mut app, _) = open_far_away();
+    let fitted = app.world_box;
+    app.run(
+        Command::Create {
+            name: None,
+            role: GeometryRole::Result,
+            geometry: GeometrySpec::Segment(SegmentParams {
+                start: Point2::new(0.0, 0.0),
+                end: Point2::new(1.0, 0.0),
+            }),
+        },
+        String::new(),
+    );
+    assert_eq!(app.world_box, fitted, "an edit keeps the view");
+    app.file_command(FileCommand::New);
+    assert!(app.files.asking(), "the edit is unsaved");
+    app.file_answer(Answer::Discard);
+    assert_eq!(app.world_box, (WORLD_MIN, WORLD_MAX));
+    assert!(app.doc().geometries().is_empty());
 }

@@ -62,6 +62,30 @@ impl Viewport {
     }
 }
 
+/// Margin around a drawing's box, as a fraction of its size per side.
+const BOX_MARGIN: f64 = 0.1;
+/// Smallest box size per axis in world units (one point, or a line).
+const BOX_MIN_SIZE: f64 = 1.0;
+
+/// World AABB `(min, max)` showing all `points` with a margin; `None` without points.
+pub fn world_box(points: impl IntoIterator<Item = Point2>) -> Option<(Point2, Point2)> {
+    let mut points = points.into_iter();
+    let first = points.next()?;
+    let (mut min, mut max) = (first, first);
+    for p in points {
+        min = Point2::new(min.x.min(p.x), min.y.min(p.y));
+        max = Point2::new(max.x.max(p.x), max.y.max(p.y));
+    }
+    let grow = |lo: f64, hi: f64| {
+        let size = (hi - lo).max(BOX_MIN_SIZE);
+        let (mid, half) = (0.5 * (lo + hi), 0.5 * size * (1.0 + 2.0 * BOX_MARGIN));
+        (mid - half, mid + half)
+    };
+    let (x0, x1) = grow(min.x, max.x);
+    let (y0, y1) = grow(min.y, max.y);
+    Some((Point2::new(x0, y0), Point2::new(x1, y1)))
+}
+
 #[cfg(test)]
 #[path = "tests_viewport.rs"]
 mod tests_viewport;

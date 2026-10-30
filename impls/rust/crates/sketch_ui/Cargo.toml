@@ -16,12 +16,21 @@ egui = "0.29"
 # Web Worker through label_web (#60).
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 label_typst = { path = "../label_typst" }
+# Native file dialogs (xdg-desktop-portal on Linux), run on a thread (#8).
+rfd = "0.17"
+pollster = "0.4"
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 label_web = { path = "../label_web" }
 wasm-bindgen = "0.2.128"
 wasm-bindgen-futures = "0.4.78"
-web-sys = { version = "0.3.105", features = ["Window", "Document", "Element", "HtmlCanvasElement"] }
+js-sys = "0.3.82"
+web-sys = { version = "0.3.105", features = [
+    "Window", "Document", "Element", "HtmlCanvasElement", "HtmlElement", "Node",
+    # File services (#8): file input, download, leave warning.
+    "Blob", "BlobPropertyBag", "Url", "HtmlAnchorElement", "HtmlInputElement",
+    "File", "FileList", "Event", "EventTarget", "BeforeUnloadEvent",
+] }
 
 [dev-dependencies]
 serde_json = "1"
