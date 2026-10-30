@@ -6,9 +6,11 @@
 
 mod app;
 mod labels;
+mod platform;
 mod viewport;
 
 use app::App;
+use platform::Host;
 
 #[cfg(not(target_arch = "wasm32"))]
 fn main() -> eframe::Result<()> {
@@ -24,8 +26,8 @@ fn main() -> eframe::Result<()> {
         TITLE,
         options,
         Box::new(|_cc| {
-            let typesetter = Box::new(label_typst::TypstTypesetter::new());
-            Ok(Box::new(App::new(Some(typesetter))))
+            let typesetter = label_layout::Immediate::new(label_typst::TypstTypesetter::new());
+            Ok(Box::new(App::new(Box::new(Host::new(Some(Box::new(typesetter)))))))
         }),
     )
 }
@@ -46,8 +48,15 @@ fn main() {
             .start(
                 canvas,
                 eframe::WebOptions::default(),
-                // No typesetter in the browser yet (#60): labels show untypeset.
-                Box::new(|_cc| Ok(Box::new(App::new(None)))),
+                Box::new(|cc| {
+                    // Typst runs in a Web Worker, fetched on the first label line.
+                    let ctx = cc.egui_ctx.clone();
+                    let typesetter = label_web::WorkerTypesetter::new(
+                        "label_worker_boot.js",
+                        move || ctx.request_repaint(),
+                    );
+                    Ok(Box::new(App::new(Box::new(Host::new(Some(Box::new(typesetter)))))))
+                }),
             )
             .await
             .expect("failed to start eframe in the browser");

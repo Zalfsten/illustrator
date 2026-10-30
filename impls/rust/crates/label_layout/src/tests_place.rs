@@ -2,7 +2,7 @@ use constraint_runtime::{DocumentSettings, HAlign, LabelAttrs, Markup, Point2, V
 
 use super::*;
 use crate::split::split_lines;
-use crate::typeset::{TypesetError, TypesetLine, Typesetter};
+use crate::typeset::{LineTypesetter, TypesetError, TypesetLine};
 
 const EPS: f64 = 1e-9;
 
@@ -10,7 +10,7 @@ const EPS: f64 = 1e-9;
 /// (12 high, 9 deep); an empty line has no extent.
 struct Fixed;
 
-impl Typesetter for Fixed {
+impl LineTypesetter for Fixed {
     fn typeset_line(
         &self,
         line: &str,

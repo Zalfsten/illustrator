@@ -21,6 +21,21 @@ RUN apt-get update \
     libgl1 \
     libegl1 \
     libfontconfig1 \
+    # Headless Chromium for browser checks with Playwright (npx playwright
+    # install chromium downloads the browser itself; these are its libraries).
+    libnss3 \
+    libnspr4 \
+    libdbus-1-3 \
+    libatk1.0-0t64 \
+    libatk-bridge2.0-0t64 \
+    libatspi2.0-0t64 \
+    libcups2t64 \
+    libxcomposite1 \
+    libxdamage1 \
+    libasound2t64 \
+    libgbm1 \
+    libpango-1.0-0 \
+    libcairo2 \
     # pkg-config: build dependency of wayland-sys (sketch_ui via eframe/glutin)
     pkg-config \
   # GitHub CLI

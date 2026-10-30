@@ -8,3 +8,6 @@ license = "GPL-3.0-or-later"
 [dependencies]
 constraint_runtime = { path = "../constraint_runtime" }
 lyon_tessellation = "1"
+serde = { version = "1", features = ["derive"] }
+# float_roundtrip: coordinates cross the worker boundary bit-exact.
+serde_json = { version = "1", features = ["float_roundtrip"] }

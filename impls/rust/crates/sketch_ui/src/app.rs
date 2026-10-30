@@ -9,12 +9,15 @@ use constraint_runtime::{
     SolveError, TurnAngle, Vec2, VectorsOrthogonal, VectorsParallel,
 };
 use eframe::egui::{self, epaint, Color32, Pos2, Rect, Sense, Stroke};
-use label_layout::Typesetter;
+use label_layout::TypesetterState;
 use sketch_session::{
     Command, ConstraintSpec, FixParams, GeometrySpec, PointPair, SegmentParams, Session, VecPair,
 };
 
-use crate::labels::{label_paint, LabelCache, PaintItem};
+use crate::labels::{label_paint, FallbackReason, LabelCache, PaintItem};
+#[cfg(test)]
+use crate::platform::Host;
+use crate::platform::Platform;
 use crate::viewport::Viewport;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -45,6 +48,8 @@ impl PresentationMode {
 
 /// Colour of labels shown untypeset (and of their status message).
 const NOT_TYPESET: Color32 = Color32::from_rgb(220, 120, 20);
+/// Colour of labels whose typesetting is pending (and of "loading typesetter…").
+const PENDING: Color32 = Color32::from_rgb(140, 140, 150);
 
 /// Fixed world AABB used to fit the Viewport (sample sketch + margin room).
 const WORLD_MIN: Point2 = Point2 { x: -0.5, y: -0.5 };
@@ -63,23 +68,25 @@ pub struct App {
     last_error: Option<String>,
     /// Grabbable points (congruence classes); rebuilt after structural changes.
     logical_points: Vec<LogicalPoint>,
-    /// Typeset label lines (and the typesetter, if this host has one).
+    /// Host services (the typesetter, if this host has one).
+    platform: Box<dyn Platform>,
+    /// Typeset label lines and each label's last complete rendering.
     labels: LabelCache,
-    /// First label that failed to typeset in the last paint.
-    label_status: Option<String>,
+    /// Typesetter state or first label failure of the last paint, with its colour.
+    label_status: Option<(String, Color32)>,
     /// Last fitted viewport (updated each paint from canvas rect).
     viewport: Viewport,
 }
 
 impl App {
-    /// The sample scene without a typesetter (labels show untypeset).
+    /// The sample scene on a host without a typesetter (labels show untypeset).
     #[cfg(test)]
     pub fn with_sample() -> Self {
-        Self::new(None)
+        Self::new(Box::new(Host::new(None)))
     }
 
-    /// The sample scene; `typesetter` is `None` on hosts without one.
-    pub fn new(typesetter: Option<Box<dyn Typesetter>>) -> Self {
+    /// The sample scene on the host `platform`.
+    pub fn new(platform: Box<dyn Platform>) -> Self {
         let mut doc = Document::new();
         // World units, y-up: horizontal + vertical legs with a quarter-circle fillet.
         const R: f64 = 0.5;
@@ -175,15 +182,16 @@ impl App {
                 .into(),
             last_error: None,
             logical_points,
-            labels: LabelCache::new(typesetter),
+            platform,
+            labels: LabelCache::new(),
             label_status: None,
             viewport: Viewport::new(1.0, Pos2::ZERO),
         }
     }
 
     /// Typeset label as a triangle mesh; untypeset label as text in a dashed
-    /// frame (and its error in the status line).
-    fn paint_label(&mut self, painter: &egui::Painter, item: PaintItem) {
+    /// frame (grey while pending). Returns `name: error` for a failed label.
+    fn paint_label(&self, painter: &egui::Painter, item: PaintItem) -> Option<String> {
         match item {
             PaintItem::Typeset {
                 role,
@@ -198,34 +206,41 @@ impl App {
                 }
                 mesh.indices = indices;
                 painter.add(egui::Shape::mesh(mesh));
+                None
             }
             PaintItem::Fallback {
                 geometry,
                 lines,
                 frame,
-                error,
+                reason,
                 ..
             } => {
+                let color = if reason == FallbackReason::Pending {
+                    PENDING
+                } else {
+                    NOT_TYPESET
+                };
                 for line in lines {
                     let font = egui::FontId::monospace(line.size_px.max(1.0));
-                    let galley = painter.layout_no_wrap(line.text, font, NOT_TYPESET);
+                    let galley = painter.layout_no_wrap(line.text, font, color);
                     // Text is placed by its top left; lift it by the ascent.
                     let ascent = galley.rows.first().map_or(0.0, |r| r.rect.height() * 0.8);
                     let (s, c) = line.angle.sin_cos();
                     let top_left = line.baseline_left + egui::vec2(ascent * s, -ascent * c);
                     painter.add(
-                        epaint::TextShape::new(top_left, galley, NOT_TYPESET).with_angle(line.angle),
+                        epaint::TextShape::new(top_left, galley, color).with_angle(line.angle),
                     );
                 }
-                let stroke = Stroke::new(1.0_f32, NOT_TYPESET);
+                let stroke = Stroke::new(1.0_f32, color);
                 let mut ring = frame.to_vec();
                 ring.push(frame[0]);
                 painter.extend(egui::Shape::dashed_line(&ring, stroke, 4.0, 3.0));
-                if self.label_status.is_none() {
-                    if let Some(e) = error {
+                match reason {
+                    FallbackReason::Failed(e) => {
                         let name = self.doc().geometry_name(geometry).unwrap_or("?");
-                        self.label_status = Some(format!("{name}: {e}"));
+                        Some(format!("{name}: {e}"))
                     }
+                    _ => None,
                 }
             }
         }
@@ -501,8 +516,8 @@ impl eframe::App for App {
                 }
             });
             ui.label(&self.status);
-            if let Some(s) = &self.label_status {
-                ui.colored_label(NOT_TYPESET, s);
+            if let Some((s, color)) = &self.label_status {
+                ui.colored_label(*color, s);
             }
             if let Some(err) = &self.last_error {
                 ui.colored_label(Color32::RED, err);
@@ -533,11 +548,23 @@ impl eframe::App for App {
                 &self.viewport,
                 self.presentation.mesh_filter(),
                 &mut self.labels,
+                self.platform.typesetter(),
             );
-            self.label_status = None;
+            let mut failure = None;
             for item in items {
-                self.paint_label(&painter, item);
+                let f = self.paint_label(&painter, item);
+                failure = failure.or(f);
             }
+            self.label_status = match self.platform.typesetter().map(|t| t.state()) {
+                Some(TypesetterState::Failed(msg)) => Some((
+                    format!("typesetter could not be loaded: {msg}"),
+                    NOT_TYPESET,
+                )),
+                Some(TypesetterState::Loading) if self.labels.any_pending() => {
+                    Some(("loading typesetter…".to_owned(), PENDING))
+                }
+                _ => failure.map(|f| (f, NOT_TYPESET)),
+            };
             for lp in &self.logical_points {
                 let p = self.eval_point(&lp.representative);
                 painter.circle_filled(

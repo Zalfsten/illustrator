@@ -7,6 +7,11 @@
   <!-- Trunk builds this crate (bin sketch_ui) to wasm and injects the loader.
        wasm-opt (size, "z") runs only for release builds. -->
   <link data-trunk rel="rust" data-bin="sketch_ui" data-wasm-opt="z" />
+  <!-- Label typesetter, started on demand as a Web Worker (#60): Trunk builds
+       label_worker.js + label_worker_bg.wasm; label_worker_boot.js starts them
+       and reports a failed load. Nothing here is fetched with the page. -->
+  <link data-trunk rel="rust" href="../label_worker/Cargo.toml" data-type="worker" data-wasm-opt="z" />
+  <link data-trunk rel="copy-file" href="label_worker_boot.js" />
   <style>
     html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #202020; }
     #the_canvas_id { display: block; width: 100%; height: 100%; }

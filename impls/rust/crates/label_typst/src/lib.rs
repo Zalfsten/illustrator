@@ -1,4 +1,4 @@
-//! A [`Typesetter`] backed by Typst, with LaTeX converted by mitex.
+//! A [`LineTypesetter`] (engine) backed by Typst, with LaTeX converted by mitex.
 //!
 //! - [`convert`]: a line's source to Typst markup (mitex for `latex`, an
 //!   escaped string for `text`), with unsupported constructs named.
@@ -14,7 +14,7 @@ mod frame;
 mod world;
 
 use constraint_runtime::Markup;
-use label_layout::{TypesetError, TypesetLine, Typesetter};
+use label_layout::{TypesetError, TypesetLine, LineTypesetter};
 
 /// Typesets label lines with Typst; cheap to create (fonts and the library
 /// are shared and loaded on first use).
@@ -27,7 +27,7 @@ impl TypstTypesetter {
     }
 }
 
-impl Typesetter for TypstTypesetter {
+impl LineTypesetter for TypstTypesetter {
     fn typeset_line(
         &self,
         line: &str,

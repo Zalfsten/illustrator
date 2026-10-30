@@ -1,15 +1,15 @@
 //! Labels on the Canvas: typeset lines (cached per line) placed in world
-//! space, or the "not typeset" fallback (label-typesetting).
+//! space, the last complete rendering while lines are pending, or the "not
+//! typeset" fallback (label-typesetting).
 
 use std::collections::{HashMap, HashSet};
+use std::rc::Rc;
 
-use constraint_runtime::{
-    Document, GeometryId, GeometryRole, LabelAttrs, Markup, MeshFilter, Point2,
-};
+use constraint_runtime::{Document, GeometryId, GeometryRole, LabelAttrs, MeshFilter, Point2};
 use eframe::egui::Pos2;
 use label_layout::{
-    frame_map, label_size, line_origins, split_lines, tessellate, LineMetrics, Triangles,
-    TypesetError, Typesetter,
+    frame_map, label_size, line_origins, split_lines, tessellate, Affine2, LineMetrics,
+    LineRequest, Triangles, TypesetError, Typesetter, TypesetterState,
 };
 
 use crate::viewport::Viewport;
@@ -19,69 +19,107 @@ const FALLBACK_ADVANCE_EM: f64 = 0.6;
 const FALLBACK_ASCENT_EM: f64 = 0.75;
 const FALLBACK_DESCENT_EM: f64 = 0.25;
 
-/// (line source, markup, size bits, preamble).
-type LineKey = (String, Markup, u64, String);
+/// A typeset line ready to paint.
+type Typeset = (LineMetrics, Triangles);
 
-/// Typeset lines of the current frame's labels; lines no label used in a
-/// frame are dropped at its end.
+enum Entry {
+    /// Requested, no result yet.
+    Pending,
+    Done(Result<Typeset, TypesetError>),
+}
+
+/// Typeset lines of the current frame's labels, and each label's last
+/// complete rendering; what no label used in a frame is dropped at its end.
+#[derive(Default)]
 pub struct LabelCache {
-    typesetter: Option<Box<dyn Typesetter>>,
-    lines: HashMap<LineKey, Result<(LineMetrics, Triangles), TypesetError>>,
-    used: HashSet<LineKey>,
+    lines: HashMap<LineRequest, Entry>,
+    used: HashSet<LineRequest>,
+    last_complete: HashMap<GeometryId, Rc<Vec<Typeset>>>,
+    any_pending: bool,
 }
 
 impl LabelCache {
-    /// `None`: no typesetter on this host; every label shows its fallback.
-    pub fn new(typesetter: Option<Box<dyn Typesetter>>) -> Self {
-        Self {
-            typesetter,
-            lines: HashMap::new(),
-            used: HashSet::new(),
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Whether a label waited for typesetting in the last [`label_paint`].
+    pub fn any_pending(&self) -> bool {
+        self.any_pending
+    }
+
+    fn take_completed(&mut self, ts: &dyn Typesetter) {
+        for (req, result) in ts.take_completed() {
+            let done = result.map(|l| (LineMetrics::from(&l), tessellate(&l.shapes)));
+            self.lines.insert(req, Entry::Done(done));
         }
     }
 
-    fn line(
-        &mut self,
-        line: &str,
-        markup: Markup,
-        size: f64,
-        preamble: &str,
-    ) -> Option<&Result<(LineMetrics, Triangles), TypesetError>> {
-        let ts = self.typesetter.as_ref()?;
-        let key: LineKey = (line.to_owned(), markup, size.to_bits(), preamble.to_owned());
-        self.used.insert(key.clone());
-        Some(self.lines.entry(key).or_insert_with(|| {
-            ts.typeset_line(line, markup, size, preamble)
-                .map(|l| (LineMetrics::from(&l), tessellate(&l.shapes)))
-        }))
+    /// Request the lines not asked for yet (each once).
+    fn request(&mut self, ts: &dyn Typesetter, reqs: &[LineRequest]) {
+        for req in reqs {
+            self.used.insert(req.clone());
+            if !self.lines.contains_key(req) {
+                self.lines.insert(req.clone(), Entry::Pending);
+                ts.request(req.clone());
+            }
+        }
     }
 
-    fn sweep(&mut self) {
+    /// All lines typeset, the first failure, or `None` while any is pending.
+    fn status(&self, reqs: &[LineRequest]) -> Option<Result<Vec<Typeset>, TypesetError>> {
+        let mut lines = Vec::with_capacity(reqs.len());
+        let mut pending = false;
+        for req in reqs {
+            match self.lines.get(req) {
+                Some(Entry::Done(Ok(t))) => lines.push(t.clone()),
+                Some(Entry::Done(Err(e))) => return Some(Err(e.clone())),
+                Some(Entry::Pending) | None => pending = true,
+            }
+        }
+        (!pending).then_some(Ok(lines))
+    }
+
+    fn sweep(&mut self, labels: &HashSet<GeometryId>) {
         let used = std::mem::take(&mut self.used);
         self.lines.retain(|k, _| used.contains(k));
+        self.last_complete.retain(|id, _| labels.contains(id));
     }
 }
 
 /// What the Canvas paints for one label, in screen coordinates.
 #[derive(Clone, Debug, PartialEq)]
 pub enum PaintItem {
-    /// Typeset lines as triangles.
+    /// Typeset lines as triangles (possibly the last complete rendering
+    /// while new lines are pending).
     Typeset {
         geometry: GeometryId,
         role: GeometryRole,
         vertices: Vec<Pos2>,
         indices: Vec<u32>,
     },
-    /// The source as plain text, marked as not typeset; `error` is `None`
-    /// when there is no typesetter.
+    /// The source as plain text in a dashed frame, marked as not typeset.
     Fallback {
         geometry: GeometryId,
         role: GeometryRole,
         lines: Vec<FallbackLine>,
         /// Corners of the block's frame, counterclockwise from bottom left.
         frame: [Pos2; 4],
-        error: Option<TypesetError>,
+        reason: FallbackReason,
     },
+}
+
+/// Why a label shows its fallback.
+#[derive(Clone, Debug, PartialEq)]
+pub enum FallbackReason {
+    /// Lines are still being typeset (or the typesetter is loading).
+    Pending,
+    /// A line failed to typeset.
+    Failed(TypesetError),
+    /// This host has no typesetter.
+    NoTypesetter,
+    /// The typesetter could not be loaded.
+    LoadFailed(String),
 }
 
 /// One fallback line: its source text, from the left end of its baseline.
@@ -94,19 +132,28 @@ pub struct FallbackLine {
     pub size_px: f32,
 }
 
-/// Paint items for the labels visible under `filter`.
+/// Paint items for the labels visible under `filter`. Completed results are
+/// taken from `typesetter` and missing lines requested from it.
 pub fn label_paint(
     doc: &Document,
     viewport: &Viewport,
     filter: MeshFilter,
     cache: &mut LabelCache,
+    typesetter: Option<&dyn Typesetter>,
 ) -> Vec<PaintItem> {
     let settings = doc.settings().clone();
+    let state = typesetter.map(|ts| ts.state());
+    if let Some(ts) = typesetter {
+        cache.take_completed(ts);
+    }
+    cache.any_pending = false;
+    let mut labels = HashSet::new();
     let mut out = Vec::new();
     for g in doc.geometries().values() {
         let Some(attrs) = doc.label_attrs(g.id()) else {
             continue;
         };
+        labels.insert(g.id());
         if !filter.include_construction && g.role() == GeometryRole::Construction {
             continue;
         }
@@ -126,39 +173,8 @@ pub fn label_paint(
         if sources.is_empty() {
             continue;
         }
-
-        let typeset: Option<Result<Vec<(LineMetrics, Triangles)>, TypesetError>> = sources
-            .iter()
-            .map(|l| {
-                cache
-                    .line(l, attrs.markup, size, &settings.preamble)
-                    .cloned()
-            })
-            .collect::<Option<Vec<_>>>()
-            .map(|lines| lines.into_iter().collect());
-
-        match typeset {
-            Some(Ok(lines)) => {
-                let metrics: Vec<LineMetrics> = lines.iter().map(|(m, _)| *m).collect();
-                let mut vertices = Vec::new();
-                let mut indices = Vec::new();
-                for ((_, tris), o) in lines.iter().zip(line_origins(&metrics, attrs, size)) {
-                    let map = frame.then_translate(o);
-                    let base = vertices.len() as u32;
-                    vertices.extend(tris.vertices.iter().map(|v| {
-                        let w = map.apply(Point2::new(f64::from(v[0]), f64::from(v[1])));
-                        viewport.to_screen(w)
-                    }));
-                    indices.extend(tris.indices.iter().map(|i| base + i));
-                }
-                out.push(PaintItem::Typeset {
-                    geometry: g.id(),
-                    role: g.role(),
-                    vertices,
-                    indices,
-                });
-            }
-            failed => out.push(fallback(
+        let place = |reason| {
+            fallback(
                 g.id(),
                 g.role(),
                 attrs,
@@ -167,12 +183,93 @@ pub fn label_paint(
                 &frame,
                 heading,
                 viewport,
-                failed.and_then(Result::err),
-            )),
+                reason,
+            )
+        };
+
+        let ts = match (typesetter, &state) {
+            (None, _) | (_, None) => {
+                out.push(place(FallbackReason::NoTypesetter));
+                continue;
+            }
+            (Some(_), Some(TypesetterState::Failed(msg))) => {
+                out.push(place(FallbackReason::LoadFailed(msg.clone())));
+                continue;
+            }
+            (Some(ts), Some(_)) => ts,
+        };
+        let reqs: Vec<LineRequest> = sources
+            .iter()
+            .map(|l| LineRequest::new(l, attrs.markup, size, &settings.preamble))
+            .collect();
+        cache.request(ts, &reqs);
+        // An immediate typesetter has answered inside `request`.
+        cache.take_completed(ts);
+
+        match cache.status(&reqs) {
+            Some(Ok(lines)) => {
+                let lines = Rc::new(lines);
+                out.push(typeset(
+                    g.id(),
+                    g.role(),
+                    attrs,
+                    size,
+                    &frame,
+                    viewport,
+                    &lines,
+                ));
+                cache.last_complete.insert(g.id(), lines);
+            }
+            Some(Err(e)) => out.push(place(FallbackReason::Failed(e))),
+            None => {
+                cache.any_pending = true;
+                match cache.last_complete.get(&g.id()) {
+                    Some(lines) => out.push(typeset(
+                        g.id(),
+                        g.role(),
+                        attrs,
+                        size,
+                        &frame,
+                        viewport,
+                        lines,
+                    )),
+                    None => out.push(place(FallbackReason::Pending)),
+                }
+            }
         }
     }
-    cache.sweep();
+    cache.sweep(&labels);
     out
+}
+
+/// Typeset lines placed by the label's current frame, in screen space.
+fn typeset(
+    geometry: GeometryId,
+    role: GeometryRole,
+    attrs: &LabelAttrs,
+    size: f64,
+    frame: &Affine2,
+    viewport: &Viewport,
+    lines: &[Typeset],
+) -> PaintItem {
+    let metrics: Vec<LineMetrics> = lines.iter().map(|(m, _)| *m).collect();
+    let mut vertices = Vec::new();
+    let mut indices = Vec::new();
+    for ((_, tris), o) in lines.iter().zip(line_origins(&metrics, attrs, size)) {
+        let map = frame.then_translate(o);
+        let base = vertices.len() as u32;
+        vertices.extend(tris.vertices.iter().map(|v| {
+            let w = map.apply(Point2::new(f64::from(v[0]), f64::from(v[1])));
+            viewport.to_screen(w)
+        }));
+        indices.extend(tris.indices.iter().map(|i| base + i));
+    }
+    PaintItem::Typeset {
+        geometry,
+        role,
+        vertices,
+        indices,
+    }
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -182,10 +279,10 @@ fn fallback(
     attrs: &LabelAttrs,
     sources: &[&str],
     size: f64,
-    frame: &label_layout::Affine2,
+    frame: &Affine2,
     heading: f64,
     viewport: &Viewport,
-    error: Option<TypesetError>,
+    reason: FallbackReason,
 ) -> PaintItem {
     let metrics: Vec<LineMetrics> = sources
         .iter()
@@ -226,7 +323,7 @@ fn fallback(
             screen(Point2::new(x1, y1)),
             screen(Point2::new(x0, y1)),
         ],
-        error,
+        reason,
     }
 }
 

@@ -1,7 +1,7 @@
 //! The Typst typesetter against the label-typesetting spec scenarios.
 
 use constraint_runtime::Markup;
-use label_layout::{TypesetError, TypesetLine, Typesetter};
+use label_layout::{TypesetError, TypesetLine, LineTypesetter};
 use label_typst::TypstTypesetter;
 
 fn latex(line: &str, preamble: &str) -> Result<TypesetLine, TypesetError> {

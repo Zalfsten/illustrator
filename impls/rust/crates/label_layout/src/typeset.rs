@@ -8,9 +8,9 @@ use std::fmt;
 
 use constraint_runtime::{Markup, Point2};
 
-/// A typesetting engine. Implementations may differ per host; a host may have
-/// none (labels then show in their "not typeset" form).
-pub trait Typesetter {
+/// A typesetting engine: one line, synchronously. The app reaches engines
+/// through the asynchronous [`crate::Typesetter`] port.
+pub trait LineTypesetter {
     /// Typeset one line, already split at explicit breaks ([`crate::split_lines`]).
     /// `preamble` applies only to [`Markup::Latex`].
     fn typeset_line(

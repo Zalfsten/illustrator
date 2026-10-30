@@ -240,22 +240,31 @@ context: |
   JSON Schemas, checked in under sketch_session/schema/ (tests/schema.rs,
   UPDATE_SCHEMA=1). Session::declarative_commands exports a drawing.
   constraint_runtime stays serde-free.
-  label_layout (engine-neutral, wasm-capable): Typesetter port (one
-  line in, TypesetLine out: Shapes of Contours in pt in the label frame,
+  label_layout (engine-neutral, wasm-capable): LineTypesetter engine
+  trait (one line in, TypesetLine out: Shapes of Contours in pt in the
+  label frame,
   y up, width as set, visible height/depth; TypesetError Unsupported /
   Invalid), split_lines (own scanner: `\\` at top level for latex,
   newline for text), baselines (max(1.2·size, depth+height+1pt)),
   line_origins + frame_map / place (pt -> world via document scale),
-  tessellate (lyon). label_typst (native only): TypstTypesetter with
+  tessellate (lyon); the asynchronous Typesetter port (request /
+  take_completed / state Loading|Ready|Failed, LineRequest as key) with
+  Immediate<E> over an engine; wire.rs: JSON messages to the worker via
+  serde mirror types (WireRequest, WorkerMessage ready|line). label_typst
+  (engine; native, and in the browser inside label_worker): TypstTypesetter with
   typst/typst-layout =0.15.1 and mitex =0.2.4 (convert_text, preamble
   prepended, rename table applied inside math only); assets/ holds the
   two NewCM fonts (from typst-assets) and mitex's Typst files with
   xarrow replaced, each with a NOTICE.
   sketch_ui edits only through the Session (sample scene is the baseline).
-  It paints labels via labels.rs (LabelCache per line, swept per frame;
-  label_paint -> PaintItem Typeset triangles or Fallback text in a dashed
-  frame); main.rs injects TypstTypesetter natively and None in the
-  browser.
+  It paints labels via labels.rs (LabelCache: per line Pending / Done,
+  swept per frame, plus each label's last complete rendering; label_paint
+  -> PaintItem Typeset triangles or Fallback with FallbackReason Pending
+  (grey) | Failed | NoTypesetter | LoadFailed). Host services come from
+  platform.rs (Platform trait, Host struct); main.rs builds Host with
+  Immediate<TypstTypesetter> natively and label_web::WorkerTypesetter in
+  the browser (label_worker Web Worker, started by label_worker_boot.js
+  on the first label line).
   Prefer sibling files once a module has unit tests: src/<module>.rs for
   production code and src/tests_<module>.rs for that module's unit tests,
   declared with `#[cfg(test)] #[path = "tests_<module>.rs"] mod tests_<module>;`

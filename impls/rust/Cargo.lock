@@ -3006,6 +3006,8 @@ version = "0.1.0"
 dependencies = [
  "constraint_runtime",
  "lyon_tessellation",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -3018,6 +3020,28 @@ dependencies = [
  "ttf-parser",
  "typst",
  "typst-layout",
+]
+
+[[package]]
+name = "label_web"
+version = "0.1.0"
+dependencies = [
+ "constraint_runtime",
+ "label_layout",
+ "wasm-bindgen",
+ "web-sys",
+]
+
+[[package]]
+name = "label_worker"
+version = "0.1.0"
+dependencies = [
+ "constraint_runtime",
+ "js-sys",
+ "label_layout",
+ "label_typst",
+ "wasm-bindgen",
+ "web-sys",
 ]
 
 [[package]]
@@ -5018,6 +5042,7 @@ dependencies = [
  "egui",
  "label_layout",
  "label_typst",
+ "label_web",
  "serde_json",
  "sketch_session",
  "wasm-bindgen",

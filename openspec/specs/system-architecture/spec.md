@@ -189,7 +189,7 @@ The App SHALL obtain every host platform service (for example opening or saving 
 
 ### Requirement: Optional host capabilities are discoverable
 
-The host boundary SHALL let the App ask at runtime whether an optional capability is available on the current host. When a capability is unavailable, the App SHALL hide or disable the UI that depends on it. Using the App SHALL NOT fail because an optional capability is missing.
+The host boundary SHALL let the App ask at runtime whether an optional capability is available on the current host. When a capability is unavailable, the App SHALL hide or disable the UI that depends on it. Using the App SHALL NOT fail because an optional capability is missing. Label typesetting SHALL be such an optional capability, provided through the host boundary.
 
 #### Scenario: Missing capability hides its command
 
@@ -202,3 +202,9 @@ The host boundary SHALL let the App ask at runtime whether an optional capabilit
 - **WHEN** the current host provides that optional capability
 - **THEN** the App offers the corresponding command
 - **AND** invoking it goes through the host boundary
+
+#### Scenario: Typesetter comes from the host boundary
+
+- **WHEN** the App starts on a host that provides a typesetter
+- **THEN** the App obtains it from the host boundary supplied at start
+- **AND** on a host without one, labels are shown in the not-typeset form and everything else works

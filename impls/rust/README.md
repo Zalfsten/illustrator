@@ -70,10 +70,24 @@ Labels are typeset in two crates:
 | `label_layout` | Engine-neutral: the `Typesetter` port, line splitting, LaTeX line spacing, placement in world space, tessellation. Builds for the browser. |
 | `label_typst` | The native typesetter: LaTeX via [mitex](https://github.com/mitex-rs/mitex) 0.2.4, layout via [Typst](https://typst.app) 0.15.1, both pinned. `assets/` holds two New Computer Modern fonts (from `typst-assets`) and mitex's Typst files (xarrow replaced), each with a `NOTICE`. Update Typst and mitex together. |
 
-The native app links `label_typst`. The browser build has no typesetter yet
-(#60) and shows every label as plain text in a dashed orange frame, as it does
-natively for a label that fails to typeset (the status line names the
-failure).
+| `label_worker` | Browser only: a Web Worker (`cdylib`) that runs `label_typst`; JSON messages from `label_layout::wire`. |
+| `label_web` | Browser only: the client (`WorkerTypesetter`) that starts the worker on the first label line and requests a repaint on every answer. |
+
+Natively the app links `label_typst` directly (behind `label_layout::Immediate`).
+In the browser, Trunk builds `label_worker` from `index.html`, and
+`label_worker_boot.js` starts it. Nothing of it is fetched with the page: the
+initial page stays about 1.4 MB gzip, and the worker (about 11 MB gzip) is
+loaded when the first label needs typesetting. Until then labels show their
+source in grey, with "loading typesetter…" in the status line. A label that
+fails to typeset, or any label when the worker cannot be loaded, shows its
+source in a dashed orange frame, and the status line names the failure.
+
+The app reaches the typesetter through `Platform` (`sketch_ui/src/platform.rs`),
+the host boundary that `main.rs` builds per target.
+
+Check the browser build headless with Playwright (Chromium's libraries are in the
+Dev Container image): `trunk serve` in `crates/sketch_ui`, then a script that
+opens `http://127.0.0.1:8737/`, waits for the label, and takes a screenshot.
 
 ## Browser build
 
@@ -121,7 +135,7 @@ keeps serving at `/`. One-time repository setting: Settings → Pages → Source
 
 ### Platform boundary
 
-`constraint_runtime`, `label_layout`, `app.rs`, `labels.rs` and `viewport.rs` stay platform-neutral: no
+`constraint_runtime`, `label_layout`, `app.rs`, `labels.rs`, `platform.rs` and `viewport.rs` stay platform-neutral: no
 host services (files, threads, wall-clock time, browser APIs) and no
 `cfg(target_arch = ...)`. Platform code lives only in `sketch_ui/src/main.rs`
 (one `main` per host) and in target-specific dependency tables. Host services
