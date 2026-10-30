@@ -3,16 +3,18 @@
 //! The App edits the drawing only through [`Session`] commands and drags.
 
 use constraint_runtime::{
-    Arc, Congruence, CurveExprs, CurveParam, Document, EndpointExprs, EqualLength, FixPoint,
-    GeometryId, GeometryRole, HeadingAngle, InteractiveSolve, Length, LineExprs, LogicalPoint,
-    Mesh, MeshFilter, Point2, PointExpr, Segment, SolveError, TurnAngle, VectorsOrthogonal,
-    VectorsParallel,
+    AnchorExprs, Arc, Congruence, CurveExprs, CurveParam, Document, EndpointExprs, EqualLength,
+    FixPoint, GeometryId, GeometryRole, HAlign, HeadingAngle, InteractiveSolve, KindAttrs, Label,
+    LabelAttrs, Length, LineExprs, LogicalPoint, Mesh, MeshFilter, Point2, PointExpr, Segment,
+    SolveError, TurnAngle, Vec2, VectorsOrthogonal, VectorsParallel,
 };
-use eframe::egui::{self, Color32, Pos2, Rect, Sense, Stroke};
+use eframe::egui::{self, epaint, Color32, Pos2, Rect, Sense, Stroke};
+use label_layout::Typesetter;
 use sketch_session::{
     Command, ConstraintSpec, FixParams, GeometrySpec, PointPair, SegmentParams, Session, VecPair,
 };
 
+use crate::labels::{label_paint, LabelCache, PaintItem};
 use crate::viewport::Viewport;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -41,6 +43,9 @@ impl PresentationMode {
     }
 }
 
+/// Colour of labels shown untypeset (and of their status message).
+const NOT_TYPESET: Color32 = Color32::from_rgb(220, 120, 20);
+
 /// Fixed world AABB used to fit the Viewport (sample sketch + margin room).
 const WORLD_MIN: Point2 = Point2 { x: -0.5, y: -0.5 };
 const WORLD_MAX: Point2 = Point2 { x: 2.5, y: 2.5 };
@@ -58,12 +63,23 @@ pub struct App {
     last_error: Option<String>,
     /// Grabbable points (congruence classes); rebuilt after structural changes.
     logical_points: Vec<LogicalPoint>,
+    /// Typeset label lines (and the typesetter, if this host has one).
+    labels: LabelCache,
+    /// First label that failed to typeset in the last paint.
+    label_status: Option<String>,
     /// Last fitted viewport (updated each paint from canvas rect).
     viewport: Viewport,
 }
 
 impl App {
+    /// The sample scene without a typesetter (labels show untypeset).
+    #[cfg(test)]
     pub fn with_sample() -> Self {
+        Self::new(None)
+    }
+
+    /// The sample scene; `typesetter` is `None` on hosts without one.
+    pub fn new(typesetter: Option<Box<dyn Typesetter>>) -> Self {
         let mut doc = Document::new();
         // World units, y-up: horizontal + vertical legs with a quarter-circle fillet.
         const R: f64 = 0.5;
@@ -122,6 +138,25 @@ impl App {
             a: Arc::length_expr(fillet),
             b: Segment::length_expr(length_gauge),
         });
+        // A label centred above the horizontal leg, following it.
+        let label = doc.add_geometry_with::<Label>(
+            GeometryRole::Result,
+            (Point2::new((2.0 - R) / 2.0, 0.0), HeadingAngle::new(0.0)),
+            KindAttrs::Label(LabelAttrs {
+                source: r"leg $\ell = \frac{3}{2}$".into(),
+                halign: HAlign::Center,
+                offset: Vec2::new(0.0, 4.0),
+                ..LabelAttrs::default()
+            }),
+        );
+        doc.add_constraint(Congruence {
+            a: Label::origin_expr(label),
+            b: Segment::on_curve_expr(s0, CurveParam::Normalized(0.5)),
+        });
+        doc.add_constraint(VectorsParallel {
+            a: Label::direction_expr(label),
+            b: Segment::direction_expr(s0),
+        });
 
         // Initial content (session baseline, not an edit).
         let _ = InteractiveSolve::new().structural_only(&mut doc);
@@ -140,7 +175,59 @@ impl App {
                 .into(),
             last_error: None,
             logical_points,
+            labels: LabelCache::new(typesetter),
+            label_status: None,
             viewport: Viewport::new(1.0, Pos2::ZERO),
+        }
+    }
+
+    /// Typeset label as a triangle mesh; untypeset label as text in a dashed
+    /// frame (and its error in the status line).
+    fn paint_label(&mut self, painter: &egui::Painter, item: PaintItem) {
+        match item {
+            PaintItem::Typeset {
+                role,
+                vertices,
+                indices,
+                ..
+            } => {
+                let color = role_color(role);
+                let mut mesh = epaint::Mesh::default();
+                for v in vertices {
+                    mesh.colored_vertex(v, color);
+                }
+                mesh.indices = indices;
+                painter.add(egui::Shape::mesh(mesh));
+            }
+            PaintItem::Fallback {
+                geometry,
+                lines,
+                frame,
+                error,
+                ..
+            } => {
+                for line in lines {
+                    let font = egui::FontId::monospace(line.size_px.max(1.0));
+                    let galley = painter.layout_no_wrap(line.text, font, NOT_TYPESET);
+                    // Text is placed by its top left; lift it by the ascent.
+                    let ascent = galley.rows.first().map_or(0.0, |r| r.rect.height() * 0.8);
+                    let (s, c) = line.angle.sin_cos();
+                    let top_left = line.baseline_left + egui::vec2(ascent * s, -ascent * c);
+                    painter.add(
+                        epaint::TextShape::new(top_left, galley, NOT_TYPESET).with_angle(line.angle),
+                    );
+                }
+                let stroke = Stroke::new(1.0_f32, NOT_TYPESET);
+                let mut ring = frame.to_vec();
+                ring.push(frame[0]);
+                painter.extend(egui::Shape::dashed_line(&ring, stroke, 4.0, 3.0));
+                if self.label_status.is_none() {
+                    if let Some(e) = error {
+                        let name = self.doc().geometry_name(geometry).unwrap_or("?");
+                        self.label_status = Some(format!("{name}: {e}"));
+                    }
+                }
+            }
         }
     }
 
@@ -343,6 +430,14 @@ fn constrain(constraint: ConstraintSpec) -> Command {
     }
 }
 
+/// Paint colour of a geometry (strokes and typeset labels) by its role.
+fn role_color(role: GeometryRole) -> Color32 {
+    match role {
+        GeometryRole::Construction => Color32::from_rgb(160, 160, 180),
+        GeometryRole::Result => Color32::from_rgb(40, 40, 40),
+    }
+}
+
 /// Construction segment of fixed length `len` starting at `origin` (axis +x).
 fn add_fixed_length_gauge(doc: &mut Document, origin: Point2, len: f64) -> GeometryId {
     let end = Point2::new(origin.x + len, origin.y);
@@ -406,6 +501,9 @@ impl eframe::App for App {
                 }
             });
             ui.label(&self.status);
+            if let Some(s) = &self.label_status {
+                ui.colored_label(NOT_TYPESET, s);
+            }
             if let Some(err) = &self.last_error {
                 ui.colored_label(Color32::RED, err);
             }
@@ -420,14 +518,25 @@ impl eframe::App for App {
 
             let mesh = self.mesh();
             for e in &mesh.edges {
-                let stroke = if e.role == GeometryRole::Construction {
-                    Stroke::new(1.5_f32, Color32::from_rgb(160, 160, 180))
+                let width = if e.role == GeometryRole::Construction {
+                    1.5_f32
                 } else {
-                    Stroke::new(2.0_f32, Color32::from_rgb(40, 40, 40))
+                    2.0_f32
                 };
+                let stroke = Stroke::new(width, role_color(e.role));
                 let a = self.viewport.to_screen(e.a);
                 let b = self.viewport.to_screen(e.b);
                 painter.line_segment([a, b], stroke);
+            }
+            let items = label_paint(
+                self.session.document(),
+                &self.viewport,
+                self.presentation.mesh_filter(),
+                &mut self.labels,
+            );
+            self.label_status = None;
+            for item in items {
+                self.paint_label(&painter, item);
             }
             for lp in &self.logical_points {
                 let p = self.eval_point(&lp.representative);

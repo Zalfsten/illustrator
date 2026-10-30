@@ -3,10 +3,14 @@ resolver = "2"
 members = [
     "crates/constraint_runtime",
     "crates/sketch_session",
+    "crates/label_layout",
+    "crates/label_typst",
     "crates/sketch_ui",
 ]
 default-members = [
     "crates/constraint_runtime",
     "crates/sketch_session",
+    "crates/label_layout",
+    "crates/label_typst",
     "crates/sketch_ui",
 ]

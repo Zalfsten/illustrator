@@ -31,7 +31,7 @@ runtime (geometry IR, catalog, solve interaction, solver port).
 
 ```bash
 cd impls/rust
-cargo test -p constraint_runtime -p sketch_session
+cargo test --workspace
 cargo build -p sketch_ui
 ```
 
@@ -60,6 +60,20 @@ cargo run -p sketch_ui
 ```
 
 Tools: Select/Drag, Segment (two clicks), Join, Parallel, Orthogonal, FixPoint.
+
+## Labels
+
+Labels are typeset in two crates:
+
+| Crate | Role |
+|-------|------|
+| `label_layout` | Engine-neutral: the `Typesetter` port, line splitting, LaTeX line spacing, placement in world space, tessellation. Builds for the browser. |
+| `label_typst` | The native typesetter: LaTeX via [mitex](https://github.com/mitex-rs/mitex) 0.2.4, layout via [Typst](https://typst.app) 0.15.1, both pinned. `assets/` holds two New Computer Modern fonts (from `typst-assets`) and mitex's Typst files (xarrow replaced), each with a `NOTICE`. Update Typst and mitex together. |
+
+The native app links `label_typst`. The browser build has no typesetter yet
+(#60) and shows every label as plain text in a dashed orange frame, as it does
+natively for a label that fails to typeset (the status line names the
+failure).
 
 ## Browser build
 
@@ -107,7 +121,7 @@ keeps serving at `/`. One-time repository setting: Settings → Pages → Source
 
 ### Platform boundary
 
-`constraint_runtime`, `app.rs` and `viewport.rs` stay platform-neutral: no
+`constraint_runtime`, `label_layout`, `app.rs`, `labels.rs` and `viewport.rs` stay platform-neutral: no
 host services (files, threads, wall-clock time, browser APIs) and no
 `cfg(target_arch = ...)`. Platform code lives only in `sketch_ui/src/main.rs`
 (one `main` per host) and in target-specific dependency tables. Host services

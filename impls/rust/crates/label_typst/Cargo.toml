@@ -1,0 +1,15 @@
+[package]
+name = "label_typst"
+version = "0.1.0"
+edition = "2021"
+description = "Label typesetter for label_layout: LaTeX via mitex, layout via Typst"
+license = "GPL-3.0-or-later"
+
+[dependencies]
+constraint_runtime = { path = "../constraint_runtime" }
+label_layout = { path = "../label_layout" }
+# One Typst version, updated together with the mitex files under assets/.
+typst = "=0.15.1"
+typst-layout = "=0.15.1"
+mitex = "=0.2.4"
+ttf-parser = "0.25"

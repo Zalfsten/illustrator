@@ -1,0 +1,10 @@
+[package]
+name = "label_layout"
+version = "0.1.0"
+edition = "2021"
+description = "Engine-neutral label typesetting port, line splitting, stacking and placement"
+license = "GPL-3.0-or-later"
+
+[dependencies]
+constraint_runtime = { path = "../constraint_runtime" }
+lyon_tessellation = "1"
