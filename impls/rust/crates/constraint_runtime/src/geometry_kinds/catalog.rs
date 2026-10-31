@@ -6,6 +6,7 @@ use crate::geometry::{
     Caps, Chart, Geometry, GeometryCaps, GeometryId, GeometryRole, GeometryShell,
 };
 use crate::geometry_kinds::LabelAttrs;
+use crate::style::StyleRef;
 use crate::vector::Vector;
 
 /// Closed set of geometry kinds (discriminant only; kinds carry no data).
@@ -103,6 +104,14 @@ impl GeometryInst {
 
     pub fn set_role(&mut self, role: GeometryRole) {
         self.shell.role = role;
+    }
+
+    pub fn style(&self) -> &StyleRef {
+        &self.shell.style
+    }
+
+    pub fn set_style(&mut self, style: StyleRef) {
+        self.shell.style = style;
     }
 
     pub fn attrs(&self) -> &KindAttrs {

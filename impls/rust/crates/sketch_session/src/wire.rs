@@ -1,12 +1,12 @@
 //! Interchange adapters: points and vectors as pairs, finite numbers, typed
-//! addresses, label enums.
+//! addresses, label and style enums, colours.
 //!
 //! Writing a non-finite number is an error (serde_json would otherwise write
 //! `null`, which does not read back); reading rejects it as well.
 
 use std::fmt;
 
-use constraint_runtime::{GeometryRole, HAlign, Markup, VAlign};
+use constraint_runtime::{Arrow, Dash, GeometryRole, HAlign, Markup, Rgb, VAlign};
 use schemars::{json_schema, JsonSchema, Schema, SchemaGenerator};
 use serde::{de, ser, Deserialize, Deserializer, Serialize, Serializer};
 
@@ -189,12 +189,101 @@ pub fn positive_schema(_: &mut SchemaGenerator) -> Schema {
     json_schema!({ "type": "number", "exclusiveMinimum": 0 })
 }
 
+/// A stroke width override (`#[schemars(schema_with = "wire::width_schema")]`).
+pub fn width_schema(_: &mut SchemaGenerator) -> Schema {
+    json_schema!({
+        "description": "Stroke width in pt, greater than zero.",
+        "type": "number",
+        "exclusiveMinimum": 0
+    })
+}
+
+/// A stroke width or `null` (`#[schemars(schema_with = "wire::width_or_null_schema")]`).
+pub fn width_or_null_schema(_: &mut SchemaGenerator) -> Schema {
+    json_schema!({
+        "description": "Stroke width in pt, greater than zero; null to remove it.",
+        "type": ["number", "null"],
+        "exclusiveMinimum": 0
+    })
+}
+
+/// Field that may be absent (`None`), `null` (`Some(None)`) or a value
+/// (`Some(Some(v))`)
+/// (`#[serde(default, skip_serializing_if = "Option::is_none", with = "wire::or_null")]`
+/// plus `#[schemars(with = "Option<T>")]`).
+pub mod or_null {
+    use super::*;
+
+    pub fn serialize<T: Serialize, S: Serializer>(v: &Option<Option<T>>, s: S) -> Result<S::Ok, S::Error> {
+        match v {
+            Some(Some(v)) => v.serialize(s),
+            Some(None) | None => s.serialize_none(),
+        }
+    }
+
+    pub fn deserialize<'de, T: Deserialize<'de>, D: Deserializer<'de>>(
+        d: D,
+    ) -> Result<Option<Option<T>>, D::Error> {
+        Option::<T>::deserialize(d).map(Some)
+    }
+}
+
+/// `#rrggbb` with hex digits in either case.
+pub fn parse_color(s: &str) -> Option<Rgb> {
+    let hex = s.strip_prefix('#')?;
+    if hex.len() != 6 || !hex.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return None;
+    }
+    let byte = |i: usize| u8::from_str_radix(&hex[i..i + 2], 16).ok();
+    Some(Rgb(byte(0)?, byte(2)?, byte(4)?))
+}
+
+/// sRGB colour: reads `#rrggbb` in either case, writes lower case.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct WireColor(pub Rgb);
+
+impl fmt::Display for WireColor {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let Rgb(r, g, b) = self.0;
+        write!(f, "#{r:02x}{g:02x}{b:02x}")
+    }
+}
+
+impl Serialize for WireColor {
+    fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        s.collect_str(self)
+    }
+}
+
+impl<'de> Deserialize<'de> for WireColor {
+    fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        let s = String::deserialize(d)?;
+        parse_color(&s)
+            .map(WireColor)
+            .ok_or_else(|| de::Error::custom(format!("invalid value for color: {s:?} is not #rrggbb")))
+    }
+}
+
+impl JsonSchema for WireColor {
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        "Color".into()
+    }
+
+    fn json_schema(_: &mut SchemaGenerator) -> Schema {
+        json_schema!({
+            "description": "sRGB colour #rrggbb.",
+            "type": "string",
+            "pattern": "^#[0-9A-Fa-f]{6}$"
+        })
+    }
+}
+
 /// Interchange mirror of a core enum (lowercase tags; the core stays serde-free).
 macro_rules! wire_enum {
     ($(#[$doc:meta])* $name:ident => $core:ident { $($v:ident),+ $(,)? }) => {
         $(#[$doc])*
         #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-        #[serde(rename_all = "snake_case")]
+        #[serde(rename_all = "lowercase")]
         pub enum $name {
             $($v,)+
         }
@@ -234,6 +323,14 @@ wire_enum!(
 wire_enum!(
     /// Label vertical anchor: `"first"` or `"last"`.
     WireVAlign => VAlign { First, Last }
+);
+wire_enum!(
+    /// Dash pattern: `"solid"`, `"dashed"`, `"dotted"` or `"dashdot"`.
+    WireDash => Dash { Solid, Dashed, Dotted, DashDot }
+);
+wire_enum!(
+    /// Arrow heads: `"none"`, `"start"`, `"end"` or `"both"`.
+    WireArrow => Arrow { None, Start, End, Both }
 );
 
 /// Geometry role: `"result"` or `"construction"`.

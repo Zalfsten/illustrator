@@ -101,3 +101,37 @@ fn label_enums_use_lowercase_tags() {
         assert!(serde_json::from_str::<WireVAlign>(bad).is_err(), "{bad}");
     }
 }
+
+#[test]
+fn colour_reads_either_case_and_writes_lower_case() {
+    for text in ["\"#c0FFee\"", "\"#C0FFEE\"", "\"#c0ffee\""] {
+        let c: WireColor = serde_json::from_str(text).unwrap();
+        assert_eq!(c.0, constraint_runtime::Rgb(0xc0, 0xff, 0xee));
+        assert_eq!(serde_json::to_string(&c).unwrap(), "\"#c0ffee\"");
+    }
+}
+
+#[test]
+fn malformed_colours_are_rejected() {
+    for text in ["\"#c00\"", "\"c00000\"", "\"#c0000g\"", "\"#c000000\"", "12"] {
+        assert!(serde_json::from_str::<WireColor>(text).is_err(), "{text}");
+    }
+    let e = serde_json::from_str::<WireColor>("\"#c00\"").unwrap_err();
+    assert!(e.to_string().contains("invalid value for color"), "{e}");
+}
+
+#[test]
+fn dash_and_arrow_values() {
+    let d: Vec<WireDash> = serde_json::from_str(r#"["solid", "dashed", "dotted", "dashdot"]"#).unwrap();
+    assert_eq!(d, vec![WireDash::Solid, WireDash::Dashed, WireDash::Dotted, WireDash::DashDot]);
+    let a: Vec<WireArrow> = serde_json::from_str(r#"["none", "start", "end", "both"]"#).unwrap();
+    assert_eq!(a, vec![WireArrow::None, WireArrow::Start, WireArrow::End, WireArrow::Both]);
+    assert_eq!(serde_json::to_string(&WireDash::DashDot).unwrap(), "\"dashdot\"");
+}
+
+#[test]
+fn unknown_dash_and_arrow_values_are_rejected() {
+    assert!(serde_json::from_str::<WireDash>("\"dashdotdot\"").is_err());
+    assert!(serde_json::from_str::<WireDash>("\"dash_dot\"").is_err());
+    assert!(serde_json::from_str::<WireArrow>("\"left\"").is_err());
+}

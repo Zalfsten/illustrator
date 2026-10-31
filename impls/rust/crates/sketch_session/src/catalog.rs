@@ -7,13 +7,15 @@
 
 use constraint_runtime::{
     Arc, Congruence, ConstraintInst, Document, EqualLength, FixPoint, Geometry, GeometryId,
-    GeometryInst, GeometryKind, GeometryRole, Label, Segment, VectorsOrthogonal, VectorsParallel,
+    GeometryInst, GeometryKind, GeometryRole, Label, Segment, StyleRef, VectorsOrthogonal,
+    VectorsParallel,
 };
 use schemars::Schema;
 use serde::{de::Error as _, Serialize, Serializer};
 use serde_json::Value;
 
 use crate::command::CommandError;
+use crate::json::LookFields;
 use crate::kinds::{AttributeCommand, ConstraintCommand, GeometryCommand, Resolver};
 use crate::schema::inline_schema;
 use crate::wire::Role;
@@ -29,6 +31,9 @@ pub(crate) struct Tagged<'a, P> {
     pub role: Option<Role>,
     #[serde(flatten)]
     pub params: &'a P,
+    /// Style fields of `create`, after the kind's parameters.
+    #[serde(flatten, skip_serializing_if = "Option::is_none")]
+    pub look: Option<LookFields>,
 }
 
 macro_rules! command_catalog {
@@ -103,6 +108,7 @@ macro_rules! command_catalog {
                         name: Some(name),
                         role: None,
                         params,
+                        look: None,
                     }
                     .serialize(s),)+
                 }
@@ -172,6 +178,7 @@ macro_rules! command_catalog {
                 op: &'static str,
                 name: Option<&str>,
                 role: Option<Role>,
+                look: &StyleRef,
                 s: S,
             ) -> Result<S::Ok, S::Error> {
                 match self {
@@ -181,6 +188,7 @@ macro_rules! command_catalog {
                         name,
                         role,
                         params,
+                        look: Some(look.into()),
                     }
                     .serialize(s),)+
                 }
@@ -239,6 +247,7 @@ macro_rules! command_catalog {
                         name,
                         role: None,
                         params,
+                        look: None,
                     }
                     .serialize(s),)+
                 }

@@ -79,12 +79,21 @@ fn command_schema_lists_every_operation_and_kind() {
         );
     }
     assert_eq!(AttrSpec::TAGS, ["label"]);
-    for op in ["delete", "rename", "set_role", "set_document"] {
+    let fixed = [
+        "delete",
+        "rename",
+        "set_role",
+        "set_document",
+        "define_style",
+        "delete_style",
+        "set_style",
+    ];
+    for op in fixed {
         assert!(b.iter().any(|(o, k, _)| o == op && k.is_none()), "{op}");
     }
     assert_eq!(
         b.len(),
-        GeometrySpec::TAGS.len() + ConstraintSpec::TAGS.len() + AttrSpec::TAGS.len() + 4
+        GeometrySpec::TAGS.len() + ConstraintSpec::TAGS.len() + AttrSpec::TAGS.len() + fixed.len()
     );
 }
 
@@ -122,6 +131,13 @@ const VALID: &[&str] = &[
     r#"{"op": "set", "kind": "label", "name": "lbl1", "size": null}"#,
     r#"{"op": "set_document", "scale": 5}"#,
     r#"{"op": "set_document", "preamble": "\\newcommand{\\R}{\\mathbb{R}}"}"#,
+    r#"{"op": "create", "kind": "segment", "start": [0, 0], "end": [3, 0], "style": "axis", "dash": "dashed"}"#,
+    r##"{"op": "create", "kind": "label", "origin": [0, 0], "heading": 0, "source": "a", "color": "#C00000"}"##,
+    r#"{"op": "define_style", "style": "axis", "width": 0.8, "arrow": "end"}"#,
+    r#"{"op": "define_style", "style": "default", "width": null}"#,
+    r#"{"op": "delete_style", "style": "hidden"}"#,
+    r#"{"op": "set_style", "name": "seg1", "style": "axis"}"#,
+    r#"{"op": "set_style", "name": "seg1", "color": null}"#,
 ];
 
 const INVALID: &[&str] = &[
@@ -140,6 +156,15 @@ const INVALID: &[&str] = &[
     r#"{"op": "set", "kind": "segment", "name": "seg1", "start": [0, 0]}"#,
     r#"{"op": "set_document"}"#,
     r#"{"op": "set_document", "scale": 0}"#,
+    r#"{"op": "create", "kind": "segment", "start": [0, 0], "end": [3, 0], "dash": "dashdotdot"}"#,
+    r##"{"op": "create", "kind": "segment", "start": [0, 0], "end": [3, 0], "colour": "#c00000"}"##,
+    r##"{"op": "create", "kind": "segment", "start": [0, 0], "end": [3, 0], "color": "#c00"}"##,
+    r#"{"op": "create", "kind": "segment", "start": [0, 0], "end": [3, 0], "width": 0}"#,
+    r#"{"op": "create", "kind": "segment", "start": [0, 0], "end": [3, 0], "width": null}"#,
+    r#"{"op": "define_style", "style": "axis"}"#,
+    r#"{"op": "define_style", "style": "2nd", "width": 1}"#,
+    r#"{"op": "set_style", "name": "seg1"}"#,
+    r#"{"op": "constrain", "kind": "parallel", "a": "x", "b": "y", "style": "axis"}"#,
 ];
 
 #[test]
@@ -169,6 +194,8 @@ fn declarative_schema_rejects_what_the_subset_excludes() {
         r#"{"op": "rename", "name": "seg1", "new_name": "x_axis"}"#,
         r#"{"op": "set", "kind": "label", "name": "lbl1", "source": "x"}"#,
         r#"{"op": "set_document", "scale": 5}"#,
+        r#"{"op": "set_style", "name": "seg1", "style": "axis"}"#,
+        r#"{"op": "define_style", "style": "axis", "width": 1}"#,
     ] {
         let instance: Value = serde_json::from_str(text).unwrap();
         assert!(!v.is_valid(&instance), "{text}");
@@ -178,13 +205,22 @@ fn declarative_schema_rejects_what_the_subset_excludes() {
 /// Everything the writer produces is valid under the schemas.
 #[test]
 fn written_commands_validate() {
-    use constraint_runtime::{Document, GeometryRole, Point2};
+    use constraint_runtime::{Arrow, Dash, Document, GeometryRole, Point2, Rgb, StyleProps, StyleRef};
     use sketch_session::{ArcParams, Command, DeclCommand, PointPair, SegmentParams, Session};
     let mut s = Session::new(Document::new());
     let cmds = [
         Command::Create {
             name: None,
             role: GeometryRole::Construction,
+            look: StyleRef {
+                style: "default".into(),
+                overrides: StyleProps {
+                    width: Some(0.8),
+                    color: Some(Rgb(0xc0, 0, 0)),
+                    dash: Some(Dash::DashDot),
+                    arrow: Some(Arrow::Both),
+                },
+            },
             geometry: GeometrySpec::Segment(SegmentParams {
                 start: Point2::new(0.0, 0.0),
                 end: Point2::new(1.0, 0.0),
@@ -193,6 +229,7 @@ fn written_commands_validate() {
         Command::Create {
             name: Some("fillet".into()),
             role: GeometryRole::Result,
+            look: Default::default(),
             geometry: GeometrySpec::Arc(ArcParams {
                 center: Point2::new(1.0, 1.0),
                 radius: 1.0,

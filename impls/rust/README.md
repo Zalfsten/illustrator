@@ -59,13 +59,40 @@ Then:
 cargo run -p sketch_ui
 ```
 
-Tools: Select/Drag, Segment (two clicks), Join, Parallel, Orthogonal, FixPoint.
+Tools: Select/Drag, Segment (two clicks), Join, Parallel, Orthogonal, FixPoint,
+Brush.
+
+## Styles
+
+Every geometry refers to a named style (`default` unless set) and may override
+its properties: width in TeX points, colour `#rrggbb`, dash (`solid`, `dashed`,
+`dotted`, `dashdot`) and arrow heads (`none`, `start`, `end`, `both`). A
+property resolves from the override, the named style, `default`, then the
+built-in look (0.4 pt, black, solid, no arrow). Sizes are physical: they map to
+world units through the document scale.
+
+- The toolbar's style row holds the current style and four overrides, each
+  switched on by its checkbox. New segments get them.
+- The Brush tool gives a clicked curve the current style and overrides; an
+  override that is switched off is removed. Labels cannot be brushed yet (no
+  label pick); they take the colour of their style.
+- "Styles…" opens the style table: add a style, set or clear its properties,
+  delete an unused one. A width drag or a colour pick is one undo step, made
+  when the button is released or the picker closes.
+- The Canvas draws result curves in their style, never thinner than one
+  pixel; construction geometry keeps its fixed grey look.
+
+The stroke geometry (`constraint_runtime/src/stroke.rs`: pt to world, arrow
+heads on the exact curve, trimming and dashing by arc length) is shared with
+the future SVG and PDF exports.
 
 ## Files
 
 The File menu has New (Ctrl+N), Open… (Ctrl+O), Save (Ctrl+S) and Save As…
 (Ctrl+Shift+S; Cmd on macOS). Drawings are sketch files, by convention named
 `*.sketch.json`. The app starts on the sample drawing, which has no file.
+Saving writes version 3 (with the style table, one style per line); files of
+versions 1 and 2 still open, with only the `default` style.
 
 - The title shows the file name (or `untitled`) and `*` while the drawing has
   unsaved changes: saving it now would give other bytes than the file holds.

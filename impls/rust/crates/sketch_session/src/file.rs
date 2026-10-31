@@ -1,5 +1,5 @@
 //! The native sketch file: a versioned envelope around the drawing's
-//! document settings and declarative command list.
+//! document settings, style table and declarative command list.
 //!
 //! Saving writes a fixed layout (one command per line, so a change to one
 //! object changes one line); loading reads any JSON layout, executes the
@@ -8,17 +8,18 @@
 
 use std::fmt;
 
-use constraint_runtime::{Document, DocumentSettings};
+use constraint_runtime::{is_valid_name, Document, DocumentSettings, StyleProps, Styles, DEFAULT_STYLE};
+use serde::de::Error as _;
 use serde_json::{Map, Value};
 
 use crate::command::{CommandError, DeclCommand, ExportError, LoadReport};
-use crate::json::{ReadError, WriteError};
+use crate::json::{PropFields, ReadError, WriteError, LOOK_FIELDS};
 use crate::session::{Mode, Session};
 
 /// Value of the envelope's `format` field.
 pub const FORMAT: &str = "illustrator-sketch";
 /// The file version this implementation writes; it reads 1 to this one.
-pub const VERSION: u64 = 2;
+pub const VERSION: u64 = 3;
 
 /// Envelope fields of the document settings (since version 2).
 const SETTINGS_FIELDS: [&str; 3] = ["scale", "font_size", "preamble"];
@@ -71,6 +72,20 @@ impl Session {
         ] {
             out.push_str(&format!("  \"{field}\": {},\n", json(value)));
         }
+        let styles: Vec<String> = self
+            .styles()
+            .iter()
+            .filter(|(name, props)| *name != DEFAULT_STYLE || !props.is_empty())
+            .map(|(name, props)| {
+                let fields = serde_json::to_string(&PropFields::from(props));
+                Ok(format!("    {}: {}", json(name.into()), fields.map_err(|e| SaveError::Write(WriteError(e)))?))
+            })
+            .collect::<Result<_, SaveError>>()?;
+        if styles.is_empty() {
+            out.push_str("  \"styles\": {},\n");
+        } else {
+            out.push_str(&format!("  \"styles\": {{\n{}\n  }},\n", styles.join(",\n")));
+        }
         if commands.is_empty() {
             out.push_str("  \"commands\": []\n}\n");
             return Ok(out.into_bytes());
@@ -106,6 +121,7 @@ impl Session {
         };
         let mut envelope = migrate(version, envelope)?;
         let settings = settings(&mut envelope)?;
+        let styles = styles(&mut envelope)?;
         let Some(commands) = envelope.remove("commands") else {
             return Err(missing("commands"));
         };
@@ -118,11 +134,19 @@ impl Session {
 
         let mut doc = Document::new();
         doc.set_settings(settings);
+        doc.set_styles(styles).expect("an empty drawing refers to no style");
         let mut session = Session::new(doc);
         for (index, value) in commands.into_iter().enumerate() {
             let fail = |error| LoadError::Command { index, error };
-            let cmd: DeclCommand = serde_json::from_value(value)
-                .map_err(|e| fail(CommandLoadError::Read(ReadError(e))))?;
+            let read_error = |e| fail(CommandLoadError::Read(ReadError(e)));
+            if version < 3 {
+                if let Some(field) = LOOK_FIELDS.iter().find(|f| value.get(**f).is_some()) {
+                    return Err(read_error(serde_json::Error::custom(format!(
+                        "unknown field `{field}` (style fields need version 3)"
+                    ))));
+                }
+            }
+            let cmd: DeclCommand = serde_json::from_value(value).map_err(read_error)?;
             session
                 .execute(cmd.into(), Mode::Load)
                 .map_err(|e| fail(CommandLoadError::Execute(e)))?;
@@ -134,17 +158,46 @@ impl Session {
 /// Bring an envelope of `version` to the current version.
 ///
 /// Version 1 has no settings fields; it gets the default settings.
+/// Versions 1 and 2 have no `styles`; they get an empty table.
 fn migrate(version: u64, mut envelope: Map<String, Value>) -> Result<Map<String, Value>, LoadError> {
+    let unknown = |field: &str| LoadError::Envelope(format!("unknown field `{field}`"));
     if version == 1 {
         if let Some(field) = SETTINGS_FIELDS.iter().find(|f| envelope.contains_key(**f)) {
-            return Err(LoadError::Envelope(format!("unknown field `{field}`")));
+            return Err(unknown(field));
         }
         let d = DocumentSettings::default();
         envelope.insert("scale".into(), d.scale.into());
         envelope.insert("font_size".into(), d.font_size.into());
         envelope.insert("preamble".into(), d.preamble.into());
     }
+    if version < 3 {
+        if envelope.contains_key("styles") {
+            return Err(unknown("styles"));
+        }
+        envelope.insert("styles".into(), Value::Object(Map::new()));
+    }
     Ok(envelope)
+}
+
+/// Take the style table out of a current-version envelope and check it;
+/// errors name the style.
+fn styles(envelope: &mut Map<String, Value>) -> Result<Styles, LoadError> {
+    let Value::Object(table) = envelope.remove("styles").ok_or_else(|| missing("styles"))? else {
+        return Err(LoadError::Envelope("`styles` is not an object".into()));
+    };
+    let mut styles = Styles::default();
+    for (name, fields) in table {
+        let fail = |e: String| LoadError::Envelope(format!("style `{name}`: {e}"));
+        if !is_valid_name(&name) {
+            return Err(fail("invalid style name".into()));
+        }
+        let fields: PropFields = serde_json::from_value(fields).map_err(|e| fail(e.to_string()))?;
+        let props = StyleProps::from(fields);
+        styles
+            .insert(&name, props)
+            .map_err(|_| fail("invalid value of `width`: not greater than zero".into()))?;
+    }
+    Ok(styles)
 }
 
 /// Take the settings fields out of a current-version envelope and check them.

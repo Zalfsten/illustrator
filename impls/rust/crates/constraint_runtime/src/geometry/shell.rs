@@ -1,5 +1,7 @@
 //! Document identity shared by every chart instance.
 
+use crate::style::StyleRef;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct GeometryId(pub usize);
 
@@ -23,11 +25,14 @@ pub enum GeometryRole {
     Construction,
 }
 
-/// Shared document identity and Vector-block placement for a geometry instance.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+/// Shared document identity, role, style and Vector-block placement for a
+/// geometry instance.
+#[derive(Clone, Debug, PartialEq)]
 pub struct GeometryShell {
     pub id: GeometryId,
     pub role: GeometryRole,
+    /// Style reference and overrides (styling); never read by the solver.
+    pub style: StyleRef,
     /// Start index of this geometry's contiguous parameter block in Vector.
     pub param_offset: usize,
 }
@@ -37,6 +42,7 @@ impl GeometryShell {
         Self {
             id,
             role,
+            style: StyleRef::default(),
             param_offset,
         }
     }

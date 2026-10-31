@@ -3,10 +3,11 @@
 //! The App edits the drawing only through [`Session`] commands and drags.
 
 use constraint_runtime::{
-    AnchorExprs, Arc, Congruence, CurveExprs, CurveParam, Document, EndpointExprs, EqualLength,
-    FixPoint, GeometryId, GeometryRole, HAlign, HeadingAngle, InteractiveSolve, KindAttrs, Label,
-    LabelAttrs, Length, LineExprs, LogicalPoint, Mesh, MeshFilter, Point2, PointExpr, Segment,
-    SolveError, TurnAngle, Vec2, VectorsOrthogonal, VectorsParallel,
+    arrow_head, arrow_tips, pt_to_world, stroke_pieces, AnchorExprs, Arc, Congruence, CurveExprs,
+    CurveParam, Document, EndpointExprs, EqualLength, FixPoint, GeometryId, GeometryRole, HAlign,
+    HeadingAngle, InteractiveSolve, KindAttrs, Label, LabelAttrs, Length, LineExprs, LogicalPoint,
+    Mesh, MeshFilter, Point2, PointExpr, Rgb, Segment, SolveError, TurnAngle, Vec2,
+    VectorsOrthogonal, VectorsParallel,
 };
 use eframe::egui::{self, epaint, Color32, Pos2, Rect, Sense, Stroke};
 use label_layout::TypesetterState;
@@ -17,6 +18,7 @@ use sketch_session::{
 use crate::files::{Answer, Effect, FileCommand, FileState, Step};
 use crate::labels::{label_paint, FallbackReason, LabelCache, PaintItem};
 use crate::platform::Platform;
+use crate::style_ui::{CurrentStyle, StylesWindow};
 use crate::viewport::{world_box, Viewport};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -27,6 +29,8 @@ enum Tool {
     Parallel,
     Orthogonal,
     FixPoint,
+    /// Give a curve the current style and overrides.
+    Brush,
 }
 
 /// UI session: result-only vs include construction (Mesh + handles share one filter).
@@ -81,6 +85,9 @@ pub struct App {
     files: FileState,
     /// Closing the window was confirmed (no unsaved changes, or answered).
     close_confirmed: bool,
+    /// Style and overrides for new geometry and the brush (not saved).
+    current: CurrentStyle,
+    styles_window: StylesWindow,
 }
 
 impl App {
@@ -204,6 +211,8 @@ impl App {
             world_box: (WORLD_MIN, WORLD_MAX),
             files,
             close_confirmed: false,
+            current: CurrentStyle::default(),
+            styles_window: StylesWindow::default(),
         }
     }
 
@@ -280,12 +289,18 @@ impl App {
     fn paint_label(&self, painter: &egui::Painter, item: PaintItem) -> Option<String> {
         match item {
             PaintItem::Typeset {
+                geometry,
                 role,
                 vertices,
                 indices,
-                ..
             } => {
-                let color = role_color(role);
+                let color = match role {
+                    GeometryRole::Construction => CONSTRUCTION,
+                    GeometryRole::Result => self
+                        .doc()
+                        .resolved_style(geometry)
+                        .map_or(CONSTRUCTION, |s| color32(s.color)),
+                };
                 let mut mesh = epaint::Mesh::default();
                 for v in vertices {
                     mesh.colored_vertex(v, color);
@@ -354,11 +369,18 @@ impl App {
 
     /// Apply `cmd`; status `Added <name> <detail>` or the command error.
     fn run(&mut self, cmd: Command, detail: String) {
+        self.step(cmd, |outcome| {
+            let name = outcome.created.unwrap_or_default();
+            format!("Added {name}{detail}")
+        });
+    }
+
+    /// Apply `cmd`; status from `done` or the command error.
+    fn step(&mut self, cmd: Command, done: impl FnOnce(sketch_session::Outcome) -> String) {
         match self.session.apply(cmd) {
             Ok(outcome) => {
                 self.last_error = None;
-                let name = outcome.created.unwrap_or_default();
-                self.status = format!("Added {name}{detail}");
+                self.status = done(outcome);
                 self.files.refresh(&self.session, self.platform.files());
             }
             Err(e) => {
@@ -444,6 +466,7 @@ impl App {
                     let cmd = Command::Create {
                         name: None,
                         role: GeometryRole::Result,
+                        look: self.current.look(),
                         geometry: GeometrySpec::Segment(SegmentParams { start: a, end: b }),
                     };
                     self.run(cmd, String::new());
@@ -519,6 +542,13 @@ impl App {
                     self.run(constrain(fix), detail);
                 }
             }
+            Tool::Brush => {
+                if let Some(id) = self.hit_edge(screen, 12.0) {
+                    let name = self.geometry_name(id).to_owned();
+                    let cmd = self.current.brush(&name);
+                    self.step(cmd, |_| format!("Brushed {name}"));
+                }
+            }
             Tool::Select => {}
         }
     }
@@ -532,12 +562,79 @@ fn constrain(constraint: ConstraintSpec) -> Command {
     }
 }
 
-/// Paint colour of a geometry (strokes and typeset labels) by its role.
-fn role_color(role: GeometryRole) -> Color32 {
-    match role {
-        GeometryRole::Construction => Color32::from_rgb(160, 160, 180),
-        GeometryRole::Result => Color32::from_rgb(40, 40, 40),
+/// The fixed look of construction geometry: colour and width in points.
+const CONSTRUCTION: Color32 = Color32::from_rgb(160, 160, 180);
+const CONSTRUCTION_WIDTH: f32 = 1.5;
+
+fn color32(Rgb(r, g, b): Rgb) -> Color32 {
+    Color32::from_rgb(r, g, b)
+}
+
+/// One curve as painted: stroke pieces (screen polylines) of `width`, and
+/// filled arrow heads, all in `color`.
+#[derive(Clone, Debug, PartialEq)]
+struct CurvePaint {
+    pieces: Vec<Vec<Pos2>>,
+    heads: Vec<[Pos2; 3]>,
+    width: f32,
+    color: Color32,
+}
+
+/// Paint of geometry `id` with display polyline `polyline` (world): a result
+/// curve in its resolved style, never thinner than `min_width` screen units;
+/// construction in the fixed construction look.
+fn curve_paint(
+    doc: &Document,
+    id: GeometryId,
+    polyline: &[Point2],
+    viewport: &Viewport,
+    min_width: f32,
+) -> CurvePaint {
+    let screen = |line: &[Point2]| line.iter().map(|&p| viewport.to_screen(p)).collect();
+    let style = match doc.geometry(id).map(|g| g.role()) {
+        Some(GeometryRole::Result) => doc.resolved_style(id),
+        _ => None,
+    };
+    let Some(style) = style else {
+        return CurvePaint {
+            pieces: vec![screen(polyline)],
+            heads: Vec::new(),
+            width: CONSTRUCTION_WIDTH,
+            color: CONSTRUCTION,
+        };
+    };
+    let settings = doc.settings();
+    let (start, end) = arrow_tips(doc, doc.vector(), id);
+    let heads = [(style.arrow.at_start(), start), (style.arrow.at_end(), end)]
+        .into_iter()
+        .filter_map(|(on, tip)| tip.filter(|_| on))
+        .map(|tip| {
+            arrow_head(tip.point, tip.out, style.width, settings).map(|p| viewport.to_screen(p))
+        })
+        .collect();
+    let width = (pt_to_world(style.width, settings) * viewport.scale) as f32;
+    CurvePaint {
+        pieces: stroke_pieces(polyline, &style, settings)
+            .iter()
+            .map(|piece| screen(piece))
+            .collect(),
+        heads,
+        width: width.max(min_width),
+        color: color32(style.color),
     }
+}
+
+/// The Mesh as one polyline per geometry (its edges are consecutive and in
+/// curve order).
+fn polylines(mesh: &Mesh) -> Vec<(GeometryId, Vec<Point2>)> {
+    let mut out: Vec<(GeometryId, Vec<Point2>)> = Vec::new();
+    for e in &mesh.edges {
+        match out.last_mut() {
+            Some((id, line)) if *id == e.geometry => line.push(e.b),
+            _ => out.push((e.geometry, vec![e.a, e.b])),
+        }
+    }
+    out
 }
 
 /// Construction segment of fixed length `len` starting at `origin` (axis +x).
@@ -660,6 +757,11 @@ impl eframe::App for App {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.file_frame(ctx);
         self.unsaved_dialog(ctx);
+        if self.styles_window.open && !self.files.asking() {
+            if let Some(cmd) = self.styles_window.show(ctx, self.session.styles()) {
+                self.step(cmd, |_| "Styles changed".into());
+            }
+        }
         // The question is modal: tools and Canvas wait for the answer.
         let idle = !self.files.asking();
         egui::TopBottomPanel::top("tools").show(ctx, |ui| {
@@ -678,6 +780,7 @@ impl eframe::App for App {
                 ui.selectable_value(&mut self.tool, Tool::Parallel, "Parallel");
                 ui.selectable_value(&mut self.tool, Tool::Orthogonal, "Orthogonal");
                 ui.selectable_value(&mut self.tool, Tool::FixPoint, "FixPoint");
+                ui.selectable_value(&mut self.tool, Tool::Brush, "Brush");
                 let undo = ui.add_enabled(self.session.can_undo(), egui::Button::new("Undo"));
                 if undo.clicked() && self.session.undo().is_ok() {
                     self.status = "Undone".into();
@@ -713,6 +816,13 @@ impl eframe::App for App {
                     self.rebuild_logical_points();
                 }
             });
+            ui.horizontal(|ui| {
+                self.current.keep_valid(self.session.styles());
+                self.current.row(ui, self.session.styles());
+                if ui.button("Styles…").clicked() {
+                    self.styles_window.open = !self.styles_window.open;
+                }
+            });
             ui.label(&self.status);
             if let Some((s, color)) = &self.label_status {
                 ui.colored_label(*color, s);
@@ -734,17 +844,20 @@ impl eframe::App for App {
             let (min, max) = self.world_box;
             self.viewport = Viewport::fit(canvas, min, max, VIEW_MARGIN);
 
-            let mesh = self.mesh();
-            for e in &mesh.edges {
-                let width = if e.role == GeometryRole::Construction {
-                    1.5_f32
-                } else {
-                    2.0_f32
-                };
-                let stroke = Stroke::new(width, role_color(e.role));
-                let a = self.viewport.to_screen(e.a);
-                let b = self.viewport.to_screen(e.b);
-                painter.line_segment([a, b], stroke);
+            let one_px = 1.0 / ctx.pixels_per_point();
+            for (id, polyline) in polylines(&self.mesh()) {
+                let paint = curve_paint(self.doc(), id, &polyline, &self.viewport, one_px);
+                let stroke = Stroke::new(paint.width, paint.color);
+                for piece in paint.pieces {
+                    painter.add(egui::Shape::line(piece, stroke));
+                }
+                for head in paint.heads {
+                    painter.add(egui::Shape::convex_polygon(
+                        head.to_vec(),
+                        paint.color,
+                        Stroke::NONE,
+                    ));
+                }
             }
             let items = label_paint(
                 self.session.document(),

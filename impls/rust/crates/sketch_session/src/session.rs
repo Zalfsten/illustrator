@@ -14,7 +14,8 @@ use std::collections::HashSet;
 
 use constraint_runtime::{
     is_valid_name, Component, ConstraintInst, CurveParam, Document, DocumentSettings, DragSession,
-    GeometryId, InteractiveSolve, NameError, ObjectId, Point2, PointExpr, SolveError, Vector,
+    GeometryId, InteractiveSolve, NameError, ObjectId, Point2, PointExpr, SolveError, Style,
+    StyleError, StylePatch, StyleRef, Styles, Vector,
 };
 
 use crate::catalog::{ConstraintSpec, GeometrySpec};
@@ -89,6 +90,19 @@ impl Session {
         self.doc.settings()
     }
 
+    /// The drawing's style table.
+    pub fn styles(&self) -> &Styles {
+        self.doc.styles()
+    }
+
+    /// Style reference, overrides and resolved style of geometry `name`.
+    pub fn style_of(&self, name: &str) -> Result<(StyleRef, Style), CommandError> {
+        let id = self.geometry(name)?;
+        let r = self.doc.geometry_style(id).expect("looked-up objects exist");
+        let style = self.doc.resolved_style(id).expect("looked-up objects exist");
+        Ok((r.clone(), style))
+    }
+
     pub fn document(&self) -> &Document {
         &self.doc
     }
@@ -126,6 +140,7 @@ impl Session {
             out.push(DeclCommand::Create {
                 name: name(ObjectId::Geometry(g.id())),
                 role: g.role(),
+                look: g.style().clone(),
                 geometry: GeometrySpec::of(doc, g),
             });
         }
@@ -240,11 +255,16 @@ impl Session {
             Command::Create {
                 name,
                 role,
+                look,
                 geometry,
             } => {
                 // No solve: an unconstrained geometry violates nothing.
                 self.check_new_name(name.as_deref())?;
+                self.check_look(&look)?;
                 let id = geometry.add_to(&mut self.doc, role)?;
+                self.doc
+                    .set_geometry_style(id, look)
+                    .expect("the look was checked");
                 self.created(ObjectId::Geometry(id), name)
             }
             Command::Constrain { name, constraint } => {
@@ -302,6 +322,34 @@ impl Session {
                     settings.preamble = p;
                 }
                 self.doc.set_settings(settings);
+                Ok(Outcome::default())
+            }
+            // Style commands: no solve and no frozen check, like `set`.
+            Command::DefineStyle { style, patch } => {
+                check_patch(&patch)?;
+                self.doc
+                    .define_style(&style, &patch)
+                    .map_err(|e| self.style_error(&style, e))?;
+                Ok(Outcome::default())
+            }
+            Command::DeleteStyle { style } => {
+                self.doc
+                    .delete_style(&style)
+                    .map_err(|e| self.style_error(&style, e))?;
+                Ok(Outcome::default())
+            }
+            Command::SetStyle { name, style, patch } => {
+                let id = self.geometry(&name)?;
+                check_patch(&patch)?;
+                let current = self.doc.geometry_style(id).expect("looked-up objects exist");
+                let look = StyleRef {
+                    style: style.unwrap_or_else(|| current.style.clone()),
+                    overrides: patch.applied_to(&current.overrides),
+                };
+                let style = look.style.clone();
+                self.doc
+                    .set_geometry_style(id, look)
+                    .map_err(|e| self.style_error(&style, e))?;
                 Ok(Outcome::default())
             }
             Command::SetRole { name, role } => match self.object(&name)? {
@@ -413,11 +461,58 @@ impl Session {
         })
     }
 
+    /// The style of a new geometry exists and its overrides are valid.
+    fn check_look(&self, look: &StyleRef) -> Result<(), CommandError> {
+        if let Some(w) = look.overrides.width {
+            crate::kinds::positive("width", w)?;
+        }
+        if !self.doc.styles().contains(&look.style) {
+            return Err(CommandError::UnknownStyle(look.style.clone()));
+        }
+        Ok(())
+    }
+
+    /// The command-layer class of a style edit's rejection for `style`.
+    fn style_error(&self, style: &str, e: StyleError) -> CommandError {
+        match e {
+            StyleError::InvalidName => NameError::Invalid.into(),
+            StyleError::Unknown(s) => CommandError::UnknownStyle(s),
+            StyleError::InUse(users) => CommandError::StyleInUse {
+                style: style.to_owned(),
+                users: self.names(&users),
+            },
+            StyleError::InvalidWidth => CommandError::InvalidValue {
+                field: "width",
+                reason: "not greater than zero",
+            },
+            StyleError::UnknownGeometry => unreachable!("geometries are looked up first"),
+        }
+    }
+
+    /// Geometry named `name` (a constraint is the wrong object type).
+    fn geometry(&self, name: &str) -> Result<GeometryId, CommandError> {
+        match self.object(name)? {
+            ObjectId::Geometry(id) => Ok(id),
+            ObjectId::Constraint(_) => Err(CommandError::WrongObjectType {
+                name: name.to_owned(),
+                expected: "geometry",
+            }),
+        }
+    }
+
     fn object(&self, name: &str) -> Result<ObjectId, CommandError> {
         self.doc
             .lookup(name)
             .ok_or_else(|| CommandError::UnknownName(name.to_owned()))
     }
+}
+
+/// A width `patch` sets is finite and greater than zero.
+fn check_patch(patch: &StylePatch) -> Result<(), CommandError> {
+    if let Some(Some(w)) = patch.width {
+        crate::kinds::positive("width", w)?;
+    }
+    Ok(())
 }
 
 /// Largest distance a point of `c` moved from `before` to the committed
