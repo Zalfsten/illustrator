@@ -109,7 +109,8 @@ context: |
     param_indices / param_count / accumulate_jacobian; VecExpr::jet +
     VecJet::contract_into (stack scratch, gᵀJᵥ)
   - geometry/:
-    - shell.rs: GeometryShell, GeometryId, GeometryRole
+    - shell.rs: GeometryShell (id, role, StyleRef, param offset),
+      GeometryId, GeometryRole
     - chart.rs: StateAtom, ChartSlot, Chart, chart_atoms! (named slots +
       pack/unpack from Init tuples)
     - formula.rs: Geometry (what a kind implements: value / Jacobian /
@@ -138,7 +139,19 @@ context: |
     HeadingAngle; caps anchor + line, no curve; LabelAttrs: source,
     Markup, HAlign, VAlign, offset in pt in the label frame, size or
     inherited). Document also holds DocumentSettings (scale mm per world
-    unit, font_size pt, preamble).
+    unit, font_size pt, preamble) and Styles.
+  - style.rs: Rgb, Dash, Arrow, StyleProps (any subset), StylePatch
+    (Option<Option<T>>: leave / set / remove), Style (resolved; BUILT_IN
+    0.4 pt black solid none), StyleRef (style name + overrides, in every
+    GeometryShell), Styles (BTreeMap, `default` always present; resolve:
+    override → named → default → built-in); Document::define_style /
+    delete_style (StyleError::InUse names users) / set_geometry_style /
+    resolved_style; width ranges checked here. Never on the solve path.
+  - stroke.rs: pure stroke geometry in world units: pt_to_world (TeX pt
+    through the document scale), Dash::pattern, arrow_head (L = 3 pt +
+    4.5 w, base 0.75 L), arrow_tips (exact endpoint + outward tangent via
+    capabilities), trim / dash by arc length (phase from the curve start),
+    stroke_pieces; shared by the Canvas and future exports.
   - mesh.rs: Display Mesh from Document+State; open curves tessellated via
     on_curve + adaptive subdivision until tangent turn per interval ≤
     MAX_CHORD_TURN (π/8), max 64 samples; endpoint hits use geometric
@@ -220,23 +233,31 @@ context: |
   inside a frozen component gives each surviving piece one solve.
   Session::new solves each inconsistent component once (rest stay
   frozen); Session::conflicts lists frozen components (names, residual).
-  file.rs: the native sketch file (FORMAT "illustrator-sketch", VERSION 1):
-  Session::save writes the declarative list in a fixed layout (one command
-  per line, byte-identical round trip); Session::load reads any JSON layout
+  file.rs: the native sketch file (FORMAT "illustrator-sketch", VERSION 3;
+  reads 1 to 3, migrate adds default settings for 1 and an empty `styles`
+  for 1 and 2, whose commands may carry no style fields):
+  Session::save writes settings, the style table (one style per line,
+  `default` only when set) and the declarative list in a fixed layout (one
+  command per line, byte-identical round trip); Session::load reads any JSON layout
   (check order: JSON, format, version + migrate, envelope fields, commands),
   executes commands in Mode::Load (no frozen check, no solve, no history),
   then Session::start returns the session plus LoadReport (adjusted
   components with sampled curve displacement, conflicts). LoadError names the
   failing command's index. Bytes only; hosts move them.
-  Command = Create / Constrain / Delete / Rename / SetRole; DeclCommand is
-  the declarative subset (Create / Constrain with mandatory name). Kind
+  Command = Create (with look: StyleRef) / Constrain / Delete / Rename /
+  SetRole / Set / SetDocument / DefineStyle / DeleteStyle / SetStyle (style
+  commands: history steps, no solve; errors UnknownStyle, StyleInUse);
+  Session::styles / style_of query them; DeclCommand is the declarative
+  subset (Create / Constrain with mandatory name). Kind
   payloads come from layer traits in kinds/ (GeometryCommand /
   ConstraintCommand on the core kind types: TAG, Params, init / resolve,
   params for export); catalog.rs (command_catalog!) generates GeometrySpec /
   ConstraintSpec and all dispatch, no per-kind match in session.rs.
-  json.rs: flat strict interchange form (op, kind, name, role reserved;
-  two-step read through serde_json::Value, deny_unknown_fields); wire.rs:
-  [x, y] points, finite numbers, typed address strings; schema.rs composes
+  json.rs: flat strict interchange form (op, kind, name, role and the style
+  fields style, width, color, dash, arrow reserved; create takes them out
+  like role and writes them after the kind fields; two-step read through
+  serde_json::Value, deny_unknown_fields); wire.rs: [x, y] points, finite
+  numbers, typed address strings, WireColor (#rrggbb), WireDash, WireArrow; schema.rs composes
   JSON Schemas, checked in under sketch_session/schema/ (tests/schema.rs,
   UPDATE_SCHEMA=1). Session::declarative_commands exports a drawing.
   constraint_runtime stays serde-free.
@@ -257,6 +278,13 @@ context: |
   two NewCM fonts (from typst-assets) and mitex's Typst files with
   xarrow replaced, each with a NOTICE.
   sketch_ui edits only through the Session (sample scene is the baseline).
+  The Canvas groups Mesh edges into one polyline per geometry and paints
+  result curves from their resolved style via stroke.rs (width max(1 px,
+  physical), filled arrow heads); construction keeps a fixed look.
+  style_ui.rs: CurrentStyle (style + switchable overrides for new segments
+  and Tool::Brush, which issues set_style with all four properties) and
+  StylesWindow (edits pending until pointer release / picker closed, then
+  one define_style).
   It paints labels via labels.rs (LabelCache: per line Pending / Done,
   swept per frame, plus each label's last complete rendering; label_paint
   -> PaintItem Typeset triangles or Fallback with FallbackReason Pending

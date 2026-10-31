@@ -5,7 +5,7 @@
 
 use std::fmt;
 
-use constraint_runtime::{AddressError, GeometryRole, NameError};
+use constraint_runtime::{AddressError, GeometryRole, NameError, StylePatch, StyleRef};
 
 use crate::catalog::{AttrSpec, ConstraintSpec, GeometrySpec};
 
@@ -15,10 +15,11 @@ use crate::catalog::{AttrSpec, ConstraintSpec, GeometrySpec};
 /// [`crate::catalog`].
 #[derive(Clone, Debug, PartialEq)]
 pub enum Command {
-    /// New geometry of the kind in `geometry`.
+    /// New geometry of the kind in `geometry`, with style and overrides `look`.
     Create {
         name: Option<String>,
         role: GeometryRole,
+        look: StyleRef,
         geometry: GeometrySpec,
     },
     /// New constraint of the kind in `constraint`.
@@ -50,6 +51,22 @@ pub enum Command {
         font_size: Option<f64>,
         preamble: Option<String>,
     },
+    /// Create a named style, or change the properties `patch` carries.
+    DefineStyle {
+        style: String,
+        patch: StylePatch,
+    },
+    /// Delete an unused named style.
+    DeleteStyle {
+        style: String,
+    },
+    /// Change a geometry's style reference (if `Some`) and the overrides
+    /// `patch` carries.
+    SetStyle {
+        name: String,
+        style: Option<String>,
+        patch: StylePatch,
+    },
 }
 
 /// A command of the declarative subset (files): creates and constraints,
@@ -59,6 +76,7 @@ pub enum DeclCommand {
     Create {
         name: String,
         role: GeometryRole,
+        look: StyleRef,
         geometry: GeometrySpec,
     },
     Constrain {
@@ -73,10 +91,12 @@ impl From<DeclCommand> for Command {
             DeclCommand::Create {
                 name,
                 role,
+                look,
                 geometry,
             } => Command::Create {
                 name: Some(name),
                 role,
+                look,
                 geometry,
             },
             DeclCommand::Constrain { name, constraint } => Command::Constrain {
@@ -153,6 +173,14 @@ pub enum CommandError {
     Frozen {
         name: String,
     },
+    /// No style has this name.
+    UnknownStyle(String),
+    /// `default`, or a style that the geometries `users` refer to, cannot be
+    /// deleted.
+    StyleInUse {
+        style: String,
+        users: Vec<String>,
+    },
 }
 
 impl fmt::Display for CommandError {
@@ -182,6 +210,13 @@ impl fmt::Display for CommandError {
             }
             CommandError::Frozen { name } => {
                 write!(f, "frozen: {name} is in a conflicted component")
+            }
+            CommandError::UnknownStyle(s) => write!(f, "unknown style: {s}"),
+            CommandError::StyleInUse { style, users } if users.is_empty() => {
+                write!(f, "style in use: {style} cannot be deleted")
+            }
+            CommandError::StyleInUse { style, users } => {
+                write!(f, "style in use: {style} is used by {}", users.join(", "))
             }
         }
     }

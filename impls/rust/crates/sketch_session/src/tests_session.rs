@@ -7,6 +7,7 @@ fn segment(start: (f64, f64), end: (f64, f64)) -> Command {
     Command::Create {
         name: None,
         role: GeometryRole::Result,
+        look: Default::default(),
         geometry: GeometrySpec::Segment(SegmentParams {
             start: Point2::new(start.0, start.1),
             end: Point2::new(end.0, end.1),
@@ -64,6 +65,7 @@ fn arc(name: Option<&str>) -> Command {
     Command::Create {
         name: name.map(Into::into),
         role: GeometryRole::Result,
+        look: Default::default(),
         geometry: GeometrySpec::Arc(ArcParams {
             center: Point2::new(0.0, 0.0),
             radius: 1.0,
@@ -480,9 +482,12 @@ fn coincident_unjoined_endpoints_can_be_joined() {
 
 fn named(cmd: Command, n: &str) -> Command {
     match cmd {
-        Command::Create { role, geometry, .. } => Command::Create {
+        Command::Create {
+            role, look, geometry, ..
+        } => Command::Create {
             name: Some(n.into()),
             role,
+            look,
             geometry,
         },
         Command::Constrain { constraint, .. } => Command::Constrain {
@@ -498,6 +503,7 @@ fn construction(cmd: Command) -> Command {
         Command::Create { name, geometry, .. } => Command::Create {
             name,
             role: GeometryRole::Construction,
+            look: Default::default(),
             geometry,
         },
         other => other,
@@ -516,6 +522,7 @@ fn export_scene() -> Session {
     s.apply(Command::Create {
         name: Some("fillet".into()),
         role: GeometryRole::Result,
+        look: Default::default(),
         geometry: GeometrySpec::Arc(ArcParams {
             center: Point2::new(1.0, 1.0),
             radius: 1.0,
@@ -570,6 +577,7 @@ fn export_lists_geometries_then_constraints_in_creation_order() {
                 name,
                 role,
                 geometry,
+                ..
             } => (name.as_str(), geometry.tag(), Some(*role)),
             DeclCommand::Constrain { name, constraint } => (name.as_str(), constraint.tag(), None),
         })
@@ -947,6 +955,7 @@ fn label_cmd(source: &str) -> Command {
     Command::Create {
         name: None,
         role: GeometryRole::Result,
+        look: Default::default(),
         geometry: GeometrySpec::Label(crate::kinds::LabelParams {
             origin: Point2::new(1.0, 0.0),
             heading: 0.0,
@@ -1196,4 +1205,267 @@ fn exported_labels_re_execute_to_the_same_list() {
     let own: serde_json::Value = serde_json::from_str(&list[1].to_json().unwrap()).unwrap();
     assert_eq!(own["size"], 8.0);
     assert!(close(&list_value(&replay(&list)), &list_value(&list), 1e-9));
+}
+
+// --- Style commands ---
+
+use constraint_runtime::{Arrow, Dash, Rgb, Style, StyleProps, StyleRef};
+
+const RED: Rgb = Rgb(0xc0, 0, 0);
+
+fn cmd(text: &str) -> Command {
+    Command::from_json(text).unwrap_or_else(|e| panic!("{text}: {e}"))
+}
+
+fn apply(s: &mut Session, text: &str) -> Result<Outcome, CommandError> {
+    s.apply(cmd(text))
+}
+
+/// Session with style `axis` (width 0.8, arrow end) and segment `x` using it.
+fn axis_session() -> Session {
+    let mut s = Session::new(Document::new());
+    apply(&mut s, r#"{"op": "define_style", "style": "axis", "width": 0.8, "arrow": "end"}"#).unwrap();
+    apply(
+        &mut s,
+        r#"{"op": "create", "kind": "segment", "name": "x", "start": [0, 0], "end": [1, 0], "style": "axis"}"#,
+    )
+    .unwrap();
+    s
+}
+
+#[test]
+fn define_style_creates_a_style() {
+    let mut s = Session::new(Document::new());
+    let before = s.document().vector().clone();
+    apply(&mut s, r#"{"op": "define_style", "style": "vector", "width": 0.8, "arrow": "end"}"#).unwrap();
+    assert_eq!(
+        s.styles().get("vector"),
+        Some(&StyleProps {
+            width: Some(0.8),
+            arrow: Some(Arrow::End),
+            ..StyleProps::default()
+        })
+    );
+    assert_eq!(s.document().vector(), &before);
+}
+
+#[test]
+fn define_style_changes_one_property() {
+    let mut s = axis_session();
+    apply(&mut s, r#"{"op": "define_style", "style": "axis", "width": 1.2}"#).unwrap();
+    let p = s.styles().get("axis").unwrap();
+    assert_eq!((p.width, p.arrow), (Some(1.2), Some(Arrow::End)));
+}
+
+#[test]
+fn define_style_removes_a_property() {
+    let mut s = two_segments();
+    apply(&mut s, r#"{"op": "define_style", "style": "default", "width": 0.6}"#).unwrap();
+    assert_eq!(s.style_of("seg1").unwrap().1.width, 0.6);
+    apply(&mut s, r#"{"op": "define_style", "style": "default", "width": null}"#).unwrap();
+    assert_eq!(s.styles().get("default").unwrap().width, None);
+    assert_eq!(s.style_of("seg1").unwrap().1.width, Style::BUILT_IN.width);
+}
+
+#[test]
+fn invalid_style_name() {
+    let mut s = Session::new(Document::new());
+    let e = apply(&mut s, r#"{"op": "define_style", "style": "2nd", "width": 1}"#).unwrap_err();
+    assert_eq!(e, CommandError::Name(NameError::Invalid));
+    assert!(!s.can_undo());
+}
+
+#[test]
+fn delete_an_unused_style() {
+    let mut s = Session::new(Document::new());
+    apply(&mut s, r#"{"op": "define_style", "style": "hidden", "dash": "dashed"}"#).unwrap();
+    apply(&mut s, r#"{"op": "delete_style", "style": "hidden"}"#).unwrap();
+    assert!(!s.styles().contains("hidden"));
+}
+
+#[test]
+fn delete_a_used_style() {
+    let mut s = axis_session();
+    let e = apply(&mut s, r#"{"op": "delete_style", "style": "axis"}"#).unwrap_err();
+    assert_eq!(
+        e,
+        CommandError::StyleInUse {
+            style: "axis".into(),
+            users: vec!["x".into()],
+        }
+    );
+    assert!(e.to_string().starts_with("style in use"), "{e}");
+    assert!(s.styles().contains("axis"));
+}
+
+#[test]
+fn delete_default_or_an_unknown_style() {
+    let mut s = Session::new(Document::new());
+    let e = apply(&mut s, r#"{"op": "delete_style", "style": "default"}"#).unwrap_err();
+    assert!(matches!(e, CommandError::StyleInUse { .. }), "{e:?}");
+    let e = apply(&mut s, r#"{"op": "delete_style", "style": "nope"}"#).unwrap_err();
+    assert_eq!(e, CommandError::UnknownStyle("nope".into()));
+}
+
+#[test]
+fn set_style_assigns_a_style_and_keeps_overrides() {
+    let mut s = Session::new(Document::new());
+    apply(&mut s, r#"{"op": "define_style", "style": "axis", "width": 0.8}"#).unwrap();
+    apply(
+        &mut s,
+        r##"{"op": "create", "kind": "segment", "start": [0, 0], "end": [1, 0], "color": "#c00000"}"##,
+    )
+    .unwrap();
+    apply(&mut s, r#"{"op": "set_style", "name": "seg1", "style": "axis"}"#).unwrap();
+    let (r, _) = s.style_of("seg1").unwrap();
+    assert_eq!(r.style, "axis");
+    assert_eq!(r.overrides.color, Some(RED));
+}
+
+#[test]
+fn set_style_removes_an_override() {
+    let mut s = Session::new(Document::new());
+    apply(
+        &mut s,
+        r##"{"op": "create", "kind": "segment", "start": [0, 0], "end": [1, 0], "color": "#c00000", "dash": "dotted"}"##,
+    )
+    .unwrap();
+    apply(&mut s, r#"{"op": "set_style", "name": "seg1", "color": null}"#).unwrap();
+    let (r, _) = s.style_of("seg1").unwrap();
+    assert_eq!(r.overrides.color, None);
+    assert_eq!(r.overrides.dash, Some(Dash::Dotted));
+}
+
+#[test]
+fn set_style_on_a_constraint() {
+    let mut s = two_segments();
+    s.apply(parallel("seg1.direction", "seg2.direction")).unwrap();
+    let e = apply(&mut s, r#"{"op": "set_style", "name": "par1", "dash": "dashed"}"#).unwrap_err();
+    assert!(matches!(e, CommandError::WrongObjectType { .. }), "{e:?}");
+}
+
+#[test]
+fn unknown_style_in_set_style() {
+    let mut s = two_segments();
+    let before = s.style_of("seg1").unwrap();
+    let e = apply(&mut s, r#"{"op": "set_style", "name": "seg1", "style": "nope"}"#).unwrap_err();
+    assert_eq!(e, CommandError::UnknownStyle("nope".into()));
+    assert!(e.to_string().starts_with("unknown style"), "{e}");
+    assert_eq!(s.style_of("seg1").unwrap(), before);
+}
+
+#[test]
+fn zero_width_is_an_invalid_value() {
+    let mut s = axis_session();
+    for text in [
+        r#"{"op": "define_style", "style": "axis", "width": 0}"#,
+        r#"{"op": "set_style", "name": "x", "width": -1}"#,
+        r#"{"op": "create", "kind": "segment", "start": [0, 0], "end": [1, 0], "width": 0}"#,
+    ] {
+        let e = apply(&mut s, text).unwrap_err();
+        assert!(matches!(e, CommandError::InvalidValue { field: "width", .. }), "{text}: {e:?}");
+    }
+    assert_eq!(s.styles().get("axis").unwrap().width, Some(0.8));
+    assert_eq!(s.document().geometries().len(), 1);
+}
+
+#[test]
+fn create_with_a_style_and_an_override() {
+    let mut s = axis_session();
+    apply(
+        &mut s,
+        r##"{"op": "create", "kind": "segment", "name": "y", "start": [0, 1], "end": [1, 1], "style": "axis", "color": "#c00000"}"##,
+    )
+    .unwrap();
+    let (r, _) = s.style_of("y").unwrap();
+    assert_eq!(r.style, "axis");
+    assert_eq!(r.overrides.color, Some(RED));
+}
+
+#[test]
+fn create_with_an_unknown_style() {
+    let mut s = Session::new(Document::new());
+    let e = apply(
+        &mut s,
+        r#"{"op": "create", "kind": "segment", "start": [0, 0], "end": [1, 0], "style": "nope"}"#,
+    )
+    .unwrap_err();
+    assert_eq!(e, CommandError::UnknownStyle("nope".into()));
+    assert_eq!(s.document().geometries().len(), 0);
+    assert!(!s.can_undo());
+}
+
+#[test]
+fn every_kind_carries_a_style() {
+    let mut s = Session::new(Document::new());
+    s.apply(segment((0.0, 0.0), (1.0, 0.0))).unwrap();
+    s.apply(arc(None)).unwrap();
+    apply(&mut s, r#"{"op": "create", "kind": "label", "origin": [0, 0], "heading": 0, "source": "a"}"#).unwrap();
+    for name in ["seg1", "arc1", "lbl1"] {
+        assert_eq!(s.style_of(name).unwrap().0, StyleRef::default(), "{name}");
+    }
+}
+
+#[test]
+fn style_commands_are_history_steps() {
+    let mut s = axis_session();
+    apply(&mut s, r#"{"op": "define_style", "style": "axis", "width": 1.2}"#).unwrap();
+    s.undo().unwrap();
+    assert_eq!(s.styles().get("axis").unwrap().width, Some(0.8));
+    s.redo().unwrap();
+    assert_eq!(s.styles().get("axis").unwrap().width, Some(1.2));
+
+    apply(&mut s, r##"{"op": "set_style", "name": "x", "style": "default", "color": "#c00000"}"##).unwrap();
+    s.undo().unwrap();
+    assert_eq!(s.style_of("x").unwrap().0, StyleRef {
+        style: "axis".into(),
+        overrides: StyleProps::default(),
+    });
+
+    apply(&mut s, r#"{"op": "define_style", "style": "hidden", "dash": "dashed"}"#).unwrap();
+    apply(&mut s, r#"{"op": "delete_style", "style": "hidden"}"#).unwrap();
+    s.undo().unwrap();
+    assert!(s.styles().contains("hidden"));
+}
+
+#[test]
+fn resolved_style_of_a_geometry() {
+    let mut s = Session::new(Document::new());
+    apply(&mut s, r#"{"op": "define_style", "style": "axis", "width": 0.8}"#).unwrap();
+    apply(
+        &mut s,
+        r##"{"op": "create", "kind": "segment", "name": "x", "start": [0, 0], "end": [1, 0], "style": "axis", "color": "#c00000"}"##,
+    )
+    .unwrap();
+    let (r, resolved) = s.style_of("x").unwrap();
+    assert_eq!(r.style, "axis");
+    assert_eq!(
+        r.overrides,
+        StyleProps {
+            color: Some(RED),
+            ..StyleProps::default()
+        }
+    );
+    assert_eq!(
+        resolved,
+        Style {
+            width: 0.8,
+            color: RED,
+            dash: Dash::Solid,
+            arrow: Arrow::None,
+        }
+    );
+    assert!(matches!(s.style_of("nope"), Err(CommandError::UnknownName(_))));
+}
+
+#[test]
+fn style_after_set_style() {
+    let mut s = Session::new(Document::new());
+    apply(&mut s, r#"{"op": "define_style", "style": "axis", "width": 0.8}"#).unwrap();
+    s.apply(segment((0.0, 0.0), (1.0, 0.0))).unwrap();
+    apply(&mut s, r##"{"op": "set_style", "name": "seg1", "style": "axis", "color": "#c00000"}"##).unwrap();
+    let list = s.declarative_commands().unwrap();
+    let text = list[0].to_json().unwrap();
+    assert!(text.ends_with(r##""style":"axis","color":"#c00000"}"##), "{text}");
+    assert!(!text.contains("width") && !text.contains("dash") && !text.contains("arrow"), "{text}");
 }

@@ -9,6 +9,7 @@ fn segment(name: &str, x: f64) -> Command {
     Command::Create {
         name: Some(name.into()),
         role: GeometryRole::Result,
+        look: Default::default(),
         geometry: GeometrySpec::Segment(SegmentParams {
             start: Point2::new(0.0, 0.0),
             end: Point2::new(x, 0.0),

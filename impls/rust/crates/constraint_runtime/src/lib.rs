@@ -19,6 +19,8 @@ pub mod mesh;
 pub mod names;
 pub mod point_classes;
 pub mod solver;
+pub mod stroke;
+pub mod style;
 pub mod vector;
 
 #[cfg(test)]
@@ -53,6 +55,12 @@ pub use mesh::{Mesh, MeshEdge, MeshFilter, MAX_CHORD_TURN};
 pub use names::{is_valid_name, NameError, ObjectId};
 pub use point_classes::LogicalPoint;
 pub use solver::{LmSolver, SolveOutcome, SolverOptions, SolverPort, StubSolver, SystemEval};
+pub use stroke::{
+    arrow_head, arrow_length_pt, arrow_tips, dash, pt_to_world, stroke_pieces, trim, ArrowTip, MM_PER_PT,
+};
+pub use style::{
+    Arrow, Dash, Rgb, Style, StyleError, StylePatch, StyleProps, StyleRef, Styles, DEFAULT_STYLE,
+};
 pub use vector::Vector;
 
 pub const SOLVE_TOL: f64 = 1e-6;

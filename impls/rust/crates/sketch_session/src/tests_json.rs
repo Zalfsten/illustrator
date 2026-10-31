@@ -91,6 +91,7 @@ fn segment_in_interchange_form() {
         Command::Create {
             name: None,
             role: GeometryRole::Result,
+            look: Default::default(),
             geometry: segment(Point2::new(0.0, 0.0), Point2::new(3.0, 0.0)),
         }
     );
@@ -106,6 +107,7 @@ fn label_in_interchange_form() {
         Command::Create {
             name: None,
             role: GeometryRole::Result,
+            look: Default::default(),
             geometry: GeometrySpec::Label(LabelParams {
                 origin: Point2::new(1.0, 0.0),
                 heading: 0.0,
@@ -149,6 +151,7 @@ fn arc_and_fix_in_interchange_form() {
         Command::Create {
             name: Some("fillet".into()),
             role: GeometryRole::Construction,
+            look: Default::default(),
             geometry: GeometrySpec::Arc(ArcParams {
                 center: Point2::new(3.0, 1.0),
                 radius: 1.0,
@@ -282,6 +285,7 @@ fn decl_command_converts_to_command() {
     let d = DeclCommand::Create {
         name: "a".into(),
         role: GeometryRole::Construction,
+        look: Default::default(),
         geometry: segment(Point2::new(0.0, 0.0), Point2::new(1.0, 0.0)),
     };
     let c: Command = d.clone().into();
@@ -290,6 +294,7 @@ fn decl_command_converts_to_command() {
         Command::Create {
             name: Some("a".into()),
             role: GeometryRole::Construction,
+            look: Default::default(),
             geometry: segment(Point2::new(0.0, 0.0), Point2::new(1.0, 0.0)),
         }
     );
@@ -304,11 +309,13 @@ fn every_command(v: f64) -> Vec<Command> {
         Command::Create {
             name: None,
             role: GeometryRole::Result,
+            look: Default::default(),
             geometry: segment(p, Point2::new(1.0 / 3.0, 0.1)),
         },
         Command::Create {
             name: Some("fillet".into()),
             role: GeometryRole::Construction,
+            look: Default::default(),
             geometry: GeometrySpec::Arc(ArcParams {
                 center: p,
                 radius: v.abs(),
@@ -319,6 +326,7 @@ fn every_command(v: f64) -> Vec<Command> {
         Command::Create {
             name: Some("lbl".into()),
             role: GeometryRole::Result,
+            look: Default::default(),
             geometry: GeometrySpec::Label(LabelParams {
                 origin: p,
                 heading: v,
@@ -451,6 +459,7 @@ fn written_form_is_flat_with_reserved_fields_first() {
     let cmd = Command::Create {
         name: Some("seg1".into()),
         role: GeometryRole::Result,
+        look: Default::default(),
         geometry: segment(Point2::new(0.0, 0.0), Point2::new(3.0, 0.0)),
     };
     assert_eq!(
@@ -531,5 +540,170 @@ fn null_is_only_accepted_for_size() {
         r#"{"op": "set_document", "scale": null}"#,
     ] {
         read_err(text);
+    }
+}
+
+// --- Style fields and style commands ---
+
+use constraint_runtime::{Arrow, Dash, Rgb, StylePatch, StyleProps, StyleRef};
+
+const RED: Rgb = Rgb(0xc0, 0, 0);
+
+#[test]
+fn styled_segment_in_interchange_form() {
+    let Command::Create { look, geometry, .. } = read(
+        r#"{"op": "create", "kind": "segment", "start": [0, 0], "end": [3, 0], "style": "axis", "dash": "dashed"}"#,
+    ) else {
+        panic!("not a create");
+    };
+    assert_eq!(geometry, segment(Point2::new(0.0, 0.0), Point2::new(3.0, 0.0)));
+    assert_eq!(
+        look,
+        StyleRef {
+            style: "axis".into(),
+            overrides: StyleProps {
+                dash: Some(Dash::Dashed),
+                ..StyleProps::default()
+            },
+        }
+    );
+}
+
+#[test]
+fn create_without_style_fields_refers_to_default() {
+    let Command::Create { look, .. } =
+        read(r#"{"op": "create", "kind": "arc", "center": [0, 0], "radius": 1, "start_heading": 0, "sweep": 1}"#)
+    else {
+        panic!("not a create");
+    };
+    assert_eq!(look, StyleRef::default());
+}
+
+#[test]
+fn unknown_dash_pattern_is_rejected() {
+    let e = read_err(
+        r#"{"op": "create", "kind": "segment", "start": [0, 0], "end": [3, 0], "dash": "dashdotdot"}"#,
+    );
+    assert!(e.contains("dashdotdot"), "{e}");
+}
+
+#[test]
+fn misspelled_colour_is_rejected() {
+    let e = read_err(
+        r##"{"op": "create", "kind": "segment", "start": [0, 0], "end": [3, 0], "colour": "#c00000"}"##,
+    );
+    assert!(e.contains("colour"), "{e}");
+}
+
+#[test]
+fn null_style_fields_are_rejected_on_create() {
+    read_err(r#"{"op": "create", "kind": "segment", "start": [0, 0], "end": [3, 0], "width": null}"#);
+    read_err(r#"{"op": "create", "kind": "segment", "start": [0, 0], "end": [3, 0], "style": 3}"#);
+}
+
+#[test]
+fn styled_create_round_trips_bit_for_bit() {
+    let cmd = DeclCommand::Create {
+        name: "x".into(),
+        role: GeometryRole::Result,
+        look: StyleRef {
+            style: "axis".into(),
+            overrides: StyleProps {
+                width: Some(0.1 + 0.2),
+                color: Some(RED),
+                dash: Some(Dash::DashDot),
+                arrow: Some(Arrow::Both),
+            },
+        },
+        geometry: segment(Point2::new(0.0, 0.0), Point2::new(1.0 / 3.0, 0.0)),
+    };
+    let text = cmd.to_json().unwrap();
+    assert_eq!(
+        text,
+        r##"{"op":"create","kind":"segment","name":"x","role":"result","start":[0.0,0.0],"end":[0.3333333333333333,0.0],"style":"axis","width":0.30000000000000004,"color":"#c00000","dash":"dashdot","arrow":"both"}"##
+    );
+    let back = DeclCommand::from_json(&text).unwrap();
+    assert_eq!(back, cmd);
+    assert_eq!(back.to_json().unwrap(), text);
+}
+
+#[test]
+fn default_style_is_not_written() {
+    let cmd = DeclCommand::Create {
+        name: "x".into(),
+        role: GeometryRole::Result,
+        look: StyleRef::default(),
+        geometry: segment(Point2::new(0.0, 0.0), Point2::new(1.0, 0.0)),
+    };
+    let text = cmd.to_json().unwrap();
+    assert!(!text.contains("style"), "{text}");
+}
+
+#[test]
+fn style_definition_in_interchange_form() {
+    assert_eq!(
+        read(r#"{"op": "define_style", "style": "axis", "width": 0.8, "arrow": "end"}"#),
+        Command::DefineStyle {
+            style: "axis".into(),
+            patch: StylePatch {
+                width: Some(Some(0.8)),
+                arrow: Some(Some(Arrow::End)),
+                ..StylePatch::default()
+            },
+        }
+    );
+}
+
+#[test]
+fn null_removes_a_style_property() {
+    assert_eq!(
+        read(r#"{"op": "define_style", "style": "default", "width": null}"#),
+        Command::DefineStyle {
+            style: "default".into(),
+            patch: StylePatch {
+                width: Some(None),
+                ..StylePatch::default()
+            },
+        }
+    );
+}
+
+#[test]
+fn style_commands_round_trip() {
+    for text in [
+        r##"{"op":"define_style","style":"axis","width":0.8,"color":"#c00000","dash":"dotted","arrow":null}"##,
+        r#"{"op":"delete_style","style":"hidden"}"#,
+        r#"{"op":"set_style","name":"seg1","style":"axis"}"#,
+        r#"{"op":"set_style","name":"seg1","width":null,"color":null,"dash":null,"arrow":null}"#,
+    ] {
+        assert_eq!(read(text).to_json().unwrap(), text);
+    }
+}
+
+#[test]
+fn style_commands_need_a_property() {
+    let e = read_err(r#"{"op": "define_style", "style": "axis"}"#);
+    assert!(e.contains("no style property"), "{e}");
+    read_err(r#"{"op": "set_style", "name": "seg1"}"#);
+    read_err(r#"{"op": "define_style", "width": 1}"#);
+    read_err(r#"{"op": "delete_style", "style": "a", "width": 1}"#);
+    read_err(r#"{"op": "set_style", "name": "seg1", "colour": null}"#);
+}
+
+#[test]
+fn short_colour_is_an_invalid_value() {
+    let e = read_err(r##"{"op": "set_style", "name": "seg1", "color": "#c00"}"##);
+    assert!(e.contains("invalid value for color"), "{e}");
+}
+
+#[test]
+fn style_commands_are_outside_the_subset() {
+    for text in [
+        r#"{"op": "set_style", "name": "seg1", "style": "axis"}"#,
+        r#"{"op": "define_style", "style": "axis", "width": 1}"#,
+        r#"{"op": "delete_style", "style": "axis"}"#,
+    ] {
+        let e = DeclCommand::from_json(text).unwrap_err().to_string();
+        assert!(e.contains("not in the declarative subset"), "{e}");
     }
 }

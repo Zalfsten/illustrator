@@ -1,7 +1,7 @@
 use super::*;
 use crate::command::Command;
 use constraint_runtime::{
-    Address, Congruence, CurveParam, GeometryRole, NameError, Point2, Segment,
+    Address, Congruence, CurveParam, GeometryRole, NameError, Point2, Segment, Styles,
 };
 
 /// Session built from interchange commands, one per entry.
@@ -55,10 +55,11 @@ fn saved_bytes_of_two_joined_segments() {
     let s = session(&[SEG1, SEG2, JOIN1]);
     let expected = r#"{
   "format": "illustrator-sketch",
-  "version": 2,
+  "version": 3,
   "scale": 10.0,
   "font_size": 10.0,
   "preamble": "",
+  "styles": {},
   "commands": [
     {"op":"create","kind":"segment","name":"seg1","role":"result","start":[0.0,0.0],"end":[1.0,0.0]},
     {"op":"create","kind":"segment","name":"seg2","role":"result","start":[1.0,0.0],"end":[1.0,1.0]},
@@ -73,7 +74,7 @@ fn saved_bytes_of_two_joined_segments() {
 fn saved_bytes_of_an_empty_drawing() {
     let s = Session::new(Document::new());
     let expected =
-        "{\n  \"format\": \"illustrator-sketch\",\n  \"version\": 2,\n  \"scale\": 10.0,\n  \"font_size\": 10.0,\n  \"preamble\": \"\",\n  \"commands\": []\n}\n";
+        "{\n  \"format\": \"illustrator-sketch\",\n  \"version\": 3,\n  \"scale\": 10.0,\n  \"font_size\": 10.0,\n  \"preamble\": \"\",\n  \"styles\": {},\n  \"commands\": []\n}\n";
     assert_eq!(String::from_utf8(s.save().unwrap()).unwrap(), expected);
 }
 
@@ -166,8 +167,8 @@ fn other_json_is_an_unknown_format() {
 
 #[test]
 fn newer_version() {
-    match load_err(br#"{"format": "illustrator-sketch", "version": 3, "commands": []}"#) {
-        LoadError::UnsupportedVersion(v) => assert_eq!(v, "3"),
+    match load_err(br#"{"format": "illustrator-sketch", "version": 4, "commands": []}"#) {
+        LoadError::UnsupportedVersion(v) => assert_eq!(v, "4"),
         other => panic!("{other:?}"),
     }
     assert!(matches!(
@@ -347,11 +348,12 @@ fn minimal_version_2_file() {
 }
 
 #[test]
-fn version_1_loads_with_default_settings_and_saves_as_2() {
+fn version_1_loads_with_default_settings_and_saves_as_3() {
     let (s, _) = Session::load(&file(&[SEG1])).unwrap();
     assert_eq!(s.settings(), &constraint_runtime::DocumentSettings::default());
+    assert_eq!(s.styles(), &Styles::default());
     let saved = String::from_utf8(s.save().unwrap()).unwrap();
-    assert!(saved.contains("\"version\": 2,"), "{saved}");
+    assert!(saved.contains("\"version\": 3,"), "{saved}");
 }
 
 #[test]
@@ -409,4 +411,145 @@ fn moved_label_reports_its_origin_displacement() {
     assert_eq!(report.adjusted.len(), 1);
     assert_eq!(report.adjusted[0].geometries, ["t"]);
     assert!((report.adjusted[0].displacement - 0.2).abs() < 1e-6, "{report:?}");
+}
+
+// --- Version 3: styles ---
+
+/// A version 3 file with `styles` (an object's text) around `commands`.
+fn file_v3(styles: &str, commands: &[&str]) -> Vec<u8> {
+    format!(
+        r#"{{"format": "illustrator-sketch", "version": 3, "scale": 10, "font_size": 10, "preamble": "", "styles": {styles}, "commands": [{}]}}"#,
+        commands.join(",")
+    )
+    .into_bytes()
+}
+
+#[test]
+fn minimal_version_3_file() {
+    let (s, _) = Session::load(&file_v3("{}", &[])).unwrap();
+    assert!(s.document().geometries().is_empty());
+    assert_eq!(s.settings(), &constraint_runtime::DocumentSettings::default());
+    assert_eq!(s.styles(), &Styles::default());
+}
+
+#[test]
+fn styles_and_a_styled_command() {
+    let (s, _) = Session::load(&file_v3(
+        r#"{"axis": {"width": 0.8, "arrow": "end"}}"#,
+        &[r#"{"op": "create", "kind": "segment", "name": "x", "start": [0, 0], "end": [1, 0], "style": "axis"}"#],
+    ))
+    .unwrap();
+    let (r, resolved) = s.style_of("x").unwrap();
+    assert_eq!(r.style, "axis");
+    assert_eq!(resolved.width, 0.8);
+    assert_eq!(resolved.arrow, constraint_runtime::Arrow::End);
+}
+
+#[test]
+fn invalid_style_in_the_envelope_is_rejected() {
+    let e = envelope_err(&file_v3(r#"{"axis": {"width": -1}}"#, &[]));
+    assert!(e.contains("style `axis`") && e.contains("`width`"), "{e}");
+    for (styles, needle) in [
+        (r##"{"axis": {"colour": "#c00000"}}"##, "colour"),
+        (r#"{"axis": {"dash": "dashdotdot"}}"#, "dashdotdot"),
+        (r##"{"axis": {"color": "#c00"}}"##, "color"),
+        (r#"{"2nd": {}}"#, "invalid style name"),
+        (r#"{"axis": {"style": "default"}}"#, "style"),
+        (r#"{"axis": 3}"#, "axis"),
+    ] {
+        let e = envelope_err(&file_v3(styles, &[]));
+        assert!(e.contains(needle), "{styles}: {e}");
+    }
+    let e = envelope_err(&file_v3("[]", &[]));
+    assert!(e.contains("`styles`"), "{e}");
+}
+
+#[test]
+fn missing_styles_in_version_3_are_rejected() {
+    let e = envelope_err(
+        br#"{"format": "illustrator-sketch", "version": 3, "scale": 10, "font_size": 10, "preamble": "", "commands": []}"#,
+    );
+    assert!(e.contains("missing field `styles`"), "{e}");
+}
+
+#[test]
+fn unknown_style_in_a_command_names_the_command() {
+    let (index, error) = command_err(&file_v3(
+        "{}",
+        &[SEG1, r#"{"op": "create", "kind": "segment", "name": "x", "start": [0, 0], "end": [1, 0], "style": "axis"}"#],
+    ));
+    assert_eq!(index, 1);
+    assert!(matches!(error, CommandLoadError::Execute(CommandError::UnknownStyle(_))), "{error:?}");
+}
+
+#[test]
+fn version_2_file() {
+    let (s, _) = Session::load(
+        br#"{"format": "illustrator-sketch", "version": 2, "scale": 10, "font_size": 10, "preamble": "", "commands": []}"#,
+    )
+    .unwrap();
+    assert_eq!(s.styles(), &Styles::default());
+}
+
+#[test]
+fn styles_in_version_2_are_rejected() {
+    let e = envelope_err(
+        br#"{"format": "illustrator-sketch", "version": 2, "scale": 10, "font_size": 10, "preamble": "", "styles": {}, "commands": []}"#,
+    );
+    assert!(e.contains("unknown field `styles`"), "{e}");
+    let e = envelope_err(br#"{"format": "illustrator-sketch", "version": 1, "styles": {}, "commands": []}"#);
+    assert!(e.contains("unknown field `styles`"), "{e}");
+}
+
+#[test]
+fn style_fields_in_old_commands_are_rejected() {
+    let styled = r##"{"op": "create", "kind": "segment", "name": "x", "start": [0, 0], "end": [1, 0], "color": "#c00000"}"##;
+    let (index, error) = command_err(&file(&[SEG1, styled]));
+    assert_eq!(index, 1);
+    assert!(error.to_string().contains("unknown field `color`"), "{error}");
+    let v2 = format!(
+        r#"{{"format": "illustrator-sketch", "version": 2, "scale": 10, "font_size": 10, "preamble": "", "commands": [{styled}]}}"#
+    );
+    let (index, _) = command_err(v2.as_bytes());
+    assert_eq!(index, 0);
+}
+
+/// A drawing with `default` unchanged, styles `vector` and `axis`, and
+/// segments using them.
+fn styled_session() -> Session {
+    session(&[
+        r#"{"op": "define_style", "style": "vector", "width": 0.8, "arrow": "end"}"#,
+        r##"{"op": "define_style", "style": "axis", "color": "#C00000", "dash": "dashdot"}"##,
+        r#"{"op": "create", "kind": "segment", "name": "x", "start": [0, 0], "end": [1, 0], "style": "axis", "width": 1.5}"#,
+        r#"{"op": "create", "kind": "arc", "name": "a", "center": [0, 0], "radius": 1, "start_heading": 0, "sweep": 1, "style": "vector"}"#,
+    ])
+}
+
+#[test]
+fn one_style_per_line() {
+    let text = String::from_utf8(styled_session().save().unwrap()).unwrap();
+    let lines: Vec<&str> = text.lines().collect();
+    let at = lines.iter().position(|l| *l == r#"  "styles": {"#).unwrap();
+    assert_eq!(lines[at + 1], r##"    "axis": {"color":"#c00000","dash":"dashdot"},"##);
+    assert_eq!(lines[at + 2], r#"    "vector": {"width":0.8,"arrow":"end"}"#);
+    assert_eq!(lines[at + 3], "  },");
+    assert!(!text.contains("\"default\""), "{text}");
+}
+
+#[test]
+fn changed_default_is_written() {
+    let mut s = styled_session();
+    s.apply(Command::from_json(r#"{"op": "define_style", "style": "default", "width": 0.6}"#).unwrap())
+        .unwrap();
+    let text = String::from_utf8(s.save().unwrap()).unwrap();
+    assert!(text.contains(r#"    "default": {"width":0.6},"#), "{text}");
+}
+
+#[test]
+fn styled_drawing_round_trips_byte_identical() {
+    let first = styled_session().save().unwrap();
+    let (loaded, report) = Session::load(&first).unwrap();
+    assert_eq!(report, LoadReport::default());
+    assert_eq!(loaded.styles(), styled_session().styles());
+    assert_eq!(loaded.save().unwrap(), first);
 }

@@ -14,6 +14,7 @@ mod host_native;
 mod host_web;
 mod labels;
 mod platform;
+mod style_ui;
 mod viewport;
 
 use app::App;

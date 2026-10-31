@@ -10,7 +10,10 @@ use schemars::{json_schema, JsonSchema, Schema};
 use serde_json::{json, Map, Value};
 
 use crate::catalog::{AttrSpec, ConstraintSpec, GeometrySpec};
-use crate::json::{DeleteFields, RenameFields, SetDocumentFields, SetRoleFields, RESERVED};
+use crate::json::{
+    DeleteFields, DeleteStyleFields, LookFields, PatchFields, RenameFields, SetDocumentFields,
+    SetRoleFields, RESERVED,
+};
 use crate::wire::Role;
 
 /// Schema of `T` with all subschemas inlined (no `$ref`).
@@ -49,6 +52,20 @@ pub fn command_schema() -> Schema {
     let mut b = fixed("set_document", inline_schema::<SetDocumentFields>());
     b["minProperties"] = json!(2);
     branches.push(b);
+    // `define_style`: op, style and at least one property.
+    let mut b = fixed("define_style", inline_schema::<PatchFields>());
+    b["properties"]["style"] = name_schema();
+    b["required"] = json!(["op", "style"]);
+    b["minProperties"] = json!(3);
+    branches.push(b);
+    branches.push(fixed("delete_style", inline_schema::<DeleteStyleFields>()));
+    // `set_style`: op, name and a style or at least one property.
+    let mut b = fixed("set_style", inline_schema::<PatchFields>());
+    b["properties"]["name"] = name_schema();
+    b["properties"]["style"] = name_schema();
+    b["required"] = json!(["op", "name"]);
+    b["minProperties"] = json!(3);
+    branches.push(b);
     root("Command", "One command of a drawing session.", branches)
 }
 
@@ -63,9 +80,15 @@ pub fn declarative_schema() -> Schema {
 
 fn creates_and_constraints(name_required: bool) -> Vec<Value> {
     let role = inline_schema::<Role>().to_value();
+    let (look, _) = parts(inline_schema::<LookFields>());
     let mut out = Vec::new();
     for (tag, params) in GeometrySpec::kind_schemas() {
-        out.push(branch("create", tag, Some(&role), params, name_required));
+        let mut b = branch("create", tag, Some(&role), params, name_required);
+        for (field, schema) in &look {
+            b["properties"][field] = schema.clone();
+        }
+        b["properties"]["style"] = name_schema();
+        out.push(b);
     }
     for (tag, params) in ConstraintSpec::kind_schemas() {
         out.push(branch("constrain", tag, None, params, name_required));

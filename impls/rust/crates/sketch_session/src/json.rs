@@ -14,11 +14,11 @@ use serde::de::Error as _;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::{Map, Value};
 
-use constraint_runtime::GeometryRole;
+use constraint_runtime::{GeometryRole, StylePatch, StyleProps, StyleRef, DEFAULT_STYLE};
 
 use crate::catalog::{AttrSpec, ConstraintSpec, GeometrySpec};
 use crate::command::{Command, DeclCommand};
-use crate::wire::{self, Role};
+use crate::wire::{self, Role, WireArrow, WireColor, WireDash};
 
 /// Operations of the interchange form.
 pub const OPS: &[&str] = &[
@@ -29,10 +29,180 @@ pub const OPS: &[&str] = &[
     "set_role",
     "set",
     "set_document",
+    "define_style",
+    "delete_style",
+    "set_style",
 ];
 
 /// Field names no kind may use for its parameters.
-pub const RESERVED: &[&str] = &["op", "kind", "name", "role"];
+pub const RESERVED: &[&str] = &["op", "kind", "name", "role", "style", "width", "color", "dash", "arrow"];
+
+/// Style fields of `create`, taken out of the object like `role`.
+pub(crate) const LOOK_FIELDS: &[&str] = &["style", "width", "color", "dash", "arrow"];
+
+/// Style fields of `create`: the named style (`default` when absent) and
+/// the overrides, all optional; written after the kind's fields.
+#[derive(Default, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct LookFields {
+    /// Name of the style the geometry refers to; `default` when absent.
+    #[serde(default, skip_serializing_if = "Option::is_none", with = "wire::present")]
+    #[schemars(with = "String")]
+    pub style: Option<String>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "wire::finite_option"
+    )]
+    #[schemars(schema_with = "wire::width_schema")]
+    pub width: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none", with = "wire::present")]
+    #[schemars(with = "WireColor")]
+    pub color: Option<WireColor>,
+    #[serde(default, skip_serializing_if = "Option::is_none", with = "wire::present")]
+    #[schemars(with = "WireDash")]
+    pub dash: Option<WireDash>,
+    #[serde(default, skip_serializing_if = "Option::is_none", with = "wire::present")]
+    #[schemars(with = "WireArrow")]
+    pub arrow: Option<WireArrow>,
+}
+
+impl From<&StyleRef> for LookFields {
+    fn from(r: &StyleRef) -> Self {
+        let o = &r.overrides;
+        Self {
+            style: (r.style != DEFAULT_STYLE).then(|| r.style.clone()),
+            width: o.width,
+            color: o.color.map(WireColor),
+            dash: o.dash.map(Into::into),
+            arrow: o.arrow.map(Into::into),
+        }
+    }
+}
+
+impl From<LookFields> for StyleRef {
+    fn from(f: LookFields) -> Self {
+        Self {
+            style: f.style.unwrap_or_else(|| DEFAULT_STYLE.to_owned()),
+            overrides: StyleProps {
+                width: f.width,
+                color: f.color.map(|c| c.0),
+                dash: f.dash.map(Into::into),
+                arrow: f.arrow.map(Into::into),
+            },
+        }
+    }
+}
+
+/// Properties of one named style in a sketch file's `styles` table.
+#[derive(Default, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct PropFields {
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "wire::finite_option"
+    )]
+    pub width: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none", with = "wire::present")]
+    pub color: Option<WireColor>,
+    #[serde(default, skip_serializing_if = "Option::is_none", with = "wire::present")]
+    pub dash: Option<WireDash>,
+    #[serde(default, skip_serializing_if = "Option::is_none", with = "wire::present")]
+    pub arrow: Option<WireArrow>,
+}
+
+impl From<&StyleProps> for PropFields {
+    fn from(p: &StyleProps) -> Self {
+        Self {
+            width: p.width,
+            color: p.color.map(WireColor),
+            dash: p.dash.map(Into::into),
+            arrow: p.arrow.map(Into::into),
+        }
+    }
+}
+
+impl From<PropFields> for StyleProps {
+    fn from(f: PropFields) -> Self {
+        Self {
+            width: f.width,
+            color: f.color.map(|c| c.0),
+            dash: f.dash.map(Into::into),
+            arrow: f.arrow.map(Into::into),
+        }
+    }
+}
+
+/// Style properties of `define_style` / `set_style`: absent leaves a
+/// property, `null` removes it.
+#[derive(Default, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct PatchFields {
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "wire::finite_or_null"
+    )]
+    #[schemars(schema_with = "wire::width_or_null_schema")]
+    pub width: Option<Option<f64>>,
+    #[serde(default, skip_serializing_if = "Option::is_none", with = "wire::or_null")]
+    #[schemars(with = "Option<WireColor>")]
+    pub color: Option<Option<WireColor>>,
+    #[serde(default, skip_serializing_if = "Option::is_none", with = "wire::or_null")]
+    #[schemars(with = "Option<WireDash>")]
+    pub dash: Option<Option<WireDash>>,
+    #[serde(default, skip_serializing_if = "Option::is_none", with = "wire::or_null")]
+    #[schemars(with = "Option<WireArrow>")]
+    pub arrow: Option<Option<WireArrow>>,
+}
+
+impl From<&StylePatch> for PatchFields {
+    fn from(p: &StylePatch) -> Self {
+        Self {
+            width: p.width,
+            color: p.color.map(|c| c.map(WireColor)),
+            dash: p.dash.map(|d| d.map(Into::into)),
+            arrow: p.arrow.map(|a| a.map(Into::into)),
+        }
+    }
+}
+
+impl From<PatchFields> for StylePatch {
+    fn from(f: PatchFields) -> Self {
+        Self {
+            width: f.width,
+            color: f.color.map(|c| c.map(|c| c.0)),
+            dash: f.dash.map(|d| d.map(Into::into)),
+            arrow: f.arrow.map(|a| a.map(Into::into)),
+        }
+    }
+}
+
+/// `define_style`: the style name, then the properties.
+#[derive(Serialize)]
+struct DefineStyleOut<'a> {
+    style: &'a str,
+    #[serde(flatten)]
+    patch: PatchFields,
+}
+
+/// `set_style`: the geometry, the style (if changed), then the overrides.
+#[derive(Serialize)]
+struct SetStyleOut<'a> {
+    name: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    style: Option<&'a str>,
+    #[serde(flatten)]
+    patch: PatchFields,
+}
+
+/// Fields of `delete_style`.
+#[derive(Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct DeleteStyleFields {
+    pub style: String,
+}
 
 /// Fields of `delete`.
 #[derive(Serialize, Deserialize, JsonSchema)]
@@ -159,8 +329,9 @@ impl Serialize for Command {
             Command::Create {
                 name,
                 role,
+                look,
                 geometry,
-            } => geometry.serialize_tagged("create", name.as_deref(), Some((*role).into()), s),
+            } => geometry.serialize_tagged("create", name.as_deref(), Some((*role).into()), look, s),
             Command::Constrain { name, constraint } => {
                 constraint.serialize_tagged("constrain", name.as_deref(), s)
             }
@@ -199,6 +370,30 @@ impl Serialize for Command {
                 },
             }
             .serialize(s),
+            Command::DefineStyle { style, patch } => WithOp {
+                op: "define_style",
+                fields: DefineStyleOut {
+                    style,
+                    patch: patch.into(),
+                },
+            }
+            .serialize(s),
+            Command::DeleteStyle { style } => WithOp {
+                op: "delete_style",
+                fields: DeleteStyleFields {
+                    style: style.clone(),
+                },
+            }
+            .serialize(s),
+            Command::SetStyle { name, style, patch } => WithOp {
+                op: "set_style",
+                fields: SetStyleOut {
+                    name,
+                    style: style.as_deref(),
+                    patch: patch.into(),
+                },
+            }
+            .serialize(s),
         }
     }
 }
@@ -210,8 +405,9 @@ impl Serialize for DeclCommand {
             DeclCommand::Create {
                 name,
                 role,
+                look,
                 geometry,
-            } => geometry.serialize_tagged("create", Some(name), Some((*role).into()), s),
+            } => geometry.serialize_tagged("create", Some(name), Some((*role).into()), look, s),
             DeclCommand::Constrain { name, constraint } => {
                 constraint.serialize_tagged("constrain", Some(name), s)
             }
@@ -239,10 +435,11 @@ fn command(m: &mut Map<String, Value>) -> JsonResult<Command> {
     let op = required_str(m, "op")?;
     Ok(match op.as_str() {
         "create" => {
-            let (name, role, geometry) = create(m)?;
+            let (name, role, look, geometry) = create(m)?;
             Command::Create {
                 name,
                 role,
+                look,
                 geometry,
             }
         }
@@ -285,6 +482,34 @@ fn command(m: &mut Map<String, Value>) -> JsonResult<Command> {
                 preamble: f.preamble,
             }
         }
+        "define_style" => {
+            let style = required_str(m, "style")?;
+            let patch: PatchFields = rest(m)?;
+            if patch == PatchFields::default() {
+                return Err(serde_json::Error::custom("no style property given"));
+            }
+            Command::DefineStyle {
+                style,
+                patch: patch.into(),
+            }
+        }
+        "delete_style" => {
+            let f: DeleteStyleFields = rest(m)?;
+            Command::DeleteStyle { style: f.style }
+        }
+        "set_style" => {
+            let name = required_str(m, "name")?;
+            let style = optional_str(m, "style")?;
+            let patch: PatchFields = rest(m)?;
+            if style.is_none() && patch == PatchFields::default() {
+                return Err(serde_json::Error::custom("no style or style property given"));
+            }
+            Command::SetStyle {
+                name,
+                style,
+                patch: patch.into(),
+            }
+        }
         other => return Err(serde_json::Error::unknown_variant(other, OPS)),
     })
 }
@@ -295,10 +520,11 @@ fn decl_command(m: &mut Map<String, Value>) -> JsonResult<DeclCommand> {
         || serde_json::Error::custom("missing field `name` (required in the declarative subset)");
     Ok(match op.as_str() {
         "create" => {
-            let (name, role, geometry) = create(m)?;
+            let (name, role, look, geometry) = create(m)?;
             DeclCommand::Create {
                 name: name.ok_or_else(missing_name)?,
                 role,
+                look,
                 geometry,
             }
         }
@@ -318,15 +544,22 @@ fn decl_command(m: &mut Map<String, Value>) -> JsonResult<DeclCommand> {
     })
 }
 
-fn create(m: &mut Map<String, Value>) -> JsonResult<(Option<String>, GeometryRole, GeometrySpec)> {
+type Create = (Option<String>, GeometryRole, StyleRef, GeometrySpec);
+
+fn create(m: &mut Map<String, Value>) -> JsonResult<Create> {
     let kind = required_str(m, "kind")?;
     let name = optional_str(m, "name")?;
     let role = match m.remove("role") {
         Some(v) => Role::deserialize(v)?.into(),
         None => Default::default(),
     };
+    let look: Map<String, Value> = LOOK_FIELDS
+        .iter()
+        .filter_map(|&k| m.remove(k).map(|v| (k.to_owned(), v)))
+        .collect();
+    let look: LookFields = serde_json::from_value(Value::Object(look))?;
     let geometry = GeometrySpec::from_fields(&kind, Value::Object(std::mem::take(m)))?;
-    Ok((name, role, geometry))
+    Ok((name, role, look.into(), geometry))
 }
 
 fn constrain(m: &mut Map<String, Value>) -> JsonResult<(Option<String>, ConstraintSpec)> {

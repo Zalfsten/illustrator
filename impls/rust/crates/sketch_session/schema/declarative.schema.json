@@ -5,6 +5,31 @@
     {
       "additionalProperties": false,
       "properties": {
+        "arrow": {
+          "description": "Arrow heads: `\"none\"`, `\"start\"`, `\"end\"` or `\"both\"`.",
+          "enum": [
+            "none",
+            "start",
+            "end",
+            "both"
+          ],
+          "type": "string"
+        },
+        "color": {
+          "description": "sRGB colour #rrggbb.",
+          "pattern": "^#[0-9A-Fa-f]{6}$",
+          "type": "string"
+        },
+        "dash": {
+          "description": "Dash pattern: `\"solid\"`, `\"dashed\"`, `\"dotted\"` or `\"dashdot\"`.",
+          "enum": [
+            "solid",
+            "dashed",
+            "dotted",
+            "dashdot"
+          ],
+          "type": "string"
+        },
         "end": {
           "description": "Point [x, y].",
           "items": {
@@ -40,6 +65,15 @@
           "maxItems": 2,
           "minItems": 2,
           "type": "array"
+        },
+        "style": {
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+          "type": "string"
+        },
+        "width": {
+          "description": "Stroke width in pt, greater than zero.",
+          "exclusiveMinimum": 0,
+          "type": "number"
         }
       },
       "required": [
@@ -55,6 +89,16 @@
     {
       "additionalProperties": false,
       "properties": {
+        "arrow": {
+          "description": "Arrow heads: `\"none\"`, `\"start\"`, `\"end\"` or `\"both\"`.",
+          "enum": [
+            "none",
+            "start",
+            "end",
+            "both"
+          ],
+          "type": "string"
+        },
         "center": {
           "description": "Point [x, y].",
           "items": {
@@ -63,6 +107,21 @@
           "maxItems": 2,
           "minItems": 2,
           "type": "array"
+        },
+        "color": {
+          "description": "sRGB colour #rrggbb.",
+          "pattern": "^#[0-9A-Fa-f]{6}$",
+          "type": "string"
+        },
+        "dash": {
+          "description": "Dash pattern: `\"solid\"`, `\"dashed\"`, `\"dotted\"` or `\"dashdot\"`.",
+          "enum": [
+            "solid",
+            "dashed",
+            "dotted",
+            "dashdot"
+          ],
+          "type": "string"
         },
         "kind": {
           "const": "arc"
@@ -93,9 +152,18 @@
           "format": "double",
           "type": "number"
         },
+        "style": {
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+          "type": "string"
+        },
         "sweep": {
           "description": "Turn from start to end, radians, counterclockwise positive.",
           "format": "double",
+          "type": "number"
+        },
+        "width": {
+          "description": "Stroke width in pt, greater than zero.",
+          "exclusiveMinimum": 0,
           "type": "number"
         }
       },
@@ -114,6 +182,31 @@
     {
       "additionalProperties": false,
       "properties": {
+        "arrow": {
+          "description": "Arrow heads: `\"none\"`, `\"start\"`, `\"end\"` or `\"both\"`.",
+          "enum": [
+            "none",
+            "start",
+            "end",
+            "both"
+          ],
+          "type": "string"
+        },
+        "color": {
+          "description": "sRGB colour #rrggbb.",
+          "pattern": "^#[0-9A-Fa-f]{6}$",
+          "type": "string"
+        },
+        "dash": {
+          "description": "Dash pattern: `\"solid\"`, `\"dashed\"`, `\"dotted\"` or `\"dashdot\"`.",
+          "enum": [
+            "solid",
+            "dashed",
+            "dotted",
+            "dashdot"
+          ],
+          "type": "string"
+        },
         "halign": {
           "default": "left",
           "description": "Label horizontal alignment: `\"left\"`, `\"center\"` or `\"right\"`.",
@@ -187,6 +280,10 @@
           "description": "Text, read according to `markup`.",
           "type": "string"
         },
+        "style": {
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+          "type": "string"
+        },
         "valign": {
           "default": "first",
           "description": "Label vertical anchor: `\"first\"` or `\"last\"`.",
@@ -195,6 +292,11 @@
             "last"
           ],
           "type": "string"
+        },
+        "width": {
+          "description": "Stroke width in pt, greater than zero.",
+          "exclusiveMinimum": 0,
+          "type": "number"
         }
       },
       "required": [

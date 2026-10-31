@@ -116,7 +116,11 @@ fn opened_drawing_lies_inside_the_canvas() {
     let canvas = Rect::from_min_max(Pos2::new(0.0, 0.0), Pos2::new(800.0, 600.0));
     let (min, max) = app.world_box;
     let vp = Viewport::fit(canvas, min, max, VIEW_MARGIN);
-    for p in [Point2::new(40.0, 20.0), Point2::new(60.0, 30.0), Point2::new(50.0, 35.0)] {
+    for p in [
+        Point2::new(40.0, 20.0),
+        Point2::new(60.0, 30.0),
+        Point2::new(50.0, 35.0),
+    ] {
         assert!(canvas.contains(vp.to_screen(p)), "{p:?} off screen");
     }
 }
@@ -129,6 +133,7 @@ fn new_gives_the_default_box_and_edits_do_not_refit() {
         Command::Create {
             name: None,
             role: GeometryRole::Result,
+            look: Default::default(),
             geometry: GeometrySpec::Segment(SegmentParams {
                 start: Point2::new(0.0, 0.0),
                 end: Point2::new(1.0, 0.0),
@@ -142,4 +147,180 @@ fn new_gives_the_default_box_and_edits_do_not_refit() {
     app.file_answer(Answer::Discard);
     assert_eq!(app.world_box, (WORLD_MIN, WORLD_MAX));
     assert!(app.doc().geometries().is_empty());
+}
+
+// --- The Canvas shows result geometry in its style ---
+
+use constraint_runtime::{Arrow, Dash, DocumentSettings, StyleProps, StyleRef, MM_PER_PT};
+
+/// A document where 1 pt is one world unit, with segment (0, 0)–(`len`, 0)
+/// in `role` overriding `look`.
+fn styled_segment(len: f64, role: GeometryRole, look: StyleProps) -> (Document, GeometryId) {
+    let mut doc = Document::new();
+    doc.set_settings(DocumentSettings {
+        scale: MM_PER_PT,
+        ..DocumentSettings::default()
+    });
+    let id = doc.add_geometry::<Segment>(role, (Point2::new(0.0, 0.0), Point2::new(len, 0.0)));
+    let look = StyleRef {
+        overrides: look,
+        ..StyleRef::default()
+    };
+    doc.set_geometry_style(id, look).unwrap();
+    (doc, id)
+}
+
+fn paint_of(doc: &Document, id: GeometryId, viewport: &Viewport) -> CurvePaint {
+    let mesh = Mesh::from_document(doc, doc.vector(), MeshFilter::INCLUDE_CONSTRUCTION);
+    let lines = polylines(&mesh);
+    let (_, line) = lines.iter().find(|(g, _)| *g == id).unwrap();
+    curve_paint(doc, id, line, viewport, 1.0)
+}
+
+fn near(a: Pos2, b: Pos2) -> bool {
+    (a - b).length() < 1e-3
+}
+
+#[test]
+fn dashed_segment_yields_its_dashes() {
+    let look = StyleProps {
+        dash: Some(Dash::Dashed),
+        ..StyleProps::default()
+    };
+    let (doc, id) = styled_segment(12.0, GeometryRole::Result, look);
+    let vp = Viewport::new(10.0, Pos2::new(5.0, 100.0));
+    let paint = paint_of(&doc, id, &vp);
+    let spans: Vec<(Pos2, Pos2)> = paint
+        .pieces
+        .iter()
+        .map(|p| (p[0], *p.last().unwrap()))
+        .collect();
+    assert_eq!(spans.len(), 2);
+    assert!(near(spans[0].0, Pos2::new(5.0, 100.0)) && near(spans[0].1, Pos2::new(35.0, 100.0)));
+    assert!(near(spans[1].0, Pos2::new(65.0, 100.0)) && near(spans[1].1, Pos2::new(95.0, 100.0)));
+    assert!(paint.heads.is_empty());
+    assert_eq!(paint.color, Color32::BLACK);
+    assert!((paint.width - 4.0).abs() < 1e-4, "0.4 pt at 10 px per pt");
+}
+
+#[test]
+fn arrow_head_tip_is_the_endpoint() {
+    let look = StyleProps {
+        arrow: Some(Arrow::End),
+        color: Some(Rgb(0xc0, 0, 0)),
+        ..StyleProps::default()
+    };
+    let (doc, id) = styled_segment(20.0, GeometryRole::Result, look);
+    let vp = Viewport::new(2.0, Pos2::new(0.0, 50.0));
+    let paint = paint_of(&doc, id, &vp);
+    assert_eq!(paint.heads.len(), 1);
+    assert!(near(
+        paint.heads[0][0],
+        vp.to_screen(Point2::new(20.0, 0.0))
+    ));
+    assert_eq!(paint.color, Color32::from_rgb(0xc0, 0, 0));
+    assert_eq!(paint.pieces.len(), 1);
+    assert!(near(
+        *paint.pieces[0].last().unwrap(),
+        vp.to_screen(Point2::new(15.2, 0.0))
+    ));
+}
+
+#[test]
+fn thin_line_stays_visible() {
+    let look = StyleProps {
+        width: Some(0.1),
+        ..StyleProps::default()
+    };
+    let (doc, id) = styled_segment(10.0, GeometryRole::Result, look);
+    let paint = paint_of(&doc, id, &Viewport::new(2.0, Pos2::ZERO));
+    assert_eq!(paint.width, 1.0, "0.1 pt is 0.2 px here");
+}
+
+#[test]
+fn construction_ignores_its_style() {
+    let look = StyleProps {
+        arrow: Some(Arrow::End),
+        color: Some(Rgb(0xc0, 0, 0)),
+        dash: Some(Dash::Dashed),
+        ..StyleProps::default()
+    };
+    let (doc, id) = styled_segment(20.0, GeometryRole::Construction, look);
+    let paint = paint_of(&doc, id, &Viewport::new(2.0, Pos2::ZERO));
+    assert!(paint.heads.is_empty());
+    assert_eq!(paint.color, CONSTRUCTION);
+    assert_eq!(paint.pieces.len(), 1);
+    assert_eq!(paint.width, CONSTRUCTION_WIDTH);
+}
+
+#[test]
+fn polylines_group_edges_per_geometry() {
+    let app = App::with_sample();
+    let lines = polylines(&app.mesh());
+    let mut ids: Vec<GeometryId> = lines.iter().map(|(g, _)| *g).collect();
+    let n = ids.len();
+    ids.dedup();
+    assert_eq!(ids.len(), n, "each geometry once");
+    assert_eq!(n, 3, "two legs and the fillet");
+}
+
+// --- Style row and brush ---
+
+use crate::style_ui::Switch;
+
+fn apply_json(app: &mut App, text: &str) {
+    app.session
+        .apply(Command::from_json(text).unwrap())
+        .unwrap();
+}
+
+/// `create` of `name` in the exported drawing.
+fn exported(app: &App, name: &str) -> String {
+    let list = app.session.declarative_commands().unwrap();
+    list.iter()
+        .map(|c| c.to_json().unwrap())
+        .find(|t| t.contains(&format!("\"name\":\"{name}\"")))
+        .unwrap()
+}
+
+#[test]
+fn segment_tool_draws_with_the_current_style() {
+    let mut app = App::with_sample();
+    apply_json(
+        &mut app,
+        r#"{"op": "define_style", "style": "axis", "width": 0.8}"#,
+    );
+    app.current.style = "axis".into();
+    app.current.color = Switch {
+        on: true,
+        value: Rgb(0xc0, 0, 0),
+    };
+    app.tool = Tool::Segment;
+    app.handle_click(app.viewport.to_screen(Point2::new(5.0, 5.0)));
+    app.handle_click(app.viewport.to_screen(Point2::new(6.0, 5.0)));
+    let name = app.status.strip_prefix("Added ").unwrap().to_owned();
+    let text = exported(&app, &name);
+    assert!(
+        text.ends_with(r##""style":"axis","color":"#c00000"}"##),
+        "{text}"
+    );
+}
+
+#[test]
+fn brush_replaces_style_and_overrides() {
+    let mut app = App::with_sample();
+    apply_json(
+        &mut app,
+        r##"{"op": "create", "kind": "segment", "name": "odd", "start": [5, 5], "end": [6, 5], "color": "#c00000", "dash": "dotted"}"##,
+    );
+    app.tool = Tool::Brush;
+    app.handle_click(app.viewport.to_screen(Point2::new(5.5, 5.0)));
+    assert_eq!(app.status, "Brushed odd");
+    let text = exported(&app, "odd");
+    assert!(
+        !text.contains("color") && !text.contains("dash") && !text.contains("style"),
+        "{text}"
+    );
+    assert!(app.session.undo().is_ok());
+    assert!(exported(&app, "odd").contains("dotted"));
 }

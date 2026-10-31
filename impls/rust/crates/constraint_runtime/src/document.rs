@@ -17,6 +17,7 @@ use crate::geometry::{
 use crate::geometry_kinds::{with_kind, GeometryInst, KindAttrs, LabelAttrs};
 use crate::id::IdMap;
 use crate::names::{NameError, Names, ObjectId};
+use crate::style::{Style, StyleError, StylePatch, StyleRef, Styles, DEFAULT_STYLE};
 use crate::vector::Vector;
 
 /// One Congruence edge, indexed under each participating geometry.
@@ -78,6 +79,8 @@ pub struct Document {
     /// User-visible names of all geometries and constraints (never on the solve path).
     names: Names,
     settings: DocumentSettings,
+    /// Named styles (styling); appearance only, never on the solve path.
+    styles: Styles,
 }
 
 /// Objects dropped by [`Document::remove_geometry`] / [`Document::remove_constraint`].
@@ -162,6 +165,72 @@ impl Document {
 
     pub fn set_settings(&mut self, settings: DocumentSettings) {
         self.settings = settings;
+    }
+
+    pub fn styles(&self) -> &Styles {
+        &self.styles
+    }
+
+    /// Create style `name` from `patch`, or apply `patch` to it.
+    pub fn define_style(&mut self, name: &str, patch: &StylePatch) -> Result<(), StyleError> {
+        self.styles.define(name, patch)
+    }
+
+    /// Replace the whole style table; `default` is added if `styles` lacks it.
+    /// Every geometry must still refer to a style in the new table.
+    pub fn set_styles(&mut self, styles: Styles) -> Result<(), StyleError> {
+        if let Some(g) = self.geometries.values().find(|g| !styles.contains(&g.style().style)) {
+            return Err(StyleError::Unknown(g.style().style.clone()));
+        }
+        self.styles = styles;
+        Ok(())
+    }
+
+    /// Delete style `name`. `default` and styles that geometries refer to
+    /// are rejected with [`StyleError::InUse`] naming those geometries.
+    pub fn delete_style(&mut self, name: &str) -> Result<(), StyleError> {
+        if !self.styles.contains(name) {
+            return Err(StyleError::Unknown(name.to_owned()));
+        }
+        let users = self.style_users(name);
+        if name == DEFAULT_STYLE || !users.is_empty() {
+            return Err(StyleError::InUse(users));
+        }
+        self.styles.remove(name);
+        Ok(())
+    }
+
+    /// Geometries that refer to style `name`, in id order.
+    pub fn style_users(&self, name: &str) -> Vec<GeometryId> {
+        self.geometries
+            .values()
+            .filter(|g| g.style().style == name)
+            .map(|g| g.id())
+            .collect()
+    }
+
+    /// Style reference and overrides of geometry `id`.
+    pub fn geometry_style(&self, id: GeometryId) -> Option<&StyleRef> {
+        self.geometry(id).map(|g| g.style())
+    }
+
+    /// Replace the style reference and overrides of geometry `id`; the named
+    /// style must exist and override widths must be valid.
+    pub fn set_geometry_style(&mut self, id: GeometryId, style: StyleRef) -> Result<(), StyleError> {
+        if !self.styles.contains(&style.style) {
+            return Err(StyleError::Unknown(style.style));
+        }
+        if !style.overrides.is_valid() {
+            return Err(StyleError::InvalidWidth);
+        }
+        let g = self.geometries.get_mut(id).ok_or(StyleError::UnknownGeometry)?;
+        g.set_style(style);
+        Ok(())
+    }
+
+    /// Every style property of geometry `id`, resolved (styling).
+    pub fn resolved_style(&self, id: GeometryId) -> Option<Style> {
+        self.geometry_style(id).map(|r| self.styles.resolve(r))
     }
 
     /// Capability set of geometry `id` (`None` if `id` is not in the document).
