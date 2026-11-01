@@ -324,3 +324,97 @@ fn brush_replaces_style_and_overrides() {
     assert!(app.session.undo().is_ok());
     assert!(exported(&app, "odd").contains("dotted"));
 }
+
+// --- Export SVG (drawing-export) ---
+
+use crate::export::WAITING;
+use crate::fake_typesetter::{Boxes, Manual};
+
+fn pending_svg(fake: &FakeFiles) -> String {
+    let (overwrite, suggested, bytes) = fake.save_request();
+    assert_eq!(overwrite, None);
+    assert_eq!(suggested.as_deref(), Some("untitled.svg"));
+    String::from_utf8(bytes).unwrap()
+}
+
+#[test]
+fn sample_scene_exports_through_the_host() {
+    let fake = FakeFiles::new(true);
+    let mut app = App::with_host(Box::new(label_layout::Immediate::new(Boxes)), fake.clone());
+    app.start_export();
+    assert!(!app.export_step(), "typeset at once, nothing to wait for");
+    let svg = pending_svg(&fake);
+    assert!(svg.starts_with("<?xml"));
+    for id in ["seg1", "arc1", "seg2"] {
+        assert!(svg.contains(&format!(r#"<g id="{id}">"#)), "{id}");
+    }
+    assert!(!svg.contains("seg3"), "construction helper left out");
+    fake.save_as("figure.svg");
+    app.poll_files();
+    assert_eq!(app.status, "Exported figure.svg");
+    assert_eq!(app.files.file_name(), None, "the drawing keeps no file");
+}
+
+#[test]
+fn export_waits_while_the_typesetter_loads() {
+    let fake = FakeFiles::new(true);
+    let ts = Manual::loading();
+    let mut app = App::with_host(Box::new(ts.clone()), fake.clone());
+    app.start_export();
+    assert!(app.export_step());
+    assert_eq!(app.status, WAITING);
+    assert_eq!(fake.pending_saves(), 0);
+    ts.complete();
+    assert!(!app.export_step());
+    assert_eq!(fake.pending_saves(), 1);
+}
+
+#[test]
+fn failing_label_is_named_and_nothing_is_saved() {
+    let fake = FakeFiles::new(true);
+    let mut app = App::with_files(fake.clone());
+    let label = app
+        .doc()
+        .geometries()
+        .values()
+        .find(|g| app.doc().label_attrs(g.id()).is_some())
+        .map(|g| app.doc().geometry_name(g.id()).unwrap().to_owned())
+        .unwrap();
+    app.start_export();
+    app.export_step();
+    let err = app.last_error.clone().unwrap();
+    assert_eq!(err, format!("Cannot export: {label}: no typesetter available"));
+    assert_eq!(fake.pending_saves(), 0);
+    assert!(app.export.is_none(), "the export ended");
+}
+
+#[test]
+fn edit_while_waiting_does_not_change_the_file() {
+    let fake = FakeFiles::new(true);
+    let ts = Manual::loading();
+    let mut app = App::with_host(Box::new(ts.clone()), fake.clone());
+    app.start_export();
+    assert!(app.export_step());
+    apply_json(
+        &mut app,
+        r#"{"op": "create", "kind": "segment", "name": "late", "start": [0, 0], "end": [1, 1]}"#,
+    );
+    ts.complete();
+    app.export_step();
+    assert!(!pending_svg(&fake).contains("late"));
+}
+
+#[test]
+fn no_export_during_a_drag_or_a_running_export() {
+    let fake = FakeFiles::new(true);
+    let mut app = App::with_host(Box::new(Manual::loading()), fake.clone());
+    app.session.drag_begin("seg1.start").unwrap();
+    app.start_export();
+    assert!(app.export.is_none());
+    app.session.drag_cancel();
+    app.start_export();
+    assert!(app.export.is_some());
+    app.status.clear();
+    app.start_export();
+    assert!(app.status.is_empty(), "a second export does not start");
+}

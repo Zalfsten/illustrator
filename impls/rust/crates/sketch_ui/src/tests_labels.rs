@@ -439,3 +439,57 @@ fn a_pending_line_is_requested_once() {
     env.paint(s.document(), &vp, MeshFilter::RESULT_ONLY);
     assert_eq!(m.requests.get(), 1);
 }
+
+// --- Lines for an export (svg-export D8) ---
+
+fn req(line: &str) -> LineRequest {
+    LineRequest::new(line, Markup::Latex, 10.0, "")
+}
+
+#[test]
+fn ensured_lines_survive_the_sweep() {
+    let s = joined("a", "result");
+    let (mut env, calls) = fake();
+    let vp = viewport(100.0);
+    let ts = env.ts.take().unwrap();
+    // A line no label of the drawing uses (the drawing changed since the export started).
+    let gone = [req("old")];
+    let first = env.cache.ensure(ts.as_ref(), &gone).unwrap().unwrap();
+    assert_eq!(first[0].width, 15.0);
+    label_paint(s.document(), &vp, MeshFilter::RESULT_ONLY, &mut env.cache, Some(ts.as_ref()));
+    let again = env.cache.ensure(ts.as_ref(), &gone).unwrap().unwrap();
+    assert!(Rc::ptr_eq(&first[0], &again[0]), "kept, not typeset again");
+    assert_eq!(calls.get(), 2, "`old` and the label's `a`, once each");
+    // Without `ensure` in a frame, the line is dropped at the next sweep.
+    label_paint(s.document(), &vp, MeshFilter::RESULT_ONLY, &mut env.cache, Some(ts.as_ref()));
+    label_paint(s.document(), &vp, MeshFilter::RESULT_ONLY, &mut env.cache, Some(ts.as_ref()));
+    assert!(!env.cache.lines.contains_key(&gone[0]));
+}
+
+#[test]
+fn canvas_and_export_share_results() {
+    let s = joined("ab", "result");
+    let (mut env, m) = manual(TypesetterState::Loading);
+    let vp = viewport(100.0);
+    env.paint(s.document(), &vp, MeshFilter::RESULT_ONLY);
+    let attrs = s.document().label_attrs(s.document().geometries().values().nth(1).unwrap().id()).unwrap();
+    let reqs = label_requests(attrs, s.document().settings());
+    let ts = env.ts.take().unwrap();
+    assert_eq!(env.cache.ensure(ts.as_ref(), &reqs), None, "pending");
+    assert_eq!(m.requests.get(), 1, "the export reuses the Canvas's request");
+    m.complete();
+    let lines = env.cache.ensure(ts.as_ref(), &reqs).unwrap().unwrap();
+    assert_eq!(lines.len(), 1);
+    assert_eq!(lines[0].width, 10.0);
+    env.ts = Some(ts);
+    let items = env.paint(s.document(), &vp, MeshFilter::RESULT_ONLY);
+    assert!(matches!(&items[..], [PaintItem::Typeset { .. }]), "{items:?}");
+}
+
+#[test]
+fn ensure_reports_a_failure() {
+    let (mut env, _) = fake();
+    let ts = env.ts.take().unwrap();
+    let err = env.cache.ensure(ts.as_ref(), &[req("x"), req(r"\foo")]).unwrap().unwrap_err();
+    assert!(matches!(err, TypesetError::Unsupported { .. }), "{err:?}");
+}

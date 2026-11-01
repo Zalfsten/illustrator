@@ -450,3 +450,85 @@ fn untitled_title() {
     assert_eq!(fake.shown(), vec![("untitled".into(), false)]);
     assert_eq!(files.title(), "untitled");
 }
+
+// --- Export (drawing-export: Export command, Export leaves the drawing unchanged) ---
+
+#[test]
+fn export_suggests_the_drawings_name_with_svg() {
+    let fake = FakeFiles::new(true);
+    let (_, files) = opened(&fake, "triangle.sketch.json");
+    assert_eq!(files.export_name(), "triangle.svg");
+    let (_, files) = opened(&fake, "plain.json");
+    assert_eq!(files.export_name(), "plain.svg");
+    let (_, files) = opened(&fake, "noext");
+    assert_eq!(files.export_name(), "noext.svg");
+    let (_, files) = drawing(&fake);
+    assert_eq!(files.export_name(), UNTITLED_EXPORT);
+    assert_eq!(UNTITLED_EXPORT, "untitled.svg");
+}
+
+#[test]
+fn export_asks_for_a_target_and_keeps_the_drawings_file() {
+    let fake = FakeFiles::new(true);
+    let (mut session, mut files) = opened(&fake, "triangle.sketch.json");
+    edit(&mut session, &mut files, &fake, segment("seg2", 2.0));
+    let title = files.title();
+    assert!(files.export(b"<svg/>".to_vec(), &fake));
+    assert!(files.busy());
+    let (overwrite, suggested, bytes) = fake.save_request();
+    assert_eq!(overwrite, None, "always asks");
+    assert_eq!(suggested.as_deref(), Some("triangle.svg"));
+    assert_eq!(bytes, b"<svg/>");
+    fake.save_as("figure.svg");
+    let step = files.poll(&mut session, &fake);
+    assert_eq!(step, Step { effect: None, message: Some(Ok("Exported figure.svg".into())) });
+    assert_eq!(files.file_name(), Some("triangle.sketch.json"));
+    assert!(files.unsaved(), "still unsaved");
+    assert_eq!(files.title(), title);
+    files.refresh(&session, &fake);
+    assert!(files.unsaved(), "baseline unchanged");
+    assert!(!files.busy());
+}
+
+#[test]
+fn cancelled_export_writes_nothing() {
+    let fake = FakeFiles::new(true);
+    let (mut session, mut files) = drawing(&fake);
+    assert!(files.export(b"x".to_vec(), &fake));
+    fake.complete_save(None);
+    assert_eq!(files.poll(&mut session, &fake), Step::default());
+    assert_eq!(files.file_name(), None);
+    assert!(!files.busy());
+}
+
+#[test]
+fn failed_export_is_shown() {
+    let fake = FakeFiles::new(true);
+    let (mut session, mut files) = drawing(&fake);
+    files.export(b"x".to_vec(), &fake);
+    fake.complete_save(Some(Err("disk full".into())));
+    let step = files.poll(&mut session, &fake);
+    assert_eq!(step.message, Some(Err("Export failed: disk full".into())));
+    assert!(!files.unsaved());
+}
+
+#[test]
+fn export_on_download_only_host_is_a_download() {
+    let fake = FakeFiles::new(false);
+    let (mut session, mut files) = opened(&fake, "a.sketch.json");
+    files.export(b"x".to_vec(), &fake);
+    assert_eq!(fake.save_request().1.as_deref(), Some("a.svg"));
+    fake.save_as("a.svg");
+    let step = files.poll(&mut session, &fake);
+    assert_eq!(step.message, Some(Ok("Downloaded a.svg".into())));
+    assert_eq!(files.file_name(), Some("a.sketch.json"));
+}
+
+#[test]
+fn no_export_while_busy() {
+    let fake = FakeFiles::new(true);
+    let (mut session, mut files) = drawing(&fake);
+    files.command(FileCommand::SaveAs, &mut session, &fake);
+    assert!(!files.export(b"x".to_vec(), &fake));
+    assert_eq!(fake.pending_saves(), 1, "only the save");
+}

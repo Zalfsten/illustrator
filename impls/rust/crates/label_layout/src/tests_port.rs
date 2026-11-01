@@ -36,3 +36,38 @@ fn request_keys_compare_by_size_bits() {
     assert_ne!(a, LineRequest::new("x", Markup::Text, 10.0, ""));
     assert_ne!(a, LineRequest::new("x", Markup::Latex, 10.0, r"\def\a{b}"));
 }
+
+#[test]
+fn label_requests_split_size_and_preamble() {
+    use constraint_runtime::{DocumentSettings, LabelAttrs};
+    let settings = DocumentSettings {
+        font_size: 12.0,
+        preamble: r"\newcommand{\R}{\mathbb{R}}".into(),
+        ..DocumentSettings::default()
+    };
+    let latex = LabelAttrs {
+        source: r"leg \\ $\R$".into(),
+        size: Some(8.0),
+        ..LabelAttrs::default()
+    };
+    assert_eq!(
+        label_requests(&latex, &settings),
+        crate::split_lines(&latex.source, Markup::Latex)
+            .into_iter()
+            .map(|l| LineRequest::new(l, Markup::Latex, 8.0, &settings.preamble))
+            .collect::<Vec<_>>()
+    );
+    assert_eq!(label_requests(&latex, &settings).len(), 2);
+    let text = LabelAttrs {
+        source: "a\nb\nc".into(),
+        markup: Markup::Text,
+        ..LabelAttrs::default()
+    };
+    let reqs = label_requests(&text, &settings);
+    assert_eq!(
+        reqs,
+        ["a", "b", "c"].map(|l| LineRequest::new(l, Markup::Text, 12.0, &settings.preamble))
+    );
+    let empty = LabelAttrs::default();
+    assert!(label_requests(&empty, &settings).is_empty());
+}

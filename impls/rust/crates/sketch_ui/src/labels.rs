@@ -8,8 +8,8 @@ use std::rc::Rc;
 use constraint_runtime::{Document, GeometryId, GeometryRole, LabelAttrs, MeshFilter, Point2};
 use eframe::egui::Pos2;
 use label_layout::{
-    frame_map, label_size, line_origins, split_lines, tessellate, Affine2, LineMetrics,
-    LineRequest, Triangles, TypesetError, Typesetter, TypesetterState,
+    frame_map, label_requests, label_size, line_origins, split_lines, tessellate, Affine2, LineMetrics,
+    LineRequest, Triangles, TypesetError, TypesetLine, Typesetter, TypesetterState,
 };
 
 use crate::viewport::Viewport;
@@ -25,7 +25,13 @@ type Typeset = (LineMetrics, Triangles);
 enum Entry {
     /// Requested, no result yet.
     Pending,
-    Done(Result<Typeset, TypesetError>),
+    Done(Result<Line, TypesetError>),
+}
+
+/// A delivered line: ready to paint, and its outlines for exports.
+struct Line {
+    paint: Typeset,
+    outlines: Rc<TypesetLine>,
 }
 
 /// Typeset lines of the current frame's labels, and each label's last
@@ -50,7 +56,10 @@ impl LabelCache {
 
     fn take_completed(&mut self, ts: &dyn Typesetter) {
         for (req, result) in ts.take_completed() {
-            let done = result.map(|l| (LineMetrics::from(&l), tessellate(&l.shapes)));
+            let done = result.map(|l| Line {
+                paint: (LineMetrics::from(&l), tessellate(&l.shapes)),
+                outlines: Rc::new(l),
+            });
             self.lines.insert(req, Entry::Done(done));
         }
     }
@@ -66,13 +75,32 @@ impl LabelCache {
         }
     }
 
+    /// Outlines of `reqs` for an export: requested if missing and kept for
+    /// this frame like the Canvas's lines. All lines, the first failure, or
+    /// `None` while any is pending.
+    pub fn ensure(
+        &mut self,
+        ts: &dyn Typesetter,
+        reqs: &[LineRequest],
+    ) -> Option<Result<Vec<Rc<TypesetLine>>, TypesetError>> {
+        self.take_completed(ts);
+        self.request(ts, reqs);
+        // An immediate typesetter has answered inside `request`.
+        self.take_completed(ts);
+        self.collect(reqs, |l| l.outlines.clone())
+    }
+
     /// All lines typeset, the first failure, or `None` while any is pending.
     fn status(&self, reqs: &[LineRequest]) -> Option<Result<Vec<Typeset>, TypesetError>> {
+        self.collect(reqs, |l| l.paint.clone())
+    }
+
+    fn collect<T>(&self, reqs: &[LineRequest], get: impl Fn(&Line) -> T) -> Option<Result<Vec<T>, TypesetError>> {
         let mut lines = Vec::with_capacity(reqs.len());
         let mut pending = false;
         for req in reqs {
             match self.lines.get(req) {
-                Some(Entry::Done(Ok(t))) => lines.push(t.clone()),
+                Some(Entry::Done(Ok(l))) => lines.push(get(l)),
                 Some(Entry::Done(Err(e))) => return Some(Err(e.clone())),
                 Some(Entry::Pending) | None => pending = true,
             }
@@ -198,10 +226,7 @@ pub fn label_paint(
             }
             (Some(ts), Some(_)) => ts,
         };
-        let reqs: Vec<LineRequest> = sources
-            .iter()
-            .map(|l| LineRequest::new(l, attrs.markup, size, &settings.preamble))
-            .collect();
+        let reqs = label_requests(attrs, &settings);
         cache.request(ts, &reqs);
         // An immediate typesetter has answered inside `request`.
         cache.take_completed(ts);

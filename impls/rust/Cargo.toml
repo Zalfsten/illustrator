@@ -4,6 +4,7 @@ members = [
     "crates/constraint_runtime",
     "crates/sketch_session",
     "crates/label_layout",
+    "crates/sketch_export",
     "crates/label_typst",
     "crates/label_worker",
     "crates/label_web",
@@ -13,6 +14,7 @@ default-members = [
     "crates/constraint_runtime",
     "crates/sketch_session",
     "crates/label_layout",
+    "crates/sketch_export",
     "crates/label_typst",
     "crates/sketch_ui",
 ]

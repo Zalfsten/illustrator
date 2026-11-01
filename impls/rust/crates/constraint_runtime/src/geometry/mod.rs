@@ -6,6 +6,7 @@
 pub mod capabilities;
 pub mod chart;
 pub mod formula;
+pub mod shape;
 pub mod shell;
 
 pub use capabilities::{
@@ -14,4 +15,5 @@ pub use capabilities::{
 };
 pub use chart::{Chart, ChartSlot, StateAtom};
 pub use formula::{Formula, Geometry};
+pub use shape::ShapePiece;
 pub use shell::{GeometryId, GeometryRole, GeometryShell};

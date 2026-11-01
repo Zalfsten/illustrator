@@ -6,7 +6,10 @@
 
 use std::cell::RefCell;
 
-use constraint_runtime::Markup;
+use constraint_runtime::{DocumentSettings, LabelAttrs, Markup};
+
+use crate::place::label_size;
+use crate::split::split_lines;
 
 use crate::typeset::{LineTypesetter, TypesetError, TypesetLine};
 
@@ -34,6 +37,17 @@ impl LineRequest {
     pub fn size_pt(&self) -> f64 {
         f64::from_bits(self.size_bits)
     }
+}
+
+/// The requests for a label's lines: its source split at explicit breaks, at
+/// the label's size, with the document preamble. The Canvas and exports build
+/// the same keys this way.
+pub fn label_requests(attrs: &LabelAttrs, settings: &DocumentSettings) -> Vec<LineRequest> {
+    let size = label_size(attrs, settings);
+    split_lines(&attrs.source, attrs.markup)
+        .into_iter()
+        .map(|l| LineRequest::new(l, attrs.markup, size, &settings.preamble))
+        .collect()
 }
 
 /// The result delivered for a request.

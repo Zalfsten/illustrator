@@ -18,6 +18,7 @@ use super::capabilities::{
     GeometryCaps, HeadingFormula, LengthFormula, PointFormula, TurnFormula, VecFormula,
 };
 use super::chart::Chart;
+use super::shape::ShapePiece;
 use crate::geom::{HeadingAngle, Length, Point2, TurnAngle, Vec2};
 use crate::geometry_kinds::{GeometryKind, KindAttrs};
 use crate::matrix::DenseMatrix;
@@ -57,6 +58,12 @@ pub trait Geometry: Chart + GeometryCaps + Sized + 'static {
     /// may hold non-canonical values (e.g. a negative arc radius).
     fn canonical(init: Self::Init) -> Self::Init {
         init
+    }
+
+    /// Exact shape (curve capability only), at canonical chart values.
+    fn shape(c: Self::Init) -> Vec<ShapePiece> {
+        let _ = c;
+        unsupported(Self::KIND, "shape")
     }
 
     fn point(f: PointFormula, c: Self::Init) -> Point2 {

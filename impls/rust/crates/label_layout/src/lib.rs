@@ -22,7 +22,7 @@ pub mod wire;
 pub use place::{
     baselines, frame_map, label_size, line_origins, place, world_per_pt, Affine2, LineMetrics,
 };
-pub use port::{Immediate, LineRequest, LineResult, Typesetter, TypesetterState};
+pub use port::{label_requests, Immediate, LineRequest, LineResult, Typesetter, TypesetterState};
 pub use split::split_lines;
 pub use tessellate::{tessellate, Triangles};
 pub use typeset::{Contour, LineTypesetter, Paint, Segment, Shape, TypesetError, TypesetLine};

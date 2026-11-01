@@ -27,7 +27,7 @@ What exists:
 
 ### D1: Exact shape as a curve capability method in the runtime
 
-`constraint_runtime` gets `ShapePiece::{Line { start, end }, Arc { center, radius, start: HeadingAngle, sweep: TurnAngle }}`. Curve kinds implement it as part of the curve capability: `CurveExprs` gains a required `shape(chart, p) -> Vec<ShapePiece>`, so `geometry_caps!(…: curve, …)` cannot declare a curve without one. Document adds `curve_shape(id, &Vector) -> Option<Vec<ShapePiece>>`, which dispatches through `with_kind!` and returns `None` without the curve capability.
+`constraint_runtime` gets `ShapePiece::{Line { start, end }, Arc { center, radius, start: HeadingAngle, sweep: TurnAngle }}`. Curve kinds implement it as a formula family of `Geometry`: `shape(chart) -> Vec<ShapePiece>`, with a panicking default like the other families a kind does not expose. This deviates from the first plan of a required method on `CurveExprs`, which `geometry_caps!` cannot enforce because it emits empty factory impls. `ShapePiece` lives in `geometry/shape.rs` with `length`, `point_at` and `sub` (part between two fractions, same piece kind). Document adds `curve_shape(id, &Vector) -> Option<Vec<ShapePiece>>`, which checks the curve capability first and then dispatches through `with_kind!`, so it returns `None` without the capability.
 
 - The arc returns the canonical form: |R|, with the start heading shifted by π for a negative intermediate radius, as `Geometry::canonical` does.
 - Tests check the geometry-ir scenarios against `on_curve` and `length` for both kinds.
@@ -117,6 +117,8 @@ Alternative: a second port consumer. Rejected, because results would be lost to 
 - **Exported event:** it reports `Exported <name>` or the error. It never changes `handle`, `baseline` or `unsaved`.
 - **Suggested name:** taken from the drawing's file name with `.sketch.json`, or else `.json`, stripped, plus `.svg`. Without a file it is `untitled.svg`.
 - **Starting:** the App starts an `ExportJob` only when no drag is active, `FileState::busy()` is false and no job is running. The Document clone makes the result independent of edits while waiting (spec: edit while waiting).
+- **Bytes while busy:** `FileState::export` returns `false` and starts nothing while another request is open (for example a Save started while the export waited for labels). The App then keeps the finished bytes (`Exporting::Bytes`) and hands them over in a later frame.
+- **Test doubles:** the job's tests and the App's tests share `fake_typesetter.rs` (`Boxes` engine, `Manual` loading typesetter), next to `fake_files.rs`.
 
 ### D10: UI entry
 

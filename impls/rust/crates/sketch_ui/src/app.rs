@@ -15,6 +15,7 @@ use sketch_session::{
     Command, ConstraintSpec, FixParams, GeometrySpec, PointPair, SegmentParams, Session, VecPair,
 };
 
+use crate::export::{ExportJob, JobStep, WAITING};
 use crate::files::{Answer, Effect, FileCommand, FileState, Step};
 use crate::labels::{label_paint, FallbackReason, LabelCache, PaintItem};
 use crate::platform::Platform;
@@ -59,6 +60,19 @@ const WORLD_MIN: Point2 = Point2 { x: -0.5, y: -0.5 };
 const WORLD_MAX: Point2 = Point2 { x: 2.5, y: 2.5 };
 const VIEW_MARGIN: f32 = 40.0;
 
+/// An export in progress: waiting for labels, or its bytes waiting for the host.
+enum Exporting {
+    Job(Box<ExportJob>),
+    Bytes(Vec<u8>),
+}
+
+/// A choice in the File menu.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum MenuItem {
+    File(FileCommand),
+    ExportSvg,
+}
+
 /// Owns the command session; central panel is the Canvas.
 pub struct App {
     session: Session,
@@ -88,6 +102,7 @@ pub struct App {
     /// Style and overrides for new geometry and the brush (not saved).
     current: CurrentStyle,
     styles_window: StylesWindow,
+    export: Option<Exporting>,
 }
 
 impl App {
@@ -102,6 +117,12 @@ impl App {
     #[cfg(test)]
     pub fn with_files(fake: crate::fake_files::FakeFiles) -> Self {
         Self::new(Box::new(crate::platform::Host::new(None, Box::new(fake))))
+    }
+
+    /// The sample scene on a host with `typesetter` and file services `fake`.
+    #[cfg(test)]
+    pub fn with_host(typesetter: Box<dyn label_layout::Typesetter>, fake: crate::fake_files::FakeFiles) -> Self {
+        Self::new(Box::new(crate::platform::Host::new(Some(typesetter), Box::new(fake))))
     }
 
     /// The sample scene on the host `platform`.
@@ -213,6 +234,7 @@ impl App {
             close_confirmed: false,
             current: CurrentStyle::default(),
             styles_window: StylesWindow::default(),
+            export: None,
         }
     }
 
@@ -222,6 +244,45 @@ impl App {
             .files
             .command(cmd, &mut self.session, self.platform.files());
         self.file_step(step);
+    }
+
+    /// Start exporting the drawing as it is now (no-op while dragging, while a
+    /// file request is open, or while an export runs).
+    fn start_export(&mut self) {
+        if !self.files_enabled() || self.export.is_some() {
+            return;
+        }
+        self.export = Some(Exporting::Job(Box::new(ExportJob::new(self.session.document()))));
+        self.status = "Exporting…".into();
+        self.last_error = None;
+    }
+
+    /// Advance the export; returns whether it waits for labels.
+    fn export_step(&mut self) -> bool {
+        let next = match self.export.take() {
+            None => return false,
+            Some(Exporting::Job(job)) => match job.step(&mut self.labels, self.platform.typesetter()) {
+                JobStep::Waiting => {
+                    self.status = WAITING.into();
+                    self.export = Some(Exporting::Job(job));
+                    return true;
+                }
+                JobStep::Failed(e) => {
+                    self.status = "Not exported".into();
+                    self.last_error = Some(e);
+                    return false;
+                }
+                JobStep::Ready(bytes) => bytes,
+            },
+            Some(Exporting::Bytes(bytes)) => bytes,
+        };
+        // Another file request first; the bytes wait for it.
+        if self.files.busy() {
+            self.export = Some(Exporting::Bytes(next));
+        } else {
+            self.files.export(next, self.platform.files());
+        }
+        false
     }
 
     fn file_answer(&mut self, answer: Answer) {
@@ -695,8 +756,8 @@ impl App {
         }
     }
 
-    /// The File menu; returns the chosen command.
-    fn file_menu(&self, ui: &mut egui::Ui) -> Option<FileCommand> {
+    /// The File menu; returns the chosen item.
+    fn file_menu(&self, ui: &mut egui::Ui) -> Option<MenuItem> {
         let enabled = self.files_enabled();
         let mut chosen = None;
         ui.menu_button("File", |ui| {
@@ -714,9 +775,15 @@ impl App {
                     .unwrap_or_default();
                 let button = egui::Button::new(text).shortcut_text(shortcut);
                 if ui.add_enabled(enabled, button).clicked() {
-                    chosen = Some(cmd);
+                    chosen = Some(MenuItem::File(cmd));
                     ui.close_menu();
                 }
+            }
+            ui.separator();
+            let export = egui::Button::new("Export SVG…");
+            if ui.add_enabled(enabled && self.export.is_none(), export).clicked() {
+                chosen = Some(MenuItem::ExportSvg);
+                ui.close_menu();
             }
         });
         chosen
@@ -756,6 +823,9 @@ impl App {
 impl eframe::App for App {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.file_frame(ctx);
+        if self.export_step() {
+            ctx.request_repaint_after(std::time::Duration::from_millis(100));
+        }
         self.unsaved_dialog(ctx);
         if self.styles_window.open && !self.files.asking() {
             if let Some(cmd) = self.styles_window.show(ctx, self.session.styles()) {
@@ -769,8 +839,10 @@ impl eframe::App for App {
                 ui.disable();
             }
             ui.horizontal(|ui| {
-                if let Some(cmd) = self.file_menu(ui) {
-                    self.file_command(cmd);
+                match self.file_menu(ui) {
+                    Some(MenuItem::File(cmd)) => self.file_command(cmd),
+                    Some(MenuItem::ExportSvg) => self.start_export(),
+                    None => {}
                 }
                 ui.separator();
                 ui.label("Tool:");

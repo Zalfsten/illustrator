@@ -18,6 +18,9 @@ use crate::platform::{Done, FileHandle, Files, OpenResult, SaveResult, SaveTarge
 /// Suggested name when saving a drawing without a file.
 pub const UNTITLED_FILE: &str = "untitled.sketch.json";
 
+/// Suggested name when exporting a drawing without a file.
+pub const UNTITLED_EXPORT: &str = "untitled.svg";
+
 /// A file command of the App.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum FileCommand {
@@ -54,12 +57,15 @@ enum Request {
         bytes: Vec<u8>,
         then: Option<Pending>,
     },
+    /// Writing an export; the drawing's file stays as it is.
+    Export,
 }
 
 /// A completed host request, sent by its callback into the App's channel.
 pub enum FileEvent {
     Opened(OpenResult),
     Saved(SaveResult),
+    Exported(SaveResult),
 }
 
 /// What the App must do after a file step.
@@ -156,6 +162,36 @@ impl FileState {
         self.asking.is_some() || self.request.is_some()
     }
 
+    /// Suggested export name: the drawing's file name with its sketch
+    /// extension replaced by `.svg`, or [`UNTITLED_EXPORT`].
+    pub fn export_name(&self) -> String {
+        match self.file_name() {
+            None => UNTITLED_EXPORT.to_owned(),
+            Some(name) => {
+                let stem = name
+                    .strip_suffix(".sketch.json")
+                    .or_else(|| name.strip_suffix(".json"))
+                    .unwrap_or(name);
+                format!("{stem}.svg")
+            }
+        }
+    }
+
+    /// Hand exported `bytes` to the host under [`export_name`](Self::export_name).
+    /// Returns `false`, starting nothing, while [`busy`](Self::busy); the
+    /// drawing's file and unsaved state never change (drawing-export).
+    pub fn export(&mut self, bytes: Vec<u8>, files: &dyn Files) -> bool {
+        if self.busy() {
+            return false;
+        }
+        self.request = Some(Request::Export);
+        let target = SaveTarget::Ask {
+            suggested_name: self.export_name(),
+        };
+        files.save(target, bytes, self.done(FileEvent::Exported));
+        true
+    }
+
     /// Recompute the unsaved state after a history change and show the title.
     pub fn refresh(&mut self, session: &Session, files: &dyn Files) {
         self.unsaved = match (&self.baseline, session.save()) {
@@ -249,6 +285,19 @@ impl FileState {
                 Step {
                     effect: next.effect,
                     message: next.message.or(Some(Ok(saved))),
+                }
+            }
+            FileEvent::Exported(None) => Step::default(),
+            FileEvent::Exported(Some(Err(e))) => Step::error(format!("Export failed: {e}")),
+            FileEvent::Exported(Some(Ok(handle))) => {
+                let verb = if files.can_overwrite() {
+                    "Exported"
+                } else {
+                    "Downloaded"
+                };
+                Step {
+                    effect: None,
+                    message: Some(Ok(format!("{verb} {}", handle.name()))),
                 }
             }
         }
