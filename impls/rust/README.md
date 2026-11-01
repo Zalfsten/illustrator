@@ -113,16 +113,19 @@ leaving the page with unsaved changes shows the browser's leave warning.
 
 ## Export
 
-File → Export SVG… writes the drawing as a standalone SVG file, suggesting
-the drawing's name with `.svg` (`untitled.svg` without a file); in the browser
-the file is downloaded. Exporting is not an edit: the drawing, its history,
+File → Export SVG… and File → Export PDF… write the drawing as a standalone
+SVG or single-page PDF file, suggesting the drawing's name with `.svg` or
+`.pdf` (`untitled.svg` / `untitled.pdf` without a file); in the browser the
+file is downloaded. The PDF goes straight into LaTeX with `\includegraphics`
+(pdfLaTeX, LuaLaTeX, XeLaTeX). Exporting is not an edit: the drawing, its history,
 its file and the unsaved mark stay as they are.
 
 - Only result geometry and result labels are exported; construction geometry,
   handles and highlights are left out.
 - Curves come from their exact shape, not from the display mesh: a segment is
   one straight piece, an arc is written with SVG arc commands at its exact
-  radius.
+  radius. PDF has no circular arcs, so there an arc becomes cubic Béziers
+  that stay within 1 µm of the circle on paper.
 - Styles appear at their physical size: width, dash pattern (laid from the
   curve's start), flat ends, arrow heads, colours.
 - Labels are glyph outlines in their style colour, so the file needs no fonts
@@ -131,11 +134,14 @@ its file and the unsaved mark stay as they are.
   cannot be typeset.
 - Size is in millimetres through the document scale (1 pt = 25.4/72.27 mm),
   with world +y up on the page. The bounds are tight around everything drawn,
-  without a margin. Equal drawings give equal bytes, and every object is a
-  `<g>` with its object name as `id`.
+  without a margin; the PDF page is exactly that box. Equal drawings give
+  equal bytes: the PDF has no creation date, file id or metadata, embeds no
+  fonts and uses sRGB colours. In SVG every object is a `<g>` with its object
+  name as `id`.
 
 The export lives in the crate `sketch_export` (scene of print primitives,
-exact bounds, SVG writer), shared with the planned PDF export.
+exact bounds, SVG and PDF writers; the PDF through `pdf-writer` with a
+Flate-compressed content stream).
 
 ## Labels
 

@@ -1,10 +1,10 @@
-//! An SVG export in progress (drawing-export), free of egui: the drawing as
+//! An export in progress (drawing-export), free of egui: the drawing as
 //! it was when the export was requested, waiting for its labels' typeset
 //! lines through the [`LabelCache`], then the file's bytes.
 
 use constraint_runtime::{Document, GeometryId};
 use label_layout::{LineRequest, Typesetter, TypesetterState};
-use sketch_export::{export_svg, exported_labels, ExportError, LabelLines};
+use sketch_export::{export, exported_labels, ExportError, Format, LabelLines};
 
 use crate::labels::LabelCache;
 
@@ -22,19 +22,26 @@ pub enum JobStep {
     Failed(String),
 }
 
-/// One export: a copy of the drawing and its exported labels' requests.
+/// One export: a copy of the drawing, its exported labels' requests and the
+/// file format.
 pub struct ExportJob {
     doc: Document,
     labels: Vec<(GeometryId, Vec<LineRequest>)>,
+    format: Format,
 }
 
 impl ExportJob {
-    /// Export `doc` as it is now; later edits do not change the file.
-    pub fn new(doc: &Document) -> Self {
+    /// Export `doc` as it is now in `format`; later edits do not change the file.
+    pub fn new(doc: &Document, format: Format) -> Self {
         Self {
             labels: exported_labels(doc),
             doc: doc.clone(),
+            format,
         }
+    }
+
+    pub fn format(&self) -> Format {
+        self.format
     }
 
     /// Advance the job: request and pin missing lines, report failing
@@ -68,8 +75,8 @@ impl ExportJob {
                 return JobStep::Waiting;
             }
         }
-        match export_svg(&self.doc, &lines) {
-            Ok(text) => JobStep::Ready(text.into_bytes()),
+        match export(&self.doc, &lines, self.format) {
+            Ok(bytes) => JobStep::Ready(bytes),
             Err(ExportError::NothingToExport) => JobStep::Failed("Nothing to export".into()),
             Err(e) => JobStep::Failed(format!("Cannot export: {e}")),
         }

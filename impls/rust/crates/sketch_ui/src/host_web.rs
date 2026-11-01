@@ -114,7 +114,7 @@ fn start_open(done: OpenDone) -> Result<(), String> {
 fn download(name: &str, bytes: &[u8]) -> Result<(), String> {
     let parts = js_sys::Array::of1(&js_sys::Uint8Array::from(bytes));
     let options = BlobPropertyBag::new();
-    options.set_type("application/json");
+    options.set_type(crate::platform::mime_for(name));
     let blob = Blob::new_with_u8_array_sequence_and_options(&parts, &options).map_err(js_error)?;
     let url = Url::create_object_url_with_blob(&blob).map_err(js_error)?;
     let a: HtmlAnchorElement = document()?
