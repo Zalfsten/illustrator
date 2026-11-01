@@ -11,6 +11,7 @@ use constraint_runtime::{
 };
 use eframe::egui::{self, epaint, Color32, Pos2, Rect, Sense, Stroke};
 use label_layout::TypesetterState;
+use sketch_export::Format;
 use sketch_session::{
     Command, ConstraintSpec, FixParams, GeometrySpec, PointPair, SegmentParams, Session, VecPair,
 };
@@ -63,14 +64,14 @@ const VIEW_MARGIN: f32 = 40.0;
 /// An export in progress: waiting for labels, or its bytes waiting for the host.
 enum Exporting {
     Job(Box<ExportJob>),
-    Bytes(Vec<u8>),
+    Bytes(Vec<u8>, Format),
 }
 
 /// A choice in the File menu.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum MenuItem {
     File(FileCommand),
-    ExportSvg,
+    Export(Format),
 }
 
 /// Owns the command session; central panel is the Canvas.
@@ -248,11 +249,11 @@ impl App {
 
     /// Start exporting the drawing as it is now (no-op while dragging, while a
     /// file request is open, or while an export runs).
-    fn start_export(&mut self) {
+    fn start_export(&mut self, format: Format) {
         if !self.files_enabled() || self.export.is_some() {
             return;
         }
-        self.export = Some(Exporting::Job(Box::new(ExportJob::new(self.session.document()))));
+        self.export = Some(Exporting::Job(Box::new(ExportJob::new(self.session.document(), format))));
         self.status = "Exporting…".into();
         self.last_error = None;
     }
@@ -272,15 +273,16 @@ impl App {
                     self.last_error = Some(e);
                     return false;
                 }
-                JobStep::Ready(bytes) => bytes,
+                JobStep::Ready(bytes) => (bytes, job.format()),
             },
-            Some(Exporting::Bytes(bytes)) => bytes,
+            Some(Exporting::Bytes(bytes, format)) => (bytes, format),
         };
+        let (bytes, format) = next;
         // Another file request first; the bytes wait for it.
         if self.files.busy() {
-            self.export = Some(Exporting::Bytes(next));
+            self.export = Some(Exporting::Bytes(bytes, format));
         } else {
-            self.files.export(next, self.platform.files());
+            self.files.export(bytes, format, self.platform.files());
         }
         false
     }
@@ -780,10 +782,12 @@ impl App {
                 }
             }
             ui.separator();
-            let export = egui::Button::new("Export SVG…");
-            if ui.add_enabled(enabled && self.export.is_none(), export).clicked() {
-                chosen = Some(MenuItem::ExportSvg);
-                ui.close_menu();
+            for (text, format) in [("Export SVG…", Format::Svg), ("Export PDF…", Format::Pdf)] {
+                let button = egui::Button::new(text);
+                if ui.add_enabled(enabled && self.export.is_none(), button).clicked() {
+                    chosen = Some(MenuItem::Export(format));
+                    ui.close_menu();
+                }
             }
         });
         chosen
@@ -841,7 +845,7 @@ impl eframe::App for App {
             ui.horizontal(|ui| {
                 match self.file_menu(ui) {
                     Some(MenuItem::File(cmd)) => self.file_command(cmd),
-                    Some(MenuItem::ExportSvg) => self.start_export(),
+                    Some(MenuItem::Export(format)) => self.start_export(format),
                     None => {}
                 }
                 ui.separator();

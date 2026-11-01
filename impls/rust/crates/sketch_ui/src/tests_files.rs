@@ -1,4 +1,5 @@
 use constraint_runtime::{GeometryRole, Point2};
+use sketch_export::Format;
 use sketch_session::{Command, GeometrySpec, SegmentParams};
 
 use super::*;
@@ -457,14 +458,15 @@ fn untitled_title() {
 fn export_suggests_the_drawings_name_with_svg() {
     let fake = FakeFiles::new(true);
     let (_, files) = opened(&fake, "triangle.sketch.json");
-    assert_eq!(files.export_name(), "triangle.svg");
+    assert_eq!(files.export_name("svg"), "triangle.svg");
+    assert_eq!(files.export_name("pdf"), "triangle.pdf");
     let (_, files) = opened(&fake, "plain.json");
-    assert_eq!(files.export_name(), "plain.svg");
+    assert_eq!(files.export_name("svg"), "plain.svg");
     let (_, files) = opened(&fake, "noext");
-    assert_eq!(files.export_name(), "noext.svg");
+    assert_eq!(files.export_name("svg"), "noext.svg");
     let (_, files) = drawing(&fake);
-    assert_eq!(files.export_name(), UNTITLED_EXPORT);
-    assert_eq!(UNTITLED_EXPORT, "untitled.svg");
+    assert_eq!(files.export_name("svg"), "untitled.svg");
+    assert_eq!(files.export_name("pdf"), "untitled.pdf");
 }
 
 #[test]
@@ -473,7 +475,7 @@ fn export_asks_for_a_target_and_keeps_the_drawings_file() {
     let (mut session, mut files) = opened(&fake, "triangle.sketch.json");
     edit(&mut session, &mut files, &fake, segment("seg2", 2.0));
     let title = files.title();
-    assert!(files.export(b"<svg/>".to_vec(), &fake));
+    assert!(files.export(b"<svg/>".to_vec(), Format::Svg, &fake));
     assert!(files.busy());
     let (overwrite, suggested, bytes) = fake.save_request();
     assert_eq!(overwrite, None, "always asks");
@@ -494,7 +496,7 @@ fn export_asks_for_a_target_and_keeps_the_drawings_file() {
 fn cancelled_export_writes_nothing() {
     let fake = FakeFiles::new(true);
     let (mut session, mut files) = drawing(&fake);
-    assert!(files.export(b"x".to_vec(), &fake));
+    assert!(files.export(b"x".to_vec(), Format::Svg, &fake));
     fake.complete_save(None);
     assert_eq!(files.poll(&mut session, &fake), Step::default());
     assert_eq!(files.file_name(), None);
@@ -505,7 +507,7 @@ fn cancelled_export_writes_nothing() {
 fn failed_export_is_shown() {
     let fake = FakeFiles::new(true);
     let (mut session, mut files) = drawing(&fake);
-    files.export(b"x".to_vec(), &fake);
+    files.export(b"x".to_vec(), Format::Svg, &fake);
     fake.complete_save(Some(Err("disk full".into())));
     let step = files.poll(&mut session, &fake);
     assert_eq!(step.message, Some(Err("Export failed: disk full".into())));
@@ -516,7 +518,7 @@ fn failed_export_is_shown() {
 fn export_on_download_only_host_is_a_download() {
     let fake = FakeFiles::new(false);
     let (mut session, mut files) = opened(&fake, "a.sketch.json");
-    files.export(b"x".to_vec(), &fake);
+    files.export(b"x".to_vec(), Format::Svg, &fake);
     assert_eq!(fake.save_request().1.as_deref(), Some("a.svg"));
     fake.save_as("a.svg");
     let step = files.poll(&mut session, &fake);
@@ -529,6 +531,18 @@ fn no_export_while_busy() {
     let fake = FakeFiles::new(true);
     let (mut session, mut files) = drawing(&fake);
     files.command(FileCommand::SaveAs, &mut session, &fake);
-    assert!(!files.export(b"x".to_vec(), &fake));
+    assert!(!files.export(b"x".to_vec(), Format::Svg, &fake));
     assert_eq!(fake.pending_saves(), 1, "only the save");
+}
+
+#[test]
+fn pdf_export_suggests_pdf() {
+    let fake = FakeFiles::new(true);
+    let (mut session, mut files) = opened(&fake, "triangle.sketch.json");
+    assert!(files.export(b"%PDF-".to_vec(), Format::Pdf, &fake));
+    assert_eq!(fake.save_request().1.as_deref(), Some("triangle.pdf"));
+    fake.save_as("triangle.pdf");
+    let step = files.poll(&mut session, &fake);
+    assert_eq!(step.message, Some(Ok("Exported triangle.pdf".into())));
+    assert_eq!(files.file_name(), Some("triangle.sketch.json"));
 }
