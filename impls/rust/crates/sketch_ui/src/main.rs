@@ -5,8 +5,11 @@
 //! of host module. `App` and `Viewport` are shared and free of `cfg`.
 
 mod app;
+mod export;
 #[cfg(test)]
 mod fake_files;
+#[cfg(test)]
+mod fake_typesetter;
 mod files;
 #[cfg(not(target_arch = "wasm32"))]
 mod host_native;

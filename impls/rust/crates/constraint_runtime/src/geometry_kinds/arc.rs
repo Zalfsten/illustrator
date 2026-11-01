@@ -7,7 +7,8 @@ use crate::geom::{HeadingAngle, Length, Point2, TurnAngle, Vec2};
 use crate::geometry::capabilities::geometry_caps;
 use crate::geometry::chart::chart_atoms;
 use crate::geometry::{
-    Geometry, GeometryId, HeadingFormula, LengthFormula, PointFormula, TurnFormula, VecFormula,
+    Geometry, GeometryId, HeadingFormula, LengthFormula, PointFormula, ShapePiece, TurnFormula,
+    VecFormula,
 };
 use crate::geometry_kinds::GeometryKind;
 use crate::matrix::DenseMatrix;
@@ -76,6 +77,16 @@ impl Geometry for Arc {
     const NAME_PREFIX: &'static str = "arc";
 
     /// `R < 0` → `(C, −R, θ₀ + π, Δθ)`: same curve, non-negative radius.
+    fn shape(c: Self::Init) -> Vec<ShapePiece> {
+        let (center, radius, start, sweep) = Self::canonical(c);
+        vec![ShapePiece::Arc {
+            center,
+            radius: radius.value(),
+            start,
+            sweep,
+        }]
+    }
+
     fn canonical((center, radius, start, sweep): Self::Init) -> Self::Init {
         if radius.value() < 0.0 {
             (

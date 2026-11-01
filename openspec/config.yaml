@@ -115,7 +115,11 @@ context: |
       pack/unpack from Init tuples)
     - formula.rs: Geometry (what a kind implements: value / Jacobian /
       connectivity per formula family) and Formula (tag family → that
-      triple), formula_family!
+      triple), formula_family!; also Geometry::shape (exact curve shape,
+      curve kinds only)
+    - shape.rs: ShapePiece (Line / Arc with |R|; length, point_at, sub),
+      read by identity via Document::curve_shape (None without curve);
+      exports use it instead of the Mesh
     - capabilities.rs: kind-agnostic formula tags (PointFormula,
       VecFormula, LengthFormula, HeadingFormula, TurnFormula) and opt-in
       factories CurveExprs / EndpointExprs, plus invariant capabilities
@@ -261,6 +265,15 @@ context: |
   JSON Schemas, checked in under sketch_session/schema/ (tests/schema.rs,
   UPDATE_SCHEMA=1). Session::declarative_commands exports a drawing.
   constraint_runtime stays serde-free.
+  sketch_export (wasm-capable, serde-free; constraint_runtime + label_layout):
+  scene.rs turns result curves (Document::curve_shape, exact trim at arrow
+  heads, native dash array + phase) and result labels (typeset lines placed
+  via label_layout::place) into print primitives (Object per geometry with
+  Stroke / Fill / Outline parts, PathSeg incl. Arc) in creation order;
+  bounds.rs exact tight bounds (butt rectangles, annular sectors, Bézier
+  extrema; dashes count as solid); svg.rs writes mm with y flip, 3 decimals,
+  arcs split at π, <g id=name>; export_svg / exported_labels / ExportError
+  (NothingToExport, MissingLines). PDF (#13) reuses scene + bounds.
   label_layout (engine-neutral, wasm-capable): LineTypesetter engine
   trait (one line in, TypesetLine out: Shapes of Contours in pt in the
   label frame,
@@ -281,6 +294,10 @@ context: |
   The Canvas groups Mesh edges into one polyline per geometry and paints
   result curves from their resolved style via stroke.rs (width max(1 px,
   physical), filled arrow heads); construction keeps a fixed look.
+  export.rs: ExportJob (Document clone at request time, exported_labels'
+  requests pinned via LabelCache::ensure, failures named per label) → bytes
+  → FileState::export (SaveTarget::Ask, `<stem>.svg` / untitled.svg; never
+  touches the drawing's file, baseline or unsaved state); File → Export SVG….
   style_ui.rs: CurrentStyle (style + switchable overrides for new segments
   and Tool::Brush, which issues set_style with all four properties) and
   StylesWindow (edits pending until pointer release / picker closed, then

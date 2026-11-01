@@ -12,7 +12,7 @@ use crate::expr::{Expr, LengthExpr, PointExpr, VecExpr};
 use crate::geom::CurveParam;
 use crate::geometry::{
     Caps, Chart, Formula, Geometry, GeometryId, GeometryRole, GeometryShell, LengthFormula,
-    PointFormula, VecFormula,
+    PointFormula, ShapePiece, VecFormula,
 };
 use crate::geometry_kinds::{with_kind, GeometryInst, KindAttrs, LabelAttrs};
 use crate::id::IdMap;
@@ -236,6 +236,13 @@ impl Document {
     /// Capability set of geometry `id` (`None` if `id` is not in the document).
     pub fn caps(&self, id: GeometryId) -> Option<Caps> {
         self.geometry(id).map(|g| g.kind().caps())
+    }
+
+    /// Exact shape of curve `id` at State `p` (geometry-ir); `None` if `id`
+    /// is not in the document or has no curve capability.
+    pub fn curve_shape(&self, id: GeometryId, p: &Vector) -> Option<Vec<ShapePiece>> {
+        let g = self.geometry(id).filter(|g| g.kind().caps().curve)?;
+        Some(with_kind!(g.kind(), K => K::shape(g.unpack::<K>(p))))
     }
 
     /// `formula` on `id` if the geometry exists and `has` its capability.

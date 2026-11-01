@@ -5,7 +5,7 @@ use std::ops::Range;
 use crate::geom::{Length, Point2, Vec2};
 use crate::geometry::capabilities::geometry_caps;
 use crate::geometry::chart::chart_atoms;
-use crate::geometry::{Geometry, LengthFormula, PointFormula, VecFormula};
+use crate::geometry::{Geometry, LengthFormula, PointFormula, ShapePiece, VecFormula};
 use crate::geometry_kinds::GeometryKind;
 use crate::matrix::DenseMatrix;
 
@@ -31,6 +31,10 @@ geometry_caps!(Segment: curve, endpoints, line);
 impl Geometry for Segment {
     const KIND: GeometryKind = GeometryKind::Segment;
     const NAME_PREFIX: &'static str = "seg";
+
+    fn shape((start, end): Self::Init) -> Vec<ShapePiece> {
+        vec![ShapePiece::Line { start, end }]
+    }
 
     fn point(f: PointFormula, (a, b): Self::Init) -> Point2 {
         match f {

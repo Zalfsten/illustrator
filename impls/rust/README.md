@@ -84,7 +84,7 @@ world units through the document scale.
 
 The stroke geometry (`constraint_runtime/src/stroke.rs`: pt to world, arrow
 heads on the exact curve, trimming and dashing by arc length) is shared with
-the future SVG and PDF exports.
+the SVG export and the future PDF export.
 
 ## Files
 
@@ -110,6 +110,32 @@ xdg-desktop-portal (no GTK needed); without a portal, as in the Dev Container,
 Open and Save report "no file dialog available". In the browser, Open uses the
 browser's file picker and every save is a download (Save behaves as Save As);
 leaving the page with unsaved changes shows the browser's leave warning.
+
+## Export
+
+File → Export SVG… writes the drawing as a standalone SVG file, suggesting
+the drawing's name with `.svg` (`untitled.svg` without a file); in the browser
+the file is downloaded. Exporting is not an edit: the drawing, its history,
+its file and the unsaved mark stay as they are.
+
+- Only result geometry and result labels are exported; construction geometry,
+  handles and highlights are left out.
+- Curves come from their exact shape, not from the display mesh: a segment is
+  one straight piece, an arc is written with SVG arc commands at its exact
+  radius.
+- Styles appear at their physical size: width, dash pattern (laid from the
+  curve's start), flat ends, arrow heads, colours.
+- Labels are glyph outlines in their style colour, so the file needs no fonts
+  and looks the same everywhere; the text is not searchable. The export waits
+  while labels are still being typeset and fails, naming the label, when one
+  cannot be typeset.
+- Size is in millimetres through the document scale (1 pt = 25.4/72.27 mm),
+  with world +y up on the page. The bounds are tight around everything drawn,
+  without a margin. Equal drawings give equal bytes, and every object is a
+  `<g>` with its object name as `id`.
+
+The export lives in the crate `sketch_export` (scene of print primitives,
+exact bounds, SVG writer), shared with the planned PDF export.
 
 ## Labels
 
