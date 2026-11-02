@@ -272,8 +272,13 @@ context: |
   Stroke / Fill / Outline parts, PathSeg incl. Arc) in creation order;
   bounds.rs exact tight bounds (butt rectangles, annular sectors, Bézier
   extrema; dashes count as solid); svg.rs writes mm with y flip, 3 decimals,
-  arcs split at π, <g id=name>; export_svg / exported_labels / ExportError
-  (NothingToExport, MissingLines). PDF (#13) reuses scene + bounds.
+  arcs split at π, <g id=name>; pdf.rs (pdf-writer, one page, MediaBox =
+  bounds in bp, no flip, DeviceRGB, butt caps / miter joins, dash + phase,
+  Flate content, no Info / ID) with arcs as cubics (arc_parts: quarter-turn
+  max, deviation ≤ 0.5 µm design target, last part ends at start + sweep)
+  and exact quad→cubic; Format {Svg, Pdf} (extension, mime) + export(doc,
+  labels, format); export_svg / exported_labels / ExportError
+  (NothingToExport, MissingLines).
   label_layout (engine-neutral, wasm-capable): LineTypesetter engine
   trait (one line in, TypesetLine out: Shapes of Contours in pt in the
   label frame,
@@ -296,8 +301,10 @@ context: |
   physical), filled arrow heads); construction keeps a fixed look.
   export.rs: ExportJob (Document clone at request time, exported_labels'
   requests pinned via LabelCache::ensure, failures named per label) → bytes
-  → FileState::export (SaveTarget::Ask, `<stem>.svg` / untitled.svg; never
-  touches the drawing's file, baseline or unsaved state); File → Export SVG….
+  → FileState::export(bytes, format) (SaveTarget::Ask, `<stem>.<ext>` /
+  untitled.<ext>; never touches the drawing's file, baseline or unsaved
+  state); File → Export SVG… / Export PDF…; platform::mime_for gives the web
+  host's download type by extension.
   style_ui.rs: CurrentStyle (style + switchable overrides for new segments
   and Tool::Brush, which issues set_style with all four properties) and
   StylesWindow (edits pending until pointer release / picker closed, then

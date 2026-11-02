@@ -11,6 +11,7 @@ use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, OnceLock};
 
 use constraint_runtime::Document;
+use sketch_export::Format;
 use sketch_session::{LoadReport, Session};
 
 use crate::platform::{Done, FileHandle, Files, OpenResult, SaveResult, SaveTarget};
@@ -18,8 +19,8 @@ use crate::platform::{Done, FileHandle, Files, OpenResult, SaveResult, SaveTarge
 /// Suggested name when saving a drawing without a file.
 pub const UNTITLED_FILE: &str = "untitled.sketch.json";
 
-/// Suggested name when exporting a drawing without a file.
-pub const UNTITLED_EXPORT: &str = "untitled.svg";
+/// Stem of the suggested name when exporting a drawing without a file.
+pub const UNTITLED_EXPORT_STEM: &str = "untitled";
 
 /// A file command of the App.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -163,30 +164,29 @@ impl FileState {
     }
 
     /// Suggested export name: the drawing's file name with its sketch
-    /// extension replaced by `.svg`, or [`UNTITLED_EXPORT`].
-    pub fn export_name(&self) -> String {
-        match self.file_name() {
-            None => UNTITLED_EXPORT.to_owned(),
-            Some(name) => {
-                let stem = name
-                    .strip_suffix(".sketch.json")
-                    .or_else(|| name.strip_suffix(".json"))
-                    .unwrap_or(name);
-                format!("{stem}.svg")
-            }
-        }
+    /// extension replaced by `.<ext>`, or [`UNTITLED_EXPORT_STEM`]`.<ext>`.
+    pub fn export_name(&self, ext: &str) -> String {
+        let stem = match self.file_name() {
+            None => UNTITLED_EXPORT_STEM,
+            Some(name) => name
+                .strip_suffix(".sketch.json")
+                .or_else(|| name.strip_suffix(".json"))
+                .unwrap_or(name),
+        };
+        format!("{stem}.{ext}")
     }
 
-    /// Hand exported `bytes` to the host under [`export_name`](Self::export_name).
-    /// Returns `false`, starting nothing, while [`busy`](Self::busy); the
-    /// drawing's file and unsaved state never change (drawing-export).
-    pub fn export(&mut self, bytes: Vec<u8>, files: &dyn Files) -> bool {
+    /// Hand exported `bytes` in `format` to the host under
+    /// [`export_name`](Self::export_name). Returns `false`, starting nothing,
+    /// while [`busy`](Self::busy); the drawing's file and unsaved state never
+    /// change (drawing-export).
+    pub fn export(&mut self, bytes: Vec<u8>, format: Format, files: &dyn Files) -> bool {
         if self.busy() {
             return false;
         }
         self.request = Some(Request::Export);
         let target = SaveTarget::Ask {
-            suggested_name: self.export_name(),
+            suggested_name: self.export_name(format.extension()),
         };
         files.save(target, bytes, self.done(FileEvent::Exported));
         true

@@ -58,3 +58,11 @@ fn file_handle_keeps_host_data() {
     assert_eq!(h.clone().host::<u32>(), Some(&42));
     assert_eq!(h.host::<String>(), None);
 }
+
+#[test]
+fn mime_follows_the_extension() {
+    assert_eq!(mime_for("figure.svg"), "image/svg+xml");
+    assert_eq!(mime_for("figure.PDF"), "application/pdf");
+    assert_eq!(mime_for("triangle.sketch.json"), "application/json");
+    assert_eq!(mime_for("noext"), "application/json");
+}

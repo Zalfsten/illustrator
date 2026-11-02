@@ -6,6 +6,7 @@ use std::any::Any;
 use std::sync::Arc;
 
 use label_layout::Typesetter;
+use sketch_export::Format;
 
 /// Host services of the App.
 pub trait Platform {
@@ -103,6 +104,18 @@ impl Platform for Host {
     fn files(&self) -> &dyn Files {
         self.files.as_ref()
     }
+}
+
+/// Media type of a file a host hands out, from its name's extension:
+/// exports by format, everything else as a sketch file.
+// Called by the web host only; native builds keep it for the shared tests.
+#[allow(dead_code)]
+pub fn mime_for(name: &str) -> &'static str {
+    let ext = name.rsplit_once('.').map_or("", |(_, e)| e);
+    [Format::Svg, Format::Pdf]
+        .into_iter()
+        .find(|f| f.extension().eq_ignore_ascii_case(ext))
+        .map_or("application/json", Format::mime)
 }
 
 #[cfg(test)]

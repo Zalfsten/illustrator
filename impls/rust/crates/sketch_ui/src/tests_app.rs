@@ -341,7 +341,7 @@ fn pending_svg(fake: &FakeFiles) -> String {
 fn sample_scene_exports_through_the_host() {
     let fake = FakeFiles::new(true);
     let mut app = App::with_host(Box::new(label_layout::Immediate::new(Boxes)), fake.clone());
-    app.start_export();
+    app.start_export(Format::Svg);
     assert!(!app.export_step(), "typeset at once, nothing to wait for");
     let svg = pending_svg(&fake);
     assert!(svg.starts_with("<?xml"));
@@ -360,7 +360,7 @@ fn export_waits_while_the_typesetter_loads() {
     let fake = FakeFiles::new(true);
     let ts = Manual::loading();
     let mut app = App::with_host(Box::new(ts.clone()), fake.clone());
-    app.start_export();
+    app.start_export(Format::Svg);
     assert!(app.export_step());
     assert_eq!(app.status, WAITING);
     assert_eq!(fake.pending_saves(), 0);
@@ -380,7 +380,7 @@ fn failing_label_is_named_and_nothing_is_saved() {
         .find(|g| app.doc().label_attrs(g.id()).is_some())
         .map(|g| app.doc().geometry_name(g.id()).unwrap().to_owned())
         .unwrap();
-    app.start_export();
+    app.start_export(Format::Svg);
     app.export_step();
     let err = app.last_error.clone().unwrap();
     assert_eq!(err, format!("Cannot export: {label}: no typesetter available"));
@@ -393,7 +393,7 @@ fn edit_while_waiting_does_not_change_the_file() {
     let fake = FakeFiles::new(true);
     let ts = Manual::loading();
     let mut app = App::with_host(Box::new(ts.clone()), fake.clone());
-    app.start_export();
+    app.start_export(Format::Svg);
     assert!(app.export_step());
     apply_json(
         &mut app,
@@ -409,12 +409,27 @@ fn no_export_during_a_drag_or_a_running_export() {
     let fake = FakeFiles::new(true);
     let mut app = App::with_host(Box::new(Manual::loading()), fake.clone());
     app.session.drag_begin("seg1.start").unwrap();
-    app.start_export();
+    app.start_export(Format::Svg);
     assert!(app.export.is_none());
     app.session.drag_cancel();
-    app.start_export();
+    app.start_export(Format::Svg);
     assert!(app.export.is_some());
     app.status.clear();
-    app.start_export();
+    app.start_export(Format::Svg);
     assert!(app.status.is_empty(), "a second export does not start");
+}
+
+#[test]
+fn sample_scene_exports_as_pdf() {
+    let fake = FakeFiles::new(true);
+    let mut app = App::with_host(Box::new(label_layout::Immediate::new(Boxes)), fake.clone());
+    app.start_export(Format::Pdf);
+    assert!(!app.export_step());
+    let (overwrite, suggested, bytes) = fake.save_request();
+    assert_eq!(overwrite, None);
+    assert_eq!(suggested.as_deref(), Some("untitled.pdf"));
+    assert!(bytes.starts_with(b"%PDF-"));
+    fake.save_as("figure.pdf");
+    app.poll_files();
+    assert_eq!(app.status, "Exported figure.pdf");
 }

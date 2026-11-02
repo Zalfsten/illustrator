@@ -2,12 +2,15 @@
 name = "sketch_export"
 version = "0.1.0"
 edition = "2021"
-description = "Export of a drawing as standalone vector files (SVG) from exact geometry"
+description = "Export of a drawing as standalone vector files (SVG, PDF) from exact geometry"
 license = "GPL-3.0-or-later"
 
 [dependencies]
 constraint_runtime = { path = "../constraint_runtime" }
 label_layout = { path = "../label_layout" }
+miniz_oxide = "0.9"
+pdf-writer = "0.15"
 
 [dev-dependencies]
+lopdf = "0.46"
 roxmltree = "0.20"
