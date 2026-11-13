@@ -83,3 +83,36 @@ fn instances_project_their_stored_attributes() {
     assert!(doc.set_label_attrs(label, attrs.clone()));
     assert_eq!(doc.geometry(label).unwrap().attrs_of::<Label>(), &attrs);
 }
+
+/// Every curve kind bounds pieces soundly: curvature bounds at least the
+/// curvature, piece lengths summing to at least the curve length, exactly
+/// for uniform kinds (the display Mesh relies on all three).
+#[test]
+fn curve_kinds_bound_their_pieces() {
+    use crate::geometry::LengthFormula;
+    for kind in ALL_KINDS.into_iter().filter(|k| k.caps().curve) {
+        with_kind!(kind, K => {
+            let params: Vec<f64> = (0..K::PARAMETER_COUNT).map(|i| 1.0 + i as f64).collect();
+            let c = K::unpack(&params);
+            let stored = K::default_attrs();
+            let a = K::attrs_of(&stored);
+            let mut total = 0.0;
+            for i in 0..64 {
+                let (t0, t1) = (i as f64 / 64.0, (i + 1) as f64 / 64.0);
+                let b = K::piece_bound(t0, t1, c, a);
+                for t in [t0, 0.5 * (t0 + t1), t1] {
+                    let k = K::curvature(t, c, a);
+                    assert!(b.curvature >= k, "{kind:?}: bound {} < curvature {k} at {t}", b.curvature);
+                }
+                total += b.length;
+            }
+            let length = K::length(LengthFormula::Length, c, a).value();
+            let slack = 1e-12 * length.max(1.0);
+            assert!(total >= length - slack, "{kind:?}: pieces {total} < length {length}");
+            if K::UNIFORM_CURVE {
+                // The closed-form path needs the exact length.
+                assert!(total <= length + slack, "{kind:?}: {total} vs {length}");
+            }
+        });
+    }
+}
