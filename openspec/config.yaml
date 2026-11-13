@@ -272,6 +272,24 @@ context: |
   JSON Schemas, checked in under sketch_session/schema/ (tests/schema.rs,
   UPDATE_SCHEMA=1). Session::declarative_commands exports a drawing.
   constraint_runtime stays serde-free.
+  expression (wasm-capable, no dependencies, geometry-free): the
+  expression-language spec. lexer.rs / parser.rs (hand-written precedence
+  climbing; MATLAB subset, ParseError with byte span, nesting limit 128,
+  overflowing literals rejected), tree.rs (flat
+  post-order Node array; constant integer exponents folded into PowInt,
+  others PowReal; nthroot degree constant), number.rs (Number trait = the
+  formula catalog, every impl applies the open domains; f64), dual.rs
+  (Dual2<T>: value, f', f'' by forward AD, generic so Dual2<Interval>
+  bounds derivatives), interval.rs (outward rounding via next_up/down,
+  1 ulp IEEE ops, 4 ulps libm, poison outside open domains), domain.rs
+  (check_domain: Dual2<Interval> + bisection to depth 32, sound: any bad
+  node fails a sub-range; budget 20 000 evaluations -> TooComplex).
+  Expression { source verbatim, variable, nodes }: parse / eval -> Jet /
+  eval_in (caller scratch, allocation-free) / eval_with / check_domain;
+  PartialEq on source + variable.
+  tests/reference.rs compares against tests/reference/reference.tsv,
+  generated with GNU Octave (generate.m; values only, Octave is more
+  permissive than MATLAB, e.g. `--`).
   sketch_export (wasm-capable, serde-free; constraint_runtime + label_layout):
   scene.rs turns result curves (Document::curve_shape, exact trim at arrow
   heads, native dash array + phase) and result labels (typeset lines placed

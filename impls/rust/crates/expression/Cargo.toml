@@ -1,0 +1,8 @@
+[package]
+name = "expression"
+version = "0.1.0"
+edition = "2021"
+description = "Geometry-free expression language: a strict MATLAB subset with value, derivatives and a sound domain check"
+license = "GPL-3.0-or-later"
+
+[dependencies]
