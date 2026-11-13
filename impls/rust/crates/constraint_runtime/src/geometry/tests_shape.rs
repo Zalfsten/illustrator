@@ -195,3 +195,41 @@ fn sub_piece_keeps_its_kind() {
         }
     );
 }
+
+/// Exact bounding box of `piece` as `(min, max)`.
+fn bounds(piece: &ShapePiece) -> (Point2, Point2) {
+    let pts = piece.bounding_points();
+    let fold = |f: fn(f64, f64) -> f64| {
+        pts.iter().skip(1).fold(pts[0], |m, p| Point2::new(f(m.x, p.x), f(m.y, p.y)))
+    };
+    (fold(f64::min), fold(f64::max))
+}
+
+#[test]
+fn line_bounding_points_are_its_ends() {
+    let piece = ShapePiece::Line { start: Point2::new(1.0, 2.0), end: Point2::new(-3.0, 5.0) };
+    assert_eq!(bounds(&piece), (Point2::new(-3.0, 2.0), Point2::new(1.0, 5.0)));
+}
+
+#[test]
+fn arc_bounding_points_include_the_extremes_it_passes() {
+    let arc = |start: f64, sweep: f64| ShapePiece::Arc {
+        center: Point2::new(1.0, 1.0),
+        radius: 2.0,
+        start: HeadingAngle::new(start),
+        sweep: TurnAngle::new(sweep),
+    };
+    // 0° → 120°: passes the top (heading 90°), not the left side.
+    let (min, max) = bounds(&arc(0.0, 2.0 * PI / 3.0));
+    assert!((max.y - 3.0).abs() < TOL && (max.x - 3.0).abs() < TOL);
+    assert!((min.x - 0.0).abs() < TOL && (min.y - 1.0).abs() < TOL);
+    // The same arc traversed clockwise has the same box.
+    let (cmin, cmax) = bounds(&arc(2.0 * PI / 3.0, -2.0 * PI / 3.0));
+    assert!(close(cmin, min) && close(cmax, max));
+    // A full turn reaches all four sides.
+    let (min, max) = bounds(&arc(0.3, 2.0 * PI));
+    assert!(close(min, Point2::new(-1.0, -1.0)) && close(max, Point2::new(3.0, 3.0)));
+    // A short arc between two extremes is bounded by its ends.
+    let piece = arc(0.1, 0.2);
+    assert_eq!(piece.bounding_points().len(), 2);
+}

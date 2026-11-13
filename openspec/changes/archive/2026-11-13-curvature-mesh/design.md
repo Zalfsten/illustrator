@@ -39,7 +39,7 @@ See proposal.md for motivation. Target implementation: impls/rust.
 
 Locally the curve is approximated by its osculating circle of radius `r = 1/κ`. A chord of turn `φ` on that circle has sagitta `r (1 − cos(φ/2))`, so the largest turn within tolerance `ε` is
 
-    φmax(κ) = 2 · acos(clamp(1 − ε·κ, −1, 1))
+    φmax(κ) = 2 · acos(max(1 − ε·κ, 0))          (at most π)
 
 and the number of edges needed per unit of arc length is `κ / φmax(κ)`. Per unit of the normalized parameter:
 
@@ -49,7 +49,7 @@ For small `ε·κ`, `κ / φmax ≈ sqrt(κ / 8ε)`, the formula from #75, and i
 
 *Why exact rather than the small-angle form:* the small-angle bound `φ ≤ sqrt(8ε/r)` is slightly smaller than `φmax`, so it sometimes yields one edge more than needed and would violate "as few edges as the tolerance allows" for arcs. The exact form makes the arc's edge count `ceil(|Δθ| / φmax)`, the smallest count within tolerance.
 
-Numerically, `φmax` is evaluated as the equivalent `4 · asin(sqrt(min(ε·κ / 2, 1)))`: `1 − ε·κ` rounds to 1 for tiny `ε·κ`, which would make the acos form 0 and the density infinite.
+Numerically, `φmax` is evaluated as the equivalent `4 · asin(sqrt(min(ε·κ / 2, 1/2)))`: `1 − ε·κ` rounds to 1 for tiny `ε·κ`, which would make the acos form 0 and the density infinite. The cap at π (reached at `ε·κ = 1`, tolerance as large as the radius) keeps the comparison bound of step 5 valid: it holds only for `L · κmax ≤ π`.
 
 Guard: `|γ′| = 0` gives `ρ = 0` before multiplying, so a zero-radius arc (speed 0, `κ = ∞`) is a single edge instead of NaN.
 
@@ -64,7 +64,11 @@ The sampler is a private pure function in `mesh.rs`:
 2. **Integral:** trapezoid rule over the grid gives the cumulative count `C(t)`; `I = C(1)`.
 3. **Count:** `n = clamp(ceil(I − 1e-9), 1, cap)`; the small offset keeps an exact integer from rounding up to one edge too many.
 4. **Placement:** interior samples `t_j` with `C(t_j) = j·I/n`, `j = 1 … n−1`, by linear interpolation inside the grid interval. For constant density this gives `t_j = j/n` exactly, so arc edges are of equal length.
-5. **Verification:** equal shares bound the deviation exactly only for constant curvature; where curvature varies along an edge (next to an inflection, curvature rising linearly from 0) a full share deviates up to about 15 % more than `ε`. Each edge is therefore checked with the comparison bound `L · κmax ≤ φmax(κmax)` (a curve of length `L` whose curvature stays at most `κmax` deviates from its chord no more than a circular arc of that length and curvature), with `L` and `κmax` taken from the grid nodes (linear interpolation at the edge ends). While an edge fails and `n < cap`, `n` grows by one and the placement is repeated. Constant curvature passes at the first `n`, so arcs keep the minimal count and stepwise growth.
+5. **Verification:** equal shares bound the deviation exactly only for constant curvature; where curvature varies along an edge (next to an inflection, curvature rising linearly from 0) a full share deviates about 15 % more than `ε`. Each edge is therefore checked with the comparison bound `L · κmax ≤ φmax(κmax)` (a curve of length `L` whose curvature stays at most `κmax` deviates from its chord no more than a circular arc of that length and curvature), with `L` and `κmax` taken from the grid nodes (linear interpolation at the edge ends). While an edge fails and `n < cap`, `n` grows by one and the placement is repeated. Constant curvature passes at the first `n`, so arcs keep the minimal count and stepwise growth.
+
+*Limitation (review of PR #85, follow-up #86):* growing `n` for the whole curve together with the conservative `κmax · L` check over-samples curves with straight or nearly straight stretches next to curved parts badly: a line followed by a circular arc reaches the cap, and a curvature ramp from 0 gets about 17× its density integral. A curvature spike narrower than a grid interval can also go unseen. No kind is affected today (see *Uniform kinds* below); #86 adds per-edge refinement before function curves (#81).
+
+*Uniform kinds:* segment and arc declare `Geometry::UNIFORM_CURVE` (speed and curvature independent of `t`). For them the Mesh skips the grid and uses `uniform_samples`: `n = clamp(ceil(I − 1e-9), 1, cap)` from one evaluation at `t = 0.5`, `t_j = j/n`. This is the result of `place_samples` for constant density (a test compares the two).
 
 Speed comes from the `TangentAt { Normalized }` expression, curvature from `Document::curve_curvature`; vertex positions stay on the expression path (`OnCurve`, `Start`, `End`) as display-mesh requires.
 
@@ -76,8 +80,9 @@ Speed comes from the `TangentAt { Normalized }` expression, curvature from `Docu
 
 ## Risks / Trade-offs
 
-- [More grid evaluations per curve than before (65 speed and curvature evaluations versus up to 64 tangent evaluations), and the App rebuilds the Mesh for every hit query] → Same order of cost as today; curvature for segment and arc is a constant. Caching the Mesh is a separate optimisation if profiling asks for it.
+- [More grid evaluations per curve than before (65 speed and curvature evaluations versus 2 tangent evaluations for a segment), and the App rebuilds the Mesh for every hit query] → Uniform kinds (segment, arc) use the closed form with one speed and one curvature evaluation. Caching the Mesh is a separate optimisation if profiling asks for it.
 - [Before the first paint the App's viewport has scale 1, so the first Mesh uses a tolerance of 0.25 world units] → Only the first frame is coarse; the Mesh is rebuilt after `Viewport::fit`.
+- [The App's drawing box (fit after New / Open) was computed from the Mesh, whose tolerance follows the previous drawing's view; a coarse view underestimated curve extents] → The drawing box uses the curves' exact shapes (`ShapePiece::bounding_points`), not the Mesh (found in review of PR #85).
 - [Strong zoom makes the tolerance tiny and curves hit the cap] → The cap keeps the cost bounded; the polyline still starts and ends at the curve's ends (spec).
 - [Grid refinement is only exercised by synthetic curves until function curves exist] → Unit tests of `place_samples` with a sine (inflection points, equal end tangents) and with a curvature spike cover it now; #81 adds Document-level tests.
 - [Tests that pin edge counts of the old algorithm] → `tests_mesh.rs` is updated to the new contract (equal arc edges, minimal count, stepwise growth, near-full arc).

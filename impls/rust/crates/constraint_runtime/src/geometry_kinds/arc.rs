@@ -75,6 +75,7 @@ impl Arc {
 impl Geometry for Arc {
     const KIND: GeometryKind = GeometryKind::Arc;
     const NAME_PREFIX: &'static str = "arc";
+    const UNIFORM_CURVE: bool = true;
 
     /// `R < 0` → `(C, −R, θ₀ + π, Δθ)`: same curve, non-negative radius.
     fn shape(c: Self::Init) -> Vec<ShapePiece> {

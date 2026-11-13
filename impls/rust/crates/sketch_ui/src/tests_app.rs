@@ -125,6 +125,28 @@ fn opened_drawing_lies_inside_the_canvas() {
     }
 }
 
+/// Arc 0° → 120° around the origin, radius 1: its top (0, 1) lies between
+/// the vertices of a coarse Mesh.
+const ARC_0_120: &[u8] = br#"{"format": "illustrator-sketch", "version": 2, "scale": 10, "font_size": 10, "preamble": "", "commands": [
+    {"op": "create", "kind": "arc", "name": "a", "center": [0, 0], "radius": 1, "start_heading": 0, "sweep": 2.0943951023931953}
+]}"#;
+
+#[test]
+fn drawing_box_does_not_depend_on_the_previous_view() {
+    let fake = FakeFiles::new(true);
+    let mut app = App::with_files(fake.clone());
+    // View of a far larger drawing: a 0.25 px chord tolerance is ~0.3 world units.
+    app.viewport = Viewport::new(0.8, Pos2::ZERO);
+    app.file_command(FileCommand::Open);
+    fake.open_file("arc.sketch.json", ARC_0_120);
+    app.poll_files();
+    let coarse_view = app.world_box;
+    app.viewport = Viewport::new(1e4, Pos2::ZERO);
+    assert_eq!(app.drawing_box(), Some(coarse_view), "box follows the view");
+    let (min, max) = coarse_view;
+    assert!(min.y < 0.0 && max.y > 1.0, "the arc's top lies inside the box: {coarse_view:?}");
+}
+
 #[test]
 fn new_gives_the_default_box_and_edits_do_not_refit() {
     let (mut app, _) = open_far_away();

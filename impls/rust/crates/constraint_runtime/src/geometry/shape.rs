@@ -57,6 +57,36 @@ impl ShapePiece {
         self.point_at(1.0)
     }
 
+    /// Points whose axis-aligned bounding box is the piece's exact one: its
+    /// ends and, for an arc, every axis extreme (heading a multiple of π/2)
+    /// that the sweep passes.
+    pub fn bounding_points(&self) -> Vec<Point2> {
+        let mut points = vec![self.start_point(), self.end_point()];
+        if let Self::Arc {
+            center,
+            radius,
+            start,
+            sweep,
+        } = *self
+        {
+            use std::f64::consts::FRAC_PI_2;
+            let (a, d) = (start.radians(), sweep.radians());
+            let (lo, hi) = if d >= 0.0 { (a, a + d) } else { (a + d, a) };
+            // At most four distinct extremes; the bound also stops a
+            // non-finite sweep.
+            let mut k = (lo / FRAC_PI_2).ceil();
+            for _ in 0..4 {
+                let heading = k * FRAC_PI_2;
+                if heading.partial_cmp(&hi).is_none_or(|o| o.is_gt()) {
+                    break;
+                }
+                points.push(center + Vec2::new(radius * heading.cos(), radius * heading.sin()));
+                k += 1.0;
+            }
+        }
+        points
+    }
+
     /// The part between fractions `s0 ≤ s1` of the piece, as a piece of the
     /// same kind.
     pub fn sub(&self, s0: f64, s1: f64) -> Self {

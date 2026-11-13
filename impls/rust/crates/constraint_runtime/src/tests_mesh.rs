@@ -489,3 +489,38 @@ fn non_positive_tolerance_is_rejected() {
     let doc = Document::new();
     let _ = Mesh::from_document(&doc, doc.vector(), MeshFilter::RESULT_ONLY, 0.0);
 }
+
+// --- uniform kinds (closed form) and the half-turn cap ---
+
+#[test]
+fn uniform_kinds_mesh_like_the_general_sampler() {
+    let mut doc = Document::new();
+    let mut ids = vec![doc.add_geometry::<Segment>(GeometryRole::Result, (Point2::new(0.0, 0.0), Point2::new(5.0, 1.0)))];
+    for (r, sweep) in [(0.5, 1.0), (3.0, 4.0), (20.0, -2.0), (1.0, 6.2), (0.0, 1.0)] {
+        ids.push(doc.add_geometry::<Arc>(
+            GeometryRole::Result,
+            (Point2::new(1.0, 1.0), Length::new(r), HeadingAngle::new(0.4), TurnAngle::new(sweep)),
+        ));
+    }
+    let p = doc.vector();
+    for id in ids {
+        for eps in [1e-4, 0.01, 0.3] {
+            let speed = |t| tangent(id, t).evaluate(&doc, p).length();
+            let general = place_samples(speed, |t| doc.curve_curvature(id, p, t).unwrap(), eps, 1024);
+            let closed = uniform_samples(speed(0.5), doc.curve_curvature(id, p, 0.5).unwrap(), eps, 1024);
+            assert_eq!(closed.len(), general.len(), "{id:?}, eps {eps}");
+            for (a, b) in closed.iter().zip(&general) {
+                assert!((a - b).abs() < 1e-12, "{id:?}, eps {eps}: {a} vs {b}");
+            }
+        }
+    }
+}
+
+#[test]
+fn chord_turn_is_capped_at_a_half_turn() {
+    use std::f64::consts::PI;
+    assert!((phi_max(1.0, 1.0) - PI).abs() < 1e-12);
+    assert_eq!(phi_max(1.0, 3.0), phi_max(1.0, 1.0));
+    // Tolerance above the radius: a near-full circle still gets two edges.
+    assert_eq!(arc_edge_count(0.1, 2.0 * PI - 0.05, 0.5), 2);
+}

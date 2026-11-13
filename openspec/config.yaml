@@ -160,7 +160,8 @@ context: |
     the App passes 0.25 px via Viewport::px_to_world); curves tessellated via
     on_curve at parameters placed by curvature (osculating-circle edge
     density from speed and Document::curve_curvature, equal shares, minimal
-    count; arcs get equal edges), cap MAX_MESH_EDGES (1024) per curve; endpoint hits use geometric
+    count; arcs get equal edges; UNIFORM_CURVE kinds (segment, arc) in closed
+    form, φmax capped at π), cap MAX_MESH_EDGES (1024) per curve; endpoint hits use geometric
     start/end expressions only, and only for kinds with the endpoints
     capability (tessellation itself needs only CurveExprs).
   - names.rs: user-visible object names (one namespace for geometries

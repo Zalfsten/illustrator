@@ -66,6 +66,12 @@ pub trait Geometry: Chart + GeometryCaps + Sized + 'static {
         unsupported(Self::KIND, "shape")
     }
 
+    /// Whether speed \(|\gamma'(t)|\) and [`curvature`](Self::curvature) are the
+    /// same at every normalized `t` (lines, circular arcs; curve capability
+    /// only). The display Mesh then places equal edges in closed form instead
+    /// of sampling speed and curvature along the curve.
+    const UNIFORM_CURVE: bool = false;
+
     /// Unsigned curvature \(|\gamma'\times\gamma''|/|\gamma'|^3\) at normalized
     /// `t ∈ [0, 1]` (curve capability only); 0 where the curve is straight.
     ///
