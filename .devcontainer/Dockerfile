@@ -21,6 +21,9 @@ RUN apt-get update \
     libgl1 \
     libegl1 \
     libfontconfig1 \
+    # GNU Octave (octave-cli) regenerates the expression crate's reference
+    # values: impls/rust/crates/expression/tests/reference/generate.m.
+    octave \
     # Headless Chromium for browser checks with Playwright (npx playwright
     # install chromium downloads the browser itself; these are its libraries).
     libnss3 \
