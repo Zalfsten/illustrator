@@ -31,6 +31,7 @@ geometry_caps!(Segment: curve, endpoints, line);
 impl Geometry for Segment {
     const KIND: GeometryKind = GeometryKind::Segment;
     const NAME_PREFIX: &'static str = "seg";
+    const UNIFORM_CURVE: bool = true;
     type Attrs = ();
 
     fn attrs_of(a: &KindAttrs) -> &() {
@@ -39,7 +40,6 @@ impl Geometry for Segment {
             other => unreachable!("segment with {other:?}"),
         }
     }
-    const UNIFORM_CURVE: bool = true;
 
     fn shape((start, end): Self::Init, _a: &Self::Attrs) -> Vec<ShapePiece> {
         vec![ShapePiece::Line { start, end }]

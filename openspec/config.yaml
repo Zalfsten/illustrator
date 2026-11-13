@@ -141,7 +141,8 @@ context: |
     geometry_caps! (opt-in factory traits + Caps) + impl Geometry
     (Jacobians via set_scaled) with NAME_PREFIX (seg, arc). Kinds
     today: Segment (2×Point2), Arc (center Point2, Length radius ≥ 0 in
-    committed State via Geometry::canonical on add / commit, HeadingAngle
+    committed State via Geometry::canonical on add / commit / attribute
+    change, HeadingAngle
     start, TurnAngle sweep), Label (prefix lbl; origin Point2 + heading
     HeadingAngle; caps anchor + line, no curve; LabelAttrs: source,
     Markup, HAlign, VAlign, offset in pt in the label frame, size or

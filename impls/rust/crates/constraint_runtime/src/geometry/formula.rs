@@ -101,7 +101,13 @@ pub trait Geometry: Chart + GeometryCaps + Sized + 'static {
         let _ = (f, c, a);
         unsupported(Self::KIND, "point")
     }
-    fn point_jacobian(f: PointFormula, c: Self::Init, a: &Self::Attrs, j: &mut DenseMatrix<'_>, scale: f64) {
+    fn point_jacobian(
+        f: PointFormula,
+        c: Self::Init,
+        a: &Self::Attrs,
+        j: &mut DenseMatrix<'_>,
+        scale: f64,
+    ) {
         let _ = (f, c, a, j, scale);
         unsupported(Self::KIND, "point")
     }
@@ -114,7 +120,13 @@ pub trait Geometry: Chart + GeometryCaps + Sized + 'static {
         let _ = (f, c, a);
         unsupported(Self::KIND, "vector")
     }
-    fn vec_jacobian(f: VecFormula, c: Self::Init, a: &Self::Attrs, j: &mut DenseMatrix<'_>, scale: f64) {
+    fn vec_jacobian(
+        f: VecFormula,
+        c: Self::Init,
+        a: &Self::Attrs,
+        j: &mut DenseMatrix<'_>,
+        scale: f64,
+    ) {
         let _ = (f, c, a, j, scale);
         unsupported(Self::KIND, "vector")
     }
@@ -127,7 +139,13 @@ pub trait Geometry: Chart + GeometryCaps + Sized + 'static {
         let _ = (f, c, a);
         unsupported(Self::KIND, "length")
     }
-    fn length_jacobian(f: LengthFormula, c: Self::Init, a: &Self::Attrs, j: &mut DenseMatrix<'_>, scale: f64) {
+    fn length_jacobian(
+        f: LengthFormula,
+        c: Self::Init,
+        a: &Self::Attrs,
+        j: &mut DenseMatrix<'_>,
+        scale: f64,
+    ) {
         let _ = (f, c, a, j, scale);
         unsupported(Self::KIND, "length")
     }
@@ -140,7 +158,13 @@ pub trait Geometry: Chart + GeometryCaps + Sized + 'static {
         let _ = (f, c, a);
         unsupported(Self::KIND, "heading")
     }
-    fn heading_jacobian(f: HeadingFormula, c: Self::Init, a: &Self::Attrs, j: &mut DenseMatrix<'_>, scale: f64) {
+    fn heading_jacobian(
+        f: HeadingFormula,
+        c: Self::Init,
+        a: &Self::Attrs,
+        j: &mut DenseMatrix<'_>,
+        scale: f64,
+    ) {
         let _ = (f, c, a, j, scale);
         unsupported(Self::KIND, "heading")
     }
@@ -153,7 +177,13 @@ pub trait Geometry: Chart + GeometryCaps + Sized + 'static {
         let _ = (f, c, a);
         unsupported(Self::KIND, "turn")
     }
-    fn turn_jacobian(f: TurnFormula, c: Self::Init, a: &Self::Attrs, j: &mut DenseMatrix<'_>, scale: f64) {
+    fn turn_jacobian(
+        f: TurnFormula,
+        c: Self::Init,
+        a: &Self::Attrs,
+        j: &mut DenseMatrix<'_>,
+        scale: f64,
+    ) {
         let _ = (f, c, a, j, scale);
         unsupported(Self::KIND, "turn")
     }

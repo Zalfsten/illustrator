@@ -59,7 +59,7 @@ Each formula that takes `c: Self::Init` also takes `a: &Self::Attrs`, directly a
 
 `*_params(f)` keeps its signature, so connectivity cannot depend on attributes, as the spec requires. Constants (`KIND`, `NAME_PREFIX`, `UNIFORM_CURVE`) and `default_attrs` are unchanged.
 
-`canonical` takes attributes too, because a function curve's canonical chart may depend on its x range. `add_geometry_with` projects the incoming `attrs` with `K::attrs_of` before packing; `canonicalize` uses the instance's attributes.
+`canonical` takes attributes too, because a function curve's canonical chart may depend on its x range. `add_geometry_with` first stores the incoming `attrs` (`set_attrs`, which refuses another kind's variant) and then canonicalizes with the instance's stored attributes, so mismatched attributes keep the defaults in release builds instead of panicking; `canonicalize` uses the instance's attributes too. Because `canonical` may read attributes, `set_geometry_attrs` (and `set_label_attrs`) rewrites the geometry's committed State block to its canonical values for the new attributes (added in review of PR #87), so committed State stays canonical after an attribute command, not only after the next drag.
 
 *Alternative:* a context struct `ChartArgs<K> { c, a }` as the single argument. It would make future additions cheaper, but every existing destructuring pattern `(center, radius, start, sweep): Self::Init` would become a nested pattern or an extra `let`, which is more churn now for a speculative benefit. Rejected.
 
@@ -79,6 +79,7 @@ Each formula that takes `c: Self::Init` also takes `a: &Self::Attrs`, directly a
 
 - [Signature churn in about 40 test call sites] → Mechanical: `&()` for segment and arc, `&LabelAttrs::default()` or the stored attributes for label. The compiler finds every site.
 - [An extra `match` per formula call for the projection from `KindAttrs`] → One enum discriminant check next to the existing `with_kind!` match. No allocation; `alloc_free.rs` keeps guarding it.
+- [No current kind reads its attributes, so no test fails if a dispatch site passes default instead of stored attributes (mutation-checked in review of PR #87)] → #81 adds Document-level tests: changing an attribute at fixed State changes `evaluate`, the Jacobian, `curve_shape` and `curve_curvature`.
 - [Formulas could start depending on attributes in ways the solver cannot see] → Attributes are fixed during a solve (proposal non-goal), and connectivity stays attribute-independent (decision 2), so the solver's sparsity and Jacobian columns are unaffected.
 
 ## Migration Plan

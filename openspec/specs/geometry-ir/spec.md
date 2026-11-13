@@ -284,6 +284,12 @@ Each geometry kind SHALL define how its initial continuous parameters are packed
 - **WHEN** the text attributes of a label are replaced and State is unchanged
 - **THEN** the label's origin and direction expressions evaluate to the same values as before
 
+#### Scenario: Replacing attributes keeps committed State canonical
+
+- **WHEN** the attributes of a geometry are replaced while its committed State block holds non-canonical chart values (for example an arc with a negative radius)
+- **THEN** the committed block afterwards holds the canonical chart values for the new attributes
+- **AND** the geometry evaluates to the same curve as before
+
 ### Requirement: Heading angles and turn angles are distinct
 
 The system SHALL distinguish **heading angles** (absolute orientations measured from a fixed planar null ray / angle origin) from **turn angles** (free angular displacements, independent of that origin). Implementations SHALL NOT overload a single angle quantity type for both roles. Algebra SHALL respect the distinction: the difference of two heading angles is a turn angle; adding a turn angle to a heading angle yields a heading angle; adding two turn angles yields a turn angle; adding two heading angles is not a meaningful operation. Both kinds of angle SHALL be expressible as continuous State degrees of freedom (radians) for chart packing when a geometry kind needs them. Wrapping or principal-value reduction at the type level is NOT required by this capability.

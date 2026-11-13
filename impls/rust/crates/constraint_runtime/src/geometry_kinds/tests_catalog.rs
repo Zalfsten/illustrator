@@ -51,46 +51,35 @@ fn curve_kinds_report_shape_and_curvature() {
     }
 }
 
+/// `default_attrs` and `attrs_of` are declared separately per kind; a
+/// mismatch would make every new instance panic on its first evaluation.
+#[test]
+fn default_attrs_project_for_every_kind() {
+    for kind in ALL_KINDS {
+        with_kind!(kind, K => {
+            let stored = K::default_attrs();
+            let _ = K::attrs_of(&stored);
+        });
+    }
+}
+
 #[test]
 fn instances_project_their_stored_attributes() {
     use crate::document::Document;
-    use crate::geom::{HeadingAngle, Length, Point2, TurnAngle};
+    use crate::geom::{HeadingAngle, Point2};
     use crate::geometry::GeometryRole;
-    use crate::geometry_kinds::{Arc, Label, LabelAttrs, Segment};
+    use crate::geometry_kinds::{Label, LabelAttrs};
 
     let mut doc = Document::new();
-    let ids = [
-        doc.add_geometry::<Segment>(
-            GeometryRole::Result,
-            (Point2::new(0.0, 0.0), Point2::new(1.0, 0.0)),
-        ),
-        doc.add_geometry::<Arc>(
-            GeometryRole::Result,
-            (
-                Point2::new(0.0, 0.0),
-                Length::new(1.0),
-                HeadingAngle::new(0.0),
-                TurnAngle::new(1.0),
-            ),
-        ),
-        doc.add_geometry::<Label>(
-            GeometryRole::Result,
-            (Point2::new(0.0, 0.0), HeadingAngle::new(0.0)),
-        ),
-    ];
-    for id in ids {
-        let g = doc.geometry(id).unwrap();
-        with_kind!(g.kind(), K => {
-            let default = K::default_attrs();
-            assert_eq!(g.attrs_of::<K>(), K::attrs_of(&default), "{:?}", g.kind());
-        });
-    }
-
-    let label = ids[2];
+    let label = doc.add_geometry::<Label>(
+        GeometryRole::Result,
+        (Point2::new(0.0, 0.0), HeadingAngle::new(0.0)),
+    );
     let attrs = LabelAttrs {
         source: "\\alpha".into(),
         ..LabelAttrs::default()
     };
+    assert_ne!(doc.geometry(label).unwrap().attrs_of::<Label>(), &attrs);
     assert!(doc.set_label_attrs(label, attrs.clone()));
     assert_eq!(doc.geometry(label).unwrap().attrs_of::<Label>(), &attrs);
 }

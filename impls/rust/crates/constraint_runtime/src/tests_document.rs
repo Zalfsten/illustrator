@@ -553,3 +553,28 @@ fn document_settings_default_and_snapshot() {
     doc = snapshot;
     assert_eq!(doc.settings().scale, 10.0);
 }
+
+#[test]
+fn setting_attributes_keeps_committed_state_canonical() {
+    let mut doc = Document::new();
+    let init = (
+        Point2::new(1.0, 2.0),
+        Length::new(1.5),
+        HeadingAngle::new(0.3),
+        TurnAngle::new(1.0),
+    );
+    let id = doc.add_geometry::<Arc>(GeometryRole::Result, init);
+    let start = Arc::start_expr(id).evaluate(&doc, doc.vector());
+    // A solver iterate: the same arc with a negative radius.
+    doc.vector_mut()[2] = -1.5;
+    doc.vector_mut()[3] = 0.3 + std::f64::consts::PI;
+    assert!(doc.set_geometry_attrs(id, KindAttrs::None));
+    let p = doc.vector();
+    assert!((p[2] - 1.5).abs() < 1e-12, "radius {}", p[2]);
+    let after = Arc::start_expr(id).evaluate(&doc, p);
+    assert!((after - start).length() < 1e-12, "the curve is unchanged");
+    // Refused attributes change nothing.
+    doc.vector_mut()[2] = -1.5;
+    assert!(!doc.set_geometry_attrs(id, KindAttrs::Label(Default::default())));
+    assert_eq!(doc.vector()[2], -1.5);
+}

@@ -29,3 +29,9 @@ Each geometry kind SHALL define how its initial continuous parameters are packed
 
 - **WHEN** the text attributes of a label are replaced and State is unchanged
 - **THEN** the label's origin and direction expressions evaluate to the same values as before
+
+#### Scenario: Replacing attributes keeps committed State canonical
+
+- **WHEN** the attributes of a geometry are replaced while its committed State block holds non-canonical chart values (for example an arc with a negative radius)
+- **THEN** the committed block afterwards holds the canonical chart values for the new attributes
+- **AND** the geometry evaluates to the same curve as before

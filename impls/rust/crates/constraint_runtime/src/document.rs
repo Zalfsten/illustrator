@@ -390,10 +390,19 @@ impl Document {
 
     /// Replace the attributes of geometry `id`; `false` (unchanged) if it does
     /// not exist or `attrs` belongs to another kind.
+    ///
+    /// The committed State block of `id` is rewritten to its canonical chart
+    /// values for the new attributes ([`Geometry::canonical`] may read them),
+    /// so committed State stays canonical; the curve is unchanged.
     pub fn set_geometry_attrs(&mut self, id: GeometryId, attrs: KindAttrs) -> bool {
-        self.geometries
-            .get_mut(id)
-            .is_some_and(|g| g.set_attrs(attrs))
+        let Some(g) = self.geometries.get_mut(id) else {
+            return false;
+        };
+        if !g.set_attrs(attrs) {
+            return false;
+        }
+        canonicalize_block(g, &mut self.vector);
+        true
     }
 
     /// Text attributes of label `id` (`None` if it is not a label).
@@ -404,11 +413,10 @@ impl Document {
         }
     }
 
-    /// Replace the text attributes of label `id`; `false` if it is not a label.
+    /// Replace the text attributes of label `id`; `false` if it is not a label
+    /// (see [`Self::set_geometry_attrs`]).
     pub fn set_label_attrs(&mut self, id: GeometryId, attrs: LabelAttrs) -> bool {
-        self.geometries
-            .get_mut(id)
-            .is_some_and(|g| g.set_attrs(KindAttrs::Label(attrs)))
+        self.set_geometry_attrs(id, KindAttrs::Label(attrs))
     }
 
     /// Register a geometry whose parameters already live in an external Vector.
@@ -514,11 +522,7 @@ impl Document {
     /// ([`Geometry::canonical`]); the curves are unchanged.
     pub fn canonicalize(&self, p: &mut Vector) {
         for g in self.geometries.values() {
-            let block = g.param_block();
-            with_kind!(g.kind(), K => {
-                let canonical = K::canonical(g.unpack::<K>(p), g.attrs_of::<K>());
-                p[block].copy_from_slice(K::pack(canonical).as_ref());
-            });
+            canonicalize_block(g, p);
         }
     }
 
@@ -615,6 +619,16 @@ impl Document {
     }
 }
 
+/// Rewrite `g`'s block of `p` to its canonical chart values for `g`'s
+/// attributes.
+fn canonicalize_block(g: &GeometryInst, p: &mut Vector) {
+    let block = g.param_block();
+    with_kind!(g.kind(), K => {
+        let canonical = K::canonical(g.unpack::<K>(p), g.attrs_of::<K>());
+        p[block].copy_from_slice(K::pack(canonical).as_ref());
+    });
+}
+
 #[cold]
 #[track_caller]
 fn missing_geometry(id: GeometryId) -> ! {
@@ -624,3 +638,4 @@ fn missing_geometry(id: GeometryId) -> ! {
 #[cfg(test)]
 #[path = "tests_document.rs"]
 mod tests_document;
+

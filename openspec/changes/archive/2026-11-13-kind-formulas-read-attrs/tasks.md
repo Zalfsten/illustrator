@@ -8,7 +8,7 @@ Implementation: impls/rust, crate `constraint_runtime` (see design.md). Run test
 - [x] 1.2 Implement the new contract in `geometry_kinds/segment.rs` and `arc.rs` (`type Attrs = ()`, `attrs_of` returns `&()` for `KindAttrs::None`), and in `label.rs` (`type Attrs = LabelAttrs`, returns the `KindAttrs::Label` payload). Formulas ignore `a`; `Arc::shape` passes it to `canonical`. Verify that these files compile.
 - [x] 1.3 Add `GeometryInst::attrs_of::<K>() -> &K::Attrs` in `geometry_kinds/catalog.rs`, beside `unpack::<K>` with the same kind `debug_assert`. Pass the attributes at every dispatch site:
   - `expr.rs`: `evaluate`, `accumulate_jacobian`, `VecExpr::jet`;
-  - `document.rs`: `curve_shape`, `curve_curvature`, `add_geometry_with` (project the incoming `attrs` with `K::attrs_of` before `canonical`), `canonicalize`.
+  - `document.rs`: `curve_shape`, `curve_curvature`, `add_geometry_with` (canonicalize with the stored attributes after `set_attrs`), `canonicalize`.
 
   Verify that `cargo build --workspace` succeeds (non-test targets).
 
