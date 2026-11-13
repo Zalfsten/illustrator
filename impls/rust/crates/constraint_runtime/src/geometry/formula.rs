@@ -1,14 +1,17 @@
 //! Kind formula contract and tag → kind dispatch.
 //!
 //! [`Geometry`] is what a kind implements: one value / Jacobian / connectivity
-//! triple per formula family. [`Formula`] connects each tag family in
+//! triple per formula family. Values and Jacobians read the geometry's chart
+//! values and its typed kind attributes ([`Geometry::Attrs`]); connectivity
+//! depends on the formula alone. [`Formula`] connects each tag family in
 //! [`super::capabilities`] to its triple, so [`crate::expr::Expr`] needs a
 //! single generic evaluate / Jacobian path and one kind match
 //! (`with_kind!` in [`crate::geometry_kinds`]).
 //!
 //! **Adding a kind:** implement [`Chart`] (via `chart_atoms!`), declare its
 //! capabilities with `geometry_caps!`, and implement [`Geometry`] (including
-//! `NAME_PREFIX`; connectivity defaults to the whole chart; override only when
+//! `NAME_PREFIX`, `Attrs` and `attrs_of`, `()` for kinds without attributes;
+//! connectivity defaults to the whole chart; override only when
 //! sparse, e.g. `point_params` for endpoints), then add it to
 //! [`GeometryKind`] / `with_kind!`.
 
@@ -47,6 +50,17 @@ pub trait Geometry: Chart + GeometryCaps + Sized + 'static {
     /// Prefix of automatic object names (`seg` → `seg1`, `seg2`, …).
     const NAME_PREFIX: &'static str;
 
+    /// Typed non-parameter attributes of this kind (`()` without any).
+    ///
+    /// Every chart-dependent formula receives them next to the chart values.
+    /// They are not State: they add no Jacobian columns, and connectivity
+    /// (`*_params`) does not depend on them.
+    type Attrs: std::fmt::Debug + PartialEq + 'static;
+
+    /// This kind's attributes inside the stored [`KindAttrs`]; panics on
+    /// another kind's variant (an instance's attributes always match its kind).
+    fn attrs_of(a: &KindAttrs) -> &Self::Attrs;
+
     /// Non-parameter attributes a new geometry of this kind starts with.
     fn default_attrs() -> KindAttrs {
         KindAttrs::None
@@ -56,13 +70,14 @@ pub trait Geometry: Chart + GeometryCaps + Sized + 'static {
     ///
     /// Applied to committed State and to initial values on add; solver iterates
     /// may hold non-canonical values (e.g. a negative arc radius).
-    fn canonical(init: Self::Init) -> Self::Init {
+    fn canonical(init: Self::Init, a: &Self::Attrs) -> Self::Init {
+        let _ = a;
         init
     }
 
     /// Exact shape (curve capability only), at canonical chart values.
-    fn shape(c: Self::Init) -> Vec<ShapePiece> {
-        let _ = c;
+    fn shape(c: Self::Init, a: &Self::Attrs) -> Vec<ShapePiece> {
+        let _ = (c, a);
         unsupported(Self::KIND, "shape")
     }
 
@@ -77,17 +92,17 @@ pub trait Geometry: Chart + GeometryCaps + Sized + 'static {
     ///
     /// Evaluation-only (display tessellation): no Jacobian, not a constraint
     /// operand. Accepts non-canonical solver iterates.
-    fn curvature(t: f64, c: Self::Init) -> f64 {
-        let _ = (t, c);
+    fn curvature(t: f64, c: Self::Init, a: &Self::Attrs) -> f64 {
+        let _ = (t, c, a);
         unsupported(Self::KIND, "curvature")
     }
 
-    fn point(f: PointFormula, c: Self::Init) -> Point2 {
-        let _ = (f, c);
+    fn point(f: PointFormula, c: Self::Init, a: &Self::Attrs) -> Point2 {
+        let _ = (f, c, a);
         unsupported(Self::KIND, "point")
     }
-    fn point_jacobian(f: PointFormula, c: Self::Init, j: &mut DenseMatrix<'_>, scale: f64) {
-        let _ = (f, c, j, scale);
+    fn point_jacobian(f: PointFormula, c: Self::Init, a: &Self::Attrs, j: &mut DenseMatrix<'_>, scale: f64) {
+        let _ = (f, c, a, j, scale);
         unsupported(Self::KIND, "point")
     }
     fn point_params(f: PointFormula) -> Range<usize> {
@@ -95,12 +110,12 @@ pub trait Geometry: Chart + GeometryCaps + Sized + 'static {
         all_params::<Self>()
     }
 
-    fn vec(f: VecFormula, c: Self::Init) -> Vec2 {
-        let _ = (f, c);
+    fn vec(f: VecFormula, c: Self::Init, a: &Self::Attrs) -> Vec2 {
+        let _ = (f, c, a);
         unsupported(Self::KIND, "vector")
     }
-    fn vec_jacobian(f: VecFormula, c: Self::Init, j: &mut DenseMatrix<'_>, scale: f64) {
-        let _ = (f, c, j, scale);
+    fn vec_jacobian(f: VecFormula, c: Self::Init, a: &Self::Attrs, j: &mut DenseMatrix<'_>, scale: f64) {
+        let _ = (f, c, a, j, scale);
         unsupported(Self::KIND, "vector")
     }
     fn vec_params(f: VecFormula) -> Range<usize> {
@@ -108,12 +123,12 @@ pub trait Geometry: Chart + GeometryCaps + Sized + 'static {
         all_params::<Self>()
     }
 
-    fn length(f: LengthFormula, c: Self::Init) -> Length {
-        let _ = (f, c);
+    fn length(f: LengthFormula, c: Self::Init, a: &Self::Attrs) -> Length {
+        let _ = (f, c, a);
         unsupported(Self::KIND, "length")
     }
-    fn length_jacobian(f: LengthFormula, c: Self::Init, j: &mut DenseMatrix<'_>, scale: f64) {
-        let _ = (f, c, j, scale);
+    fn length_jacobian(f: LengthFormula, c: Self::Init, a: &Self::Attrs, j: &mut DenseMatrix<'_>, scale: f64) {
+        let _ = (f, c, a, j, scale);
         unsupported(Self::KIND, "length")
     }
     fn length_params(f: LengthFormula) -> Range<usize> {
@@ -121,12 +136,12 @@ pub trait Geometry: Chart + GeometryCaps + Sized + 'static {
         all_params::<Self>()
     }
 
-    fn heading(f: HeadingFormula, c: Self::Init) -> HeadingAngle {
-        let _ = (f, c);
+    fn heading(f: HeadingFormula, c: Self::Init, a: &Self::Attrs) -> HeadingAngle {
+        let _ = (f, c, a);
         unsupported(Self::KIND, "heading")
     }
-    fn heading_jacobian(f: HeadingFormula, c: Self::Init, j: &mut DenseMatrix<'_>, scale: f64) {
-        let _ = (f, c, j, scale);
+    fn heading_jacobian(f: HeadingFormula, c: Self::Init, a: &Self::Attrs, j: &mut DenseMatrix<'_>, scale: f64) {
+        let _ = (f, c, a, j, scale);
         unsupported(Self::KIND, "heading")
     }
     fn heading_params(f: HeadingFormula) -> Range<usize> {
@@ -134,12 +149,12 @@ pub trait Geometry: Chart + GeometryCaps + Sized + 'static {
         unsupported(Self::KIND, "heading")
     }
 
-    fn turn(f: TurnFormula, c: Self::Init) -> TurnAngle {
-        let _ = (f, c);
+    fn turn(f: TurnFormula, c: Self::Init, a: &Self::Attrs) -> TurnAngle {
+        let _ = (f, c, a);
         unsupported(Self::KIND, "turn")
     }
-    fn turn_jacobian(f: TurnFormula, c: Self::Init, j: &mut DenseMatrix<'_>, scale: f64) {
-        let _ = (f, c, j, scale);
+    fn turn_jacobian(f: TurnFormula, c: Self::Init, a: &Self::Attrs, j: &mut DenseMatrix<'_>, scale: f64) {
+        let _ = (f, c, a, j, scale);
         unsupported(Self::KIND, "turn")
     }
     fn turn_params(f: TurnFormula) -> Range<usize> {
@@ -151,8 +166,8 @@ pub trait Geometry: Chart + GeometryCaps + Sized + 'static {
 /// A formula tag family: value type plus the [`Geometry`] triple it dispatches to.
 pub trait Formula: Copy + std::fmt::Debug + PartialEq {
     type Value;
-    fn eval<K: Geometry>(self, c: K::Init) -> Self::Value;
-    fn jacobian<K: Geometry>(self, c: K::Init, j: &mut DenseMatrix<'_>, scale: f64);
+    fn eval<K: Geometry>(self, c: K::Init, a: &K::Attrs) -> Self::Value;
+    fn jacobian<K: Geometry>(self, c: K::Init, a: &K::Attrs, j: &mut DenseMatrix<'_>, scale: f64);
     fn params<K: Geometry>(self) -> Range<usize>;
 }
 
@@ -162,13 +177,19 @@ macro_rules! formula_family {
             type Value = $Value;
 
             #[inline]
-            fn eval<K: Geometry>(self, c: K::Init) -> $Value {
-                K::$eval(self, c)
+            fn eval<K: Geometry>(self, c: K::Init, a: &K::Attrs) -> $Value {
+                K::$eval(self, c, a)
             }
 
             #[inline]
-            fn jacobian<K: Geometry>(self, c: K::Init, j: &mut DenseMatrix<'_>, scale: f64) {
-                K::$jac(self, c, j, scale)
+            fn jacobian<K: Geometry>(
+                self,
+                c: K::Init,
+                a: &K::Attrs,
+                j: &mut DenseMatrix<'_>,
+                scale: f64,
+            ) {
+                K::$jac(self, c, a, j, scale)
             }
 
             #[inline]

@@ -221,10 +221,10 @@ fn add_geometry_stores_canonical_arc() {
     assert!((p[3] - (0.3 + std::f64::consts::PI)).abs() < 1e-12);
     // Same curve as the given (non-canonical) values.
     let start = Arc::start_expr(id).evaluate(&doc, p);
-    let want = <Arc as Geometry>::point(crate::geometry::PointFormula::Start, init);
+    let want = <Arc as Geometry>::point(crate::geometry::PointFormula::Start, init, &());
     assert!((start.x - want.x).abs() < 1e-12 && (start.y - want.y).abs() < 1e-12);
     let end = Arc::end_expr(id).evaluate(&doc, p);
-    let want = <Arc as Geometry>::point(crate::geometry::PointFormula::End, init);
+    let want = <Arc as Geometry>::point(crate::geometry::PointFormula::End, init, &());
     assert!((end.x - want.x).abs() < 1e-12 && (end.y - want.y).abs() < 1e-12);
 }
 

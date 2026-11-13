@@ -116,7 +116,9 @@ context: |
     - formula.rs: Geometry (what a kind implements: value / Jacobian /
       connectivity per formula family) and Formula (tag family → that
       triple), formula_family!; also Geometry::shape (exact curve shape,
-      curve kinds only)
+      curve kinds only); values, Jacobians, shape, curvature and canonical
+      read the chart values plus the kind's typed attributes
+      (type Attrs, attrs_of; () for segment/arc), connectivity never does
     - shape.rs: ShapePiece (Line / Arc with |R|; length, point_at, sub),
       read by identity via Document::curve_shape (None without curve);
       exports use it instead of the Mesh
@@ -133,7 +135,8 @@ context: |
     constraint namespaces)
   - geometry_kinds/: catalog.rs (data-less GeometryKind enum, GeometryInst
     with KindAttrs — non-parameter attributes, default per kind via
-    Geometry::default_attrs — and with_kind! dispatch); per kind file:
+    Geometry::default_attrs, typed access GeometryInst::attrs_of::<K>() —
+    and with_kind! dispatch); per kind file:
     chart_atoms! layout +
     geometry_caps! (opt-in factory traits + Caps) + impl Geometry
     (Jacobians via set_scaled) with NAME_PREFIX (seg, arc). Kinds

@@ -274,7 +274,7 @@ fn canonical_flips_negative_radius() {
         HeadingAngle::new(0.4),
         TurnAngle::new(2.0),
     );
-    let c = <Arc as Geometry>::canonical(init);
+    let c = <Arc as Geometry>::canonical(init, &());
     assert!((c.1.value() - 1.5).abs() < 1e-12);
     assert!((c.2.radians() - (0.4 + std::f64::consts::PI)).abs() < 1e-12);
     assert_eq!(c.0, init.0);
@@ -289,43 +289,43 @@ fn canonical_preserves_curve() {
         HeadingAngle::new(0.4),
         TurnAngle::new(2.0),
     );
-    let c = <Arc as Geometry>::canonical(init);
+    let c = <Arc as Geometry>::canonical(init, &());
 
     // Test points
     for t in [0.0, 0.25, 0.5, 1.0] {
-        let pt_init = Arc::point(PointFormula::OnCurve { param: CurveParam::Normalized(t) }, init);
-        let pt_canonical = Arc::point(PointFormula::OnCurve { param: CurveParam::Normalized(t) }, c);
+        let pt_init = Arc::point(PointFormula::OnCurve { param: CurveParam::Normalized(t) }, init, &());
+        let pt_canonical = Arc::point(PointFormula::OnCurve { param: CurveParam::Normalized(t) }, c, &());
         assert!((pt_init.x - pt_canonical.x).abs() < 1e-12);
         assert!((pt_init.y - pt_canonical.y).abs() < 1e-12);
     }
 
     // Test start and end points
-    let start_init = Arc::point(PointFormula::Start, init);
-    let start_canonical = Arc::point(PointFormula::Start, c);
+    let start_init = Arc::point(PointFormula::Start, init, &());
+    let start_canonical = Arc::point(PointFormula::Start, c, &());
     assert!((start_init.x - start_canonical.x).abs() < 1e-12);
     assert!((start_init.y - start_canonical.y).abs() < 1e-12);
 
-    let end_init = Arc::point(PointFormula::End, init);
-    let end_canonical = Arc::point(PointFormula::End, c);
+    let end_init = Arc::point(PointFormula::End, init, &());
+    let end_canonical = Arc::point(PointFormula::End, c, &());
     assert!((end_init.x - end_canonical.x).abs() < 1e-12);
     assert!((end_init.y - end_canonical.y).abs() < 1e-12);
 
     // Test vectors
     for t in [0.0, 0.25, 0.5, 1.0] {
-        let tan_init = Arc::vec(VecFormula::TangentAt { param: CurveParam::Normalized(t) }, init);
-        let tan_canonical = Arc::vec(VecFormula::TangentAt { param: CurveParam::Normalized(t) }, c);
+        let tan_init = Arc::vec(VecFormula::TangentAt { param: CurveParam::Normalized(t) }, init, &());
+        let tan_canonical = Arc::vec(VecFormula::TangentAt { param: CurveParam::Normalized(t) }, c, &());
         assert!((tan_init.x - tan_canonical.x).abs() < 1e-12);
         assert!((tan_init.y - tan_canonical.y).abs() < 1e-12);
 
-        let norm_init = Arc::vec(VecFormula::NormalAt { param: CurveParam::Normalized(t) }, init);
-        let norm_canonical = Arc::vec(VecFormula::NormalAt { param: CurveParam::Normalized(t) }, c);
+        let norm_init = Arc::vec(VecFormula::NormalAt { param: CurveParam::Normalized(t) }, init, &());
+        let norm_canonical = Arc::vec(VecFormula::NormalAt { param: CurveParam::Normalized(t) }, c, &());
         assert!((norm_init.x - norm_canonical.x).abs() < 1e-12);
         assert!((norm_init.y - norm_canonical.y).abs() < 1e-12);
     }
 
     // Test length
-    let len_init = Arc::length(LengthFormula::Length, init).value();
-    let len_canonical = Arc::length(LengthFormula::Length, c).value();
+    let len_init = Arc::length(LengthFormula::Length, init, &()).value();
+    let len_canonical = Arc::length(LengthFormula::Length, c, &()).value();
     assert!((len_init - len_canonical).abs() < 1e-12);
 }
 
@@ -338,7 +338,7 @@ fn canonical_keeps_non_negative_radius() {
             HeadingAngle::new(0.7),
             TurnAngle::new(-1.1),
         );
-        assert_eq!(<Arc as Geometry>::canonical(init), init);
+        assert_eq!(<Arc as Geometry>::canonical(init, &()), init);
     }
 }
 
@@ -352,7 +352,7 @@ fn arc_curvature_is_reciprocal_radius() {
             TurnAngle::new(2.0),
         );
         for t in [0.0, 0.5, 1.0] {
-            assert!((Arc::curvature(t, init) - 0.5).abs() < 1e-15, "R = {radius}, t = {t}");
+            assert!((Arc::curvature(t, init, &()) - 0.5).abs() < 1e-15, "R = {radius}, t = {t}");
         }
     }
 }
@@ -365,5 +365,5 @@ fn zero_radius_arc_has_infinite_curvature() {
         HeadingAngle::new(0.0),
         TurnAngle::new(1.0),
     );
-    assert_eq!(Arc::curvature(0.5, init), f64::INFINITY);
+    assert_eq!(Arc::curvature(0.5, init, &()), f64::INFINITY);
 }

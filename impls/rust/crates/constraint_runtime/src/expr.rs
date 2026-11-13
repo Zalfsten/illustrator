@@ -49,7 +49,7 @@ impl<F: Formula> Expr<F> {
 
     pub fn evaluate(&self, doc: &Document, p: &Vector) -> F::Value {
         let g = doc.expect_geometry(self.geometry);
-        with_kind!(g.kind(), K => self.formula.eval::<K>(g.unpack::<K>(p)))
+        with_kind!(g.kind(), K => self.formula.eval::<K>(g.unpack::<K>(p), g.attrs_of::<K>()))
     }
 
     /// Global Vector columns this expression depends on (Jacobian column order).
@@ -76,7 +76,7 @@ impl<F: Formula> Expr<F> {
     ) -> usize {
         let g = doc.expect_geometry(self.geometry);
         with_kind!(g.kind(), K => {
-            self.formula.jacobian::<K>(g.unpack::<K>(p), j, scale);
+            self.formula.jacobian::<K>(g.unpack::<K>(p), g.attrs_of::<K>(), j, scale);
             self.formula.params::<K>().len()
         })
     }
@@ -114,16 +114,21 @@ impl VecExpr {
         let g = doc.expect_geometry(self.geometry);
         with_kind!(g.kind(), K => {
             let chart = g.unpack::<K>(p);
+            let attrs = g.attrs_of::<K>();
             let n = self.formula.params::<K>().len();
             debug_assert!(
                 n <= MAX_FORMULA_LOCAL_DOF,
                 "vector formula local DOF count {n} exceeds MAX_FORMULA_LOCAL_DOF"
             );
             let mut jac = [0.0; 2 * MAX_FORMULA_LOCAL_DOF];
-            self.formula
-                .jacobian::<K>(chart, &mut DenseMatrix::packed(&mut jac[..2 * n], 2, n), 1.0);
+            self.formula.jacobian::<K>(
+                chart,
+                attrs,
+                &mut DenseMatrix::packed(&mut jac[..2 * n], 2, n),
+                1.0,
+            );
             VecJet {
-                value: self.formula.eval::<K>(chart),
+                value: self.formula.eval::<K>(chart, attrs),
                 cols: n,
                 jac,
             }

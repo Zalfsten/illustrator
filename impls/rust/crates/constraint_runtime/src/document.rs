@@ -242,7 +242,7 @@ impl Document {
     /// is not in the document or has no curve capability.
     pub fn curve_shape(&self, id: GeometryId, p: &Vector) -> Option<Vec<ShapePiece>> {
         let g = self.geometry(id).filter(|g| g.kind().caps().curve)?;
-        Some(with_kind!(g.kind(), K => K::shape(g.unpack::<K>(p))))
+        Some(with_kind!(g.kind(), K => K::shape(g.unpack::<K>(p), g.attrs_of::<K>())))
     }
 
     /// Unsigned curvature of curve `id` at normalized `t` and State `p`
@@ -250,7 +250,9 @@ impl Document {
     /// or has no curve capability.
     pub fn curve_curvature(&self, id: GeometryId, p: &Vector, t: f64) -> Option<f64> {
         let g = self.geometry(id).filter(|g| g.kind().caps().curve)?;
-        Some(with_kind!(g.kind(), K => K::curvature(t, g.unpack::<K>(p))))
+        Some(with_kind!(g.kind(), K => {
+            K::curvature(t, g.unpack::<K>(p), g.attrs_of::<K>())
+        }))
     }
 
     /// `formula` on `id` if the geometry exists and `has` its capability.
@@ -373,13 +375,13 @@ impl Document {
         init: K::Init,
         attrs: KindAttrs,
     ) -> GeometryId {
-        let packed = K::pack(K::canonical(init));
-        debug_assert_eq!(packed.as_ref().len(), K::PARAMETER_COUNT);
         let id = self.geometries.next_id();
         let param_offset = self.vector.len();
         let mut g = GeometryInst::of::<K>(GeometryShell::new(id, role, param_offset));
         let matches = g.set_attrs(attrs);
         debug_assert!(matches, "attributes of another kind for {:?}", K::KIND);
+        let packed = K::pack(K::canonical(init, g.attrs_of::<K>()));
+        debug_assert_eq!(packed.as_ref().len(), K::PARAMETER_COUNT);
         self.vector.extend_from_slice(packed.as_ref());
         self.push_geometry(g);
         debug_assert_eq!(self.vector.len(), self.parameter_count());
@@ -514,7 +516,7 @@ impl Document {
         for g in self.geometries.values() {
             let block = g.param_block();
             with_kind!(g.kind(), K => {
-                let canonical = K::canonical(g.unpack::<K>(p));
+                let canonical = K::canonical(g.unpack::<K>(p), g.attrs_of::<K>());
                 p[block].copy_from_slice(K::pack(canonical).as_ref());
             });
         }

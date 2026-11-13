@@ -10,7 +10,7 @@ use crate::geometry::{
     Geometry, GeometryId, HeadingFormula, LengthFormula, PointFormula, ShapePiece, TurnFormula,
     VecFormula,
 };
-use crate::geometry_kinds::GeometryKind;
+use crate::geometry_kinds::{GeometryKind, KindAttrs};
 use crate::matrix::DenseMatrix;
 
 /// Circular-arc kind (type-level marker; instances live in
@@ -75,11 +75,19 @@ impl Arc {
 impl Geometry for Arc {
     const KIND: GeometryKind = GeometryKind::Arc;
     const NAME_PREFIX: &'static str = "arc";
+    type Attrs = ();
+
+    fn attrs_of(a: &KindAttrs) -> &() {
+        match a {
+            KindAttrs::None => &(),
+            other => unreachable!("arc with {other:?}"),
+        }
+    }
     const UNIFORM_CURVE: bool = true;
 
     /// `R < 0` → `(C, −R, θ₀ + π, Δθ)`: same curve, non-negative radius.
-    fn shape(c: Self::Init) -> Vec<ShapePiece> {
-        let (center, radius, start, sweep) = Self::canonical(c);
+    fn shape(c: Self::Init, a: &Self::Attrs) -> Vec<ShapePiece> {
+        let (center, radius, start, sweep) = Self::canonical(c, a);
         vec![ShapePiece::Arc {
             center,
             radius: radius.value(),
@@ -90,11 +98,11 @@ impl Geometry for Arc {
 
     /// \(1/|R|\) everywhere (`+∞` for `R = 0`); the sign of a solver iterate's
     /// radius does not change the curve's bending.
-    fn curvature(_t: f64, (_, radius, _, _): Self::Init) -> f64 {
+    fn curvature(_t: f64, (_, radius, _, _): Self::Init, _a: &Self::Attrs) -> f64 {
         1.0 / radius.value().abs()
     }
 
-    fn canonical((center, radius, start, sweep): Self::Init) -> Self::Init {
+    fn canonical((center, radius, start, sweep): Self::Init, _a: &Self::Attrs) -> Self::Init {
         if radius.value() < 0.0 {
             (
                 center,
@@ -107,7 +115,11 @@ impl Geometry for Arc {
         }
     }
 
-    fn point(f: PointFormula, (center, radius, start, sweep): Self::Init) -> Point2 {
+    fn point(
+        f: PointFormula,
+        (center, radius, start, sweep): Self::Init,
+        _a: &Self::Attrs,
+    ) -> Point2 {
         if let PointFormula::Center = f {
             return center;
         }
@@ -120,6 +132,7 @@ impl Geometry for Arc {
     fn point_jacobian(
         f: PointFormula,
         (_center, radius, start, sweep): Self::Init,
+        _a: &Self::Attrs,
         j: &mut DenseMatrix<'_>,
         scale: f64,
     ) {
@@ -162,7 +175,7 @@ impl Geometry for Arc {
         }
     }
 
-    fn vec(f: VecFormula, (_center, radius, start, sweep): Self::Init) -> Vec2 {
+    fn vec(f: VecFormula, (_center, radius, start, sweep): Self::Init, _a: &Self::Attrs) -> Vec2 {
         let r = radius.value();
         let dth = sweep.radians();
         match f {
@@ -184,6 +197,7 @@ impl Geometry for Arc {
     fn vec_jacobian(
         f: VecFormula,
         (_center, radius, start, sweep): Self::Init,
+        _a: &Self::Attrs,
         j: &mut DenseMatrix<'_>,
         scale: f64,
     ) {
@@ -220,7 +234,11 @@ impl Geometry for Arc {
         }
     }
 
-    fn length(f: LengthFormula, (_center, radius, _start, sweep): Self::Init) -> Length {
+    fn length(
+        f: LengthFormula,
+        (_center, radius, _start, sweep): Self::Init,
+        _a: &Self::Attrs,
+    ) -> Length {
         match f {
             LengthFormula::Length => Length::new(radius.value().abs() * sweep.radians().abs()),
             LengthFormula::Radius => Length::new(radius.value().abs()),
@@ -231,6 +249,7 @@ impl Geometry for Arc {
     fn length_jacobian(
         f: LengthFormula,
         (_center, radius, _start, sweep): Self::Init,
+        _a: &Self::Attrs,
         j: &mut DenseMatrix<'_>,
         scale: f64,
     ) {
@@ -250,13 +269,23 @@ impl Geometry for Arc {
         }
     }
 
-    fn heading(f: HeadingFormula, (_center, _radius, start, _sweep): Self::Init) -> HeadingAngle {
+    fn heading(
+        f: HeadingFormula,
+        (_center, _radius, start, _sweep): Self::Init,
+        _a: &Self::Attrs,
+    ) -> HeadingAngle {
         match f {
             HeadingFormula::StartHeading => start,
         }
     }
 
-    fn heading_jacobian(f: HeadingFormula, _c: Self::Init, j: &mut DenseMatrix<'_>, scale: f64) {
+    fn heading_jacobian(
+        f: HeadingFormula,
+        _c: Self::Init,
+        _a: &Self::Attrs,
+        j: &mut DenseMatrix<'_>,
+        scale: f64,
+    ) {
         match f {
             HeadingFormula::StartHeading => j.set_scaled(scale, [[1.0]]),
         }
@@ -268,13 +297,23 @@ impl Geometry for Arc {
         }
     }
 
-    fn turn(f: TurnFormula, (_center, _radius, _start, sweep): Self::Init) -> TurnAngle {
+    fn turn(
+        f: TurnFormula,
+        (_center, _radius, _start, sweep): Self::Init,
+        _a: &Self::Attrs,
+    ) -> TurnAngle {
         match f {
             TurnFormula::Sweep => sweep,
         }
     }
 
-    fn turn_jacobian(f: TurnFormula, _c: Self::Init, j: &mut DenseMatrix<'_>, scale: f64) {
+    fn turn_jacobian(
+        f: TurnFormula,
+        _c: Self::Init,
+        _a: &Self::Attrs,
+        j: &mut DenseMatrix<'_>,
+        scale: f64,
+    ) {
         match f {
             TurnFormula::Sweep => j.set_scaled(scale, [[1.0]]),
         }

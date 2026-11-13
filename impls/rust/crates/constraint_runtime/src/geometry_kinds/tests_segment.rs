@@ -150,7 +150,7 @@ fn vec_expr_tangent_and_normal() {
 #[test]
 fn segment_canonical_is_identity() {
     let init = (Point2::new(1.0, -2.0), Point2::new(-3.0, 0.5));
-    assert_eq!(<Segment as Geometry>::canonical(init), init);
+    assert_eq!(<Segment as Geometry>::canonical(init, &()), init);
 }
 
 #[test]
@@ -210,6 +210,6 @@ fn direction_jacobian_matches_fd() {
 fn segment_curvature_is_zero() {
     let init = (Point2::new(0.0, 0.0), Point2::new(3.0, 4.0));
     for t in [0.0, 0.5, 1.0] {
-        assert_eq!(Segment::curvature(t, init), 0.0);
+        assert_eq!(Segment::curvature(t, init, &()), 0.0);
     }
 }
