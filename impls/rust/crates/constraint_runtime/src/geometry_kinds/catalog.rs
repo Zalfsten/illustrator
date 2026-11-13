@@ -156,6 +156,18 @@ impl GeometryInst {
         K::unpack(&p[o..o + K::PARAMETER_COUNT])
     }
 
+    /// This geometry's typed kind attributes. `K` must match [`Self::kind`].
+    #[inline]
+    pub fn attrs_of<K: Geometry>(&self) -> &K::Attrs {
+        debug_assert_eq!(
+            self.kind,
+            K::KIND,
+            "geometry {:?} read as wrong kind",
+            self.id()
+        );
+        K::attrs_of(&self.attrs)
+    }
+
     /// Lift chart-local columns into global Vector indices.
     pub fn global_indices(&self, local: Range<usize>) -> Vec<usize> {
         let o = self.shell.param_offset;

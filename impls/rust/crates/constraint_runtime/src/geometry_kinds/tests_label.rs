@@ -83,3 +83,50 @@ fn label_has_no_curve_expressions_by_id() {
     assert_eq!(doc.origin_expr(id), Some(Label::origin_expr(id)));
     assert_eq!(doc.direction_expr(id), Some(Label::direction_expr(id)));
 }
+
+fn other_attrs() -> LabelAttrs {
+    LabelAttrs {
+        source: "x^2".into(),
+        halign: HAlign::Right,
+        size: Some(14.0),
+        ..LabelAttrs::default()
+    }
+}
+
+/// Origin Jacobian and direction value of label `id` at its committed State.
+fn origin_jacobian_and_values(
+    doc: &Document,
+    id: GeometryId,
+) -> (Vec<usize>, Vec<f64>, Point2, Vec2) {
+    let p = doc.vector();
+    let origin = Label::origin_expr(id);
+    let mut buf = vec![0.0; 2 * origin.param_count(doc)];
+    let cols = origin.param_count(doc);
+    origin.accumulate_jacobian(doc, p, &mut DenseMatrix::packed(&mut buf, 2, cols), 1.0);
+    (
+        origin.param_indices(doc),
+        buf,
+        origin.evaluate(doc, p),
+        Label::direction_expr(id).evaluate(doc, p),
+    )
+}
+
+#[test]
+fn text_attributes_add_no_jacobian_columns() {
+    let (mut doc, id) = doc_with_label(Point2::new(1.0, 2.0), 0.3);
+    let (cols_before, jac_before, _, _) = origin_jacobian_and_values(&doc, id);
+    assert!(doc.set_label_attrs(id, other_attrs()));
+    let (cols_after, jac_after, _, _) = origin_jacobian_and_values(&doc, id);
+    assert_eq!(cols_after, cols_before);
+    assert_eq!(jac_after, jac_before);
+}
+
+#[test]
+fn text_attributes_do_not_move_the_label() {
+    let (mut doc, id) = doc_with_label(Point2::new(1.0, 2.0), 0.3);
+    let (_, _, origin_before, dir_before) = origin_jacobian_and_values(&doc, id);
+    assert!(doc.set_label_attrs(id, other_attrs()));
+    let (_, _, origin_after, dir_after) = origin_jacobian_and_values(&doc, id);
+    assert_eq!(origin_after, origin_before);
+    assert_eq!(dir_after, dir_before);
+}

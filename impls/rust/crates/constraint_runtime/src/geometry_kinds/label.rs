@@ -34,19 +34,33 @@ geometry_caps!(Label: anchor, line);
 impl Geometry for Label {
     const KIND: GeometryKind = GeometryKind::Label;
     const NAME_PREFIX: &'static str = "lbl";
+    type Attrs = LabelAttrs;
+
+    fn attrs_of(a: &KindAttrs) -> &LabelAttrs {
+        match a {
+            KindAttrs::Label(a) => a,
+            other => unreachable!("label with {other:?}"),
+        }
+    }
 
     fn default_attrs() -> KindAttrs {
         KindAttrs::Label(LabelAttrs::default())
     }
 
-    fn point(f: PointFormula, (origin, _heading): Self::Init) -> Point2 {
+    fn point(f: PointFormula, (origin, _heading): Self::Init, _a: &Self::Attrs) -> Point2 {
         match f {
             PointFormula::Origin => origin,
             _ => unreachable!("label has only an origin point"),
         }
     }
 
-    fn point_jacobian(f: PointFormula, _c: Self::Init, j: &mut DenseMatrix<'_>, scale: f64) {
+    fn point_jacobian(
+        f: PointFormula,
+        _c: Self::Init,
+        _a: &Self::Attrs,
+        j: &mut DenseMatrix<'_>,
+        scale: f64,
+    ) {
         match f {
             PointFormula::Origin => j.set_scaled(scale, [[1.0, 0.0], [0.0, 1.0]]),
             _ => unreachable!("label has only an origin point"),
@@ -60,7 +74,7 @@ impl Geometry for Label {
         }
     }
 
-    fn vec(f: VecFormula, (_origin, heading): Self::Init) -> Vec2 {
+    fn vec(f: VecFormula, (_origin, heading): Self::Init, _a: &Self::Attrs) -> Vec2 {
         match f {
             VecFormula::Direction => {
                 let th = heading.radians();
@@ -73,6 +87,7 @@ impl Geometry for Label {
     fn vec_jacobian(
         f: VecFormula,
         (_origin, heading): Self::Init,
+        _a: &Self::Attrs,
         j: &mut DenseMatrix<'_>,
         scale: f64,
     ) {

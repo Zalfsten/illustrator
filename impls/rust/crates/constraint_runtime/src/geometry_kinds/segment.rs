@@ -6,7 +6,7 @@ use crate::geom::{Length, Point2, Vec2};
 use crate::geometry::capabilities::geometry_caps;
 use crate::geometry::chart::chart_atoms;
 use crate::geometry::{Geometry, LengthFormula, PointFormula, ShapePiece, VecFormula};
-use crate::geometry_kinds::GeometryKind;
+use crate::geometry_kinds::{GeometryKind, KindAttrs};
 use crate::matrix::DenseMatrix;
 
 /// Line-segment kind (type-level marker; instances live in
@@ -32,16 +32,24 @@ impl Geometry for Segment {
     const KIND: GeometryKind = GeometryKind::Segment;
     const NAME_PREFIX: &'static str = "seg";
     const UNIFORM_CURVE: bool = true;
+    type Attrs = ();
 
-    fn shape((start, end): Self::Init) -> Vec<ShapePiece> {
+    fn attrs_of(a: &KindAttrs) -> &() {
+        match a {
+            KindAttrs::None => &(),
+            other => unreachable!("segment with {other:?}"),
+        }
+    }
+
+    fn shape((start, end): Self::Init, _a: &Self::Attrs) -> Vec<ShapePiece> {
         vec![ShapePiece::Line { start, end }]
     }
 
-    fn curvature(_t: f64, _c: Self::Init) -> f64 {
+    fn curvature(_t: f64, _c: Self::Init, _a: &Self::Attrs) -> f64 {
         0.0
     }
 
-    fn point(f: PointFormula, (a, b): Self::Init) -> Point2 {
+    fn point(f: PointFormula, (a, b): Self::Init, _a: &Self::Attrs) -> Point2 {
         match f {
             PointFormula::OnCurve { param } => {
                 let t = param.chart_t();
@@ -55,7 +63,13 @@ impl Geometry for Segment {
         }
     }
 
-    fn point_jacobian(f: PointFormula, _c: Self::Init, j: &mut DenseMatrix<'_>, scale: f64) {
+    fn point_jacobian(
+        f: PointFormula,
+        _c: Self::Init,
+        _a: &Self::Attrs,
+        j: &mut DenseMatrix<'_>,
+        scale: f64,
+    ) {
         match f {
             PointFormula::OnCurve { param } => {
                 let t = param.chart_t();
@@ -88,7 +102,7 @@ impl Geometry for Segment {
         }
     }
 
-    fn vec(f: VecFormula, (a, b): Self::Init) -> Vec2 {
+    fn vec(f: VecFormula, (a, b): Self::Init, _a: &Self::Attrs) -> Vec2 {
         match f {
             // γ'(t) = B - A (constant on a segment); length = segment length.
             // Direction is the same vector, as a t-independent invariant.
@@ -97,7 +111,13 @@ impl Geometry for Segment {
         }
     }
 
-    fn vec_jacobian(f: VecFormula, _c: Self::Init, j: &mut DenseMatrix<'_>, scale: f64) {
+    fn vec_jacobian(
+        f: VecFormula,
+        _c: Self::Init,
+        _a: &Self::Attrs,
+        j: &mut DenseMatrix<'_>,
+        scale: f64,
+    ) {
         match f {
             VecFormula::TangentAt { .. } | VecFormula::Direction => {
                 // ∂(B-A)/∂(A,B) = -I | I
@@ -116,7 +136,7 @@ impl Geometry for Segment {
         }
     }
 
-    fn length(f: LengthFormula, (a, b): Self::Init) -> Length {
+    fn length(f: LengthFormula, (a, b): Self::Init, _a: &Self::Attrs) -> Length {
         match f {
             LengthFormula::Length => Length::new((b - a).length()),
             LengthFormula::Radius => unreachable!("segment chart has no radius length atom"),
@@ -126,6 +146,7 @@ impl Geometry for Segment {
     fn length_jacobian(
         f: LengthFormula,
         (a, b): Self::Init,
+        _a: &Self::Attrs,
         j: &mut DenseMatrix<'_>,
         scale: f64,
     ) {

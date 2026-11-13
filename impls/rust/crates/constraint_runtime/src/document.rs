@@ -242,7 +242,7 @@ impl Document {
     /// is not in the document or has no curve capability.
     pub fn curve_shape(&self, id: GeometryId, p: &Vector) -> Option<Vec<ShapePiece>> {
         let g = self.geometry(id).filter(|g| g.kind().caps().curve)?;
-        Some(with_kind!(g.kind(), K => K::shape(g.unpack::<K>(p))))
+        Some(with_kind!(g.kind(), K => K::shape(g.unpack::<K>(p), g.attrs_of::<K>())))
     }
 
     /// Unsigned curvature of curve `id` at normalized `t` and State `p`
@@ -250,7 +250,9 @@ impl Document {
     /// or has no curve capability.
     pub fn curve_curvature(&self, id: GeometryId, p: &Vector, t: f64) -> Option<f64> {
         let g = self.geometry(id).filter(|g| g.kind().caps().curve)?;
-        Some(with_kind!(g.kind(), K => K::curvature(t, g.unpack::<K>(p))))
+        Some(with_kind!(g.kind(), K => {
+            K::curvature(t, g.unpack::<K>(p), g.attrs_of::<K>())
+        }))
     }
 
     /// `formula` on `id` if the geometry exists and `has` its capability.
@@ -373,13 +375,13 @@ impl Document {
         init: K::Init,
         attrs: KindAttrs,
     ) -> GeometryId {
-        let packed = K::pack(K::canonical(init));
-        debug_assert_eq!(packed.as_ref().len(), K::PARAMETER_COUNT);
         let id = self.geometries.next_id();
         let param_offset = self.vector.len();
         let mut g = GeometryInst::of::<K>(GeometryShell::new(id, role, param_offset));
         let matches = g.set_attrs(attrs);
         debug_assert!(matches, "attributes of another kind for {:?}", K::KIND);
+        let packed = K::pack(K::canonical(init, g.attrs_of::<K>()));
+        debug_assert_eq!(packed.as_ref().len(), K::PARAMETER_COUNT);
         self.vector.extend_from_slice(packed.as_ref());
         self.push_geometry(g);
         debug_assert_eq!(self.vector.len(), self.parameter_count());
@@ -388,10 +390,19 @@ impl Document {
 
     /// Replace the attributes of geometry `id`; `false` (unchanged) if it does
     /// not exist or `attrs` belongs to another kind.
+    ///
+    /// The committed State block of `id` is rewritten to its canonical chart
+    /// values for the new attributes ([`Geometry::canonical`] may read them),
+    /// so committed State stays canonical; the curve is unchanged.
     pub fn set_geometry_attrs(&mut self, id: GeometryId, attrs: KindAttrs) -> bool {
-        self.geometries
-            .get_mut(id)
-            .is_some_and(|g| g.set_attrs(attrs))
+        let Some(g) = self.geometries.get_mut(id) else {
+            return false;
+        };
+        if !g.set_attrs(attrs) {
+            return false;
+        }
+        canonicalize_block(g, &mut self.vector);
+        true
     }
 
     /// Text attributes of label `id` (`None` if it is not a label).
@@ -402,11 +413,10 @@ impl Document {
         }
     }
 
-    /// Replace the text attributes of label `id`; `false` if it is not a label.
+    /// Replace the text attributes of label `id`; `false` if it is not a label
+    /// (see [`Self::set_geometry_attrs`]).
     pub fn set_label_attrs(&mut self, id: GeometryId, attrs: LabelAttrs) -> bool {
-        self.geometries
-            .get_mut(id)
-            .is_some_and(|g| g.set_attrs(KindAttrs::Label(attrs)))
+        self.set_geometry_attrs(id, KindAttrs::Label(attrs))
     }
 
     /// Register a geometry whose parameters already live in an external Vector.
@@ -512,11 +522,7 @@ impl Document {
     /// ([`Geometry::canonical`]); the curves are unchanged.
     pub fn canonicalize(&self, p: &mut Vector) {
         for g in self.geometries.values() {
-            let block = g.param_block();
-            with_kind!(g.kind(), K => {
-                let canonical = K::canonical(g.unpack::<K>(p));
-                p[block].copy_from_slice(K::pack(canonical).as_ref());
-            });
+            canonicalize_block(g, p);
         }
     }
 
@@ -613,6 +619,16 @@ impl Document {
     }
 }
 
+/// Rewrite `g`'s block of `p` to its canonical chart values for `g`'s
+/// attributes.
+fn canonicalize_block(g: &GeometryInst, p: &mut Vector) {
+    let block = g.param_block();
+    with_kind!(g.kind(), K => {
+        let canonical = K::canonical(g.unpack::<K>(p), g.attrs_of::<K>());
+        p[block].copy_from_slice(K::pack(canonical).as_ref());
+    });
+}
+
 #[cold]
 #[track_caller]
 fn missing_geometry(id: GeometryId) -> ! {
@@ -622,3 +638,4 @@ fn missing_geometry(id: GeometryId) -> ! {
 #[cfg(test)]
 #[path = "tests_document.rs"]
 mod tests_document;
+

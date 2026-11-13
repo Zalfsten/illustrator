@@ -221,10 +221,10 @@ fn add_geometry_stores_canonical_arc() {
     assert!((p[3] - (0.3 + std::f64::consts::PI)).abs() < 1e-12);
     // Same curve as the given (non-canonical) values.
     let start = Arc::start_expr(id).evaluate(&doc, p);
-    let want = <Arc as Geometry>::point(crate::geometry::PointFormula::Start, init);
+    let want = <Arc as Geometry>::point(crate::geometry::PointFormula::Start, init, &());
     assert!((start.x - want.x).abs() < 1e-12 && (start.y - want.y).abs() < 1e-12);
     let end = Arc::end_expr(id).evaluate(&doc, p);
-    let want = <Arc as Geometry>::point(crate::geometry::PointFormula::End, init);
+    let want = <Arc as Geometry>::point(crate::geometry::PointFormula::End, init, &());
     assert!((end.x - want.x).abs() < 1e-12 && (end.y - want.y).abs() < 1e-12);
 }
 
@@ -552,4 +552,29 @@ fn document_settings_default_and_snapshot() {
     assert_eq!(doc.settings().scale, 20.0);
     doc = snapshot;
     assert_eq!(doc.settings().scale, 10.0);
+}
+
+#[test]
+fn setting_attributes_keeps_committed_state_canonical() {
+    let mut doc = Document::new();
+    let init = (
+        Point2::new(1.0, 2.0),
+        Length::new(1.5),
+        HeadingAngle::new(0.3),
+        TurnAngle::new(1.0),
+    );
+    let id = doc.add_geometry::<Arc>(GeometryRole::Result, init);
+    let start = Arc::start_expr(id).evaluate(&doc, doc.vector());
+    // A solver iterate: the same arc with a negative radius.
+    doc.vector_mut()[2] = -1.5;
+    doc.vector_mut()[3] = 0.3 + std::f64::consts::PI;
+    assert!(doc.set_geometry_attrs(id, KindAttrs::None));
+    let p = doc.vector();
+    assert!((p[2] - 1.5).abs() < 1e-12, "radius {}", p[2]);
+    let after = Arc::start_expr(id).evaluate(&doc, p);
+    assert!((after - start).length() < 1e-12, "the curve is unchanged");
+    // Refused attributes change nothing.
+    doc.vector_mut()[2] = -1.5;
+    assert!(!doc.set_geometry_attrs(id, KindAttrs::Label(Default::default())));
+    assert_eq!(doc.vector()[2], -1.5);
 }
