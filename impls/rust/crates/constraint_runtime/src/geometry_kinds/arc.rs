@@ -87,6 +87,12 @@ impl Geometry for Arc {
         }]
     }
 
+    /// \(1/|R|\) everywhere (`+∞` for `R = 0`); the sign of a solver iterate's
+    /// radius does not change the curve's bending.
+    fn curvature(_t: f64, (_, radius, _, _): Self::Init) -> f64 {
+        1.0 / radius.value().abs()
+    }
+
     fn canonical((center, radius, start, sweep): Self::Init) -> Self::Init {
         if radius.value() < 0.0 {
             (

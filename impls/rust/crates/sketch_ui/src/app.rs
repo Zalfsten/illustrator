@@ -61,6 +61,10 @@ const WORLD_MIN: Point2 = Point2 { x: -0.5, y: -0.5 };
 const WORLD_MAX: Point2 = Point2 { x: 2.5, y: 2.5 };
 const VIEW_MARGIN: f32 = 40.0;
 
+/// Chord tolerance of the display Mesh in screen pixels: curves stay within
+/// a quarter pixel of their polyline at every view scale.
+const MESH_TOLERANCE_PX: f64 = 0.25;
+
 /// An export in progress: waiting for labels, or its bytes waiting for the host.
 enum Exporting {
     Job(Box<ExportJob>),
@@ -419,6 +423,7 @@ impl App {
             self.doc(),
             self.doc().vector(),
             self.presentation.mesh_filter(),
+            self.viewport.px_to_world(MESH_TOLERANCE_PX),
         )
     }
 

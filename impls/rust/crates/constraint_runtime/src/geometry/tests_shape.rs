@@ -106,6 +106,29 @@ fn label_has_no_curve_shape() {
 }
 
 #[test]
+fn curve_curvature_by_identity() {
+    let (doc, seg, arc, lbl) = drawing();
+    let p = doc.committed_vector();
+    for t in [0.0, 0.5, 1.0] {
+        assert_eq!(doc.curve_curvature(seg, p, t), Some(0.0));
+        let k = doc.curve_curvature(arc, p, t).unwrap();
+        assert!((k - 0.5).abs() < TOL, "arc curvature {k} at t = {t}");
+    }
+    assert_eq!(doc.curve_curvature(lbl, p, 0.5), None);
+    assert_eq!(doc.curve_curvature(GeometryId(99), p, 0.5), None);
+}
+
+#[test]
+fn curve_curvature_leaves_the_drawing_unchanged() {
+    let (doc, _, arc, _) = drawing();
+    let before = doc.committed_vector().clone();
+    let shape_before = doc.curve_shape(arc, &before);
+    let _ = doc.curve_curvature(arc, doc.committed_vector(), 0.25);
+    assert_eq!(doc.committed_vector(), &before);
+    assert_eq!(doc.curve_shape(arc, doc.committed_vector()), shape_before);
+}
+
+#[test]
 fn samples_lie_on_the_shape() {
     let (doc, seg, arc, _) = drawing();
     let p = doc.committed_vector();

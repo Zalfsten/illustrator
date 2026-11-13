@@ -341,3 +341,29 @@ fn canonical_keeps_non_negative_radius() {
         assert_eq!(<Arc as Geometry>::canonical(init), init);
     }
 }
+
+#[test]
+fn arc_curvature_is_reciprocal_radius() {
+    for radius in [2.0, -2.0] {
+        let init = (
+            Point2::new(1.0, -1.0),
+            Length::new(radius),
+            HeadingAngle::new(0.3),
+            TurnAngle::new(2.0),
+        );
+        for t in [0.0, 0.5, 1.0] {
+            assert!((Arc::curvature(t, init) - 0.5).abs() < 1e-15, "R = {radius}, t = {t}");
+        }
+    }
+}
+
+#[test]
+fn zero_radius_arc_has_infinite_curvature() {
+    let init = (
+        Point2::new(0.0, 0.0),
+        Length::new(0.0),
+        HeadingAngle::new(0.0),
+        TurnAngle::new(1.0),
+    );
+    assert_eq!(Arc::curvature(0.5, init), f64::INFINITY);
+}

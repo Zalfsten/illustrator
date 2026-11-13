@@ -1,26 +1,37 @@
 //! Display Mesh: tessellation of Document + Vector into drawable edges.
 //!
 //! Derived view only — not authoritative for parameters or constraints.
-//! Curves are sampled via the curve capability's on-curve expressions;
-//! subdivision stops when the unsigned turn between endpoint tangents of each
-//! parameter interval is at most [`MAX_CHORD_TURN`]. Geometries without the
+//! Curves are sampled via the curve capability's on-curve expressions at
+//! normalized parameters chosen from the curve's speed (tangent expression)
+//! and curvature ([`Document::curve_curvature`]): each edge stays within the
+//! chord tolerance passed to [`Mesh::from_document`], with as few edges as
+//! that allows, up to [`MAX_MESH_EDGES`] per curve. Geometries without the
 //! curve capability (labels) contribute nothing. Endpoint hit targets exist
 //! only for kinds with the endpoints capability.
 
 use crate::document::Document;
 use crate::expr::{PointExpr, VecExpr};
-use crate::geom::{CurveParam, Point2, Vec2};
+use crate::geom::{CurveParam, Point2};
 use crate::geometry::{Caps, GeometryId, GeometryRole, PointFormula, VecFormula};
 use crate::vector::Vector;
 
-/// Max unsigned turn (radians) between tangents at the ends of one chord interval.
-///
-/// Larger curvature (faster tangent change) yields denser samples. Line segments
-/// have zero turn and become a single edge.
-pub const MAX_CHORD_TURN: f64 = std::f64::consts::PI / 8.0;
+/// Cap on polyline edges per curve; beyond it the chord tolerance is not
+/// guaranteed (display-mesh: at least 256).
+pub const MAX_MESH_EDGES: usize = 1024;
 
-/// Hard cap on polyline vertices per geometry (including endpoints).
-const MAX_MESH_SAMPLES: usize = 64;
+/// Equal intervals of the normalized parameter on which the edge density is
+/// sampled before refinement.
+const GRID_INTERVALS: usize = 64;
+
+/// Max bisection depth of one grid interval.
+const MAX_REFINE_DEPTH: u32 = 6;
+
+/// An interval is bisected when the densities at its ends differ by more
+/// than this factor …
+const REFINE_RATIO: f64 = 2.0;
+
+/// … and it contributes at least this many edges.
+const REFINE_MIN_EDGES: f64 = 0.25;
 
 /// Which geometries contribute edges to a Mesh.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -64,17 +75,22 @@ pub struct Mesh {
 }
 
 impl Mesh {
-    pub fn from_document(doc: &Document, p: &Vector, filter: MeshFilter) -> Self {
-        let mut edges = Vec::new();
-        let mut endpoints = Vec::new();
+    /// Mesh of `doc` at State `p`: geometries passing `filter`, curves within
+    /// chord `tolerance` (world units, finite and > 0).
+    pub fn from_document(doc: &Document, p: &Vector, filter: MeshFilter, tolerance: f64) -> Self {
+        assert!(
+            tolerance.is_finite() && tolerance > 0.0,
+            "chord tolerance must be finite and > 0, got {tolerance}"
+        );
+        let mut mesh = Self::default();
         for g in doc.geometries().values() {
             if !filter.include_construction && g.role() == GeometryRole::Construction {
                 continue;
             }
             let caps = g.kind().caps();
-            append_curve_mesh(caps, doc, p, g.id(), g.role(), &mut edges, &mut endpoints);
+            append_curve_mesh(caps, doc, p, tolerance, g.id(), g.role(), &mut mesh);
         }
-        Self { edges, endpoints }
+        mesh
     }
 
     /// Geometric curve endpoint expressions (segment start/end; arc start/end).
@@ -120,10 +136,10 @@ fn append_curve_mesh(
     caps: Caps,
     doc: &Document,
     p: &Vector,
+    tolerance: f64,
     id: GeometryId,
     role: GeometryRole,
-    edges: &mut Vec<MeshEdge>,
-    endpoints: &mut Vec<(PointExpr, Point2)>,
+    mesh: &mut Mesh,
 ) {
     if !caps.curve {
         return;
@@ -143,7 +159,12 @@ fn append_curve_mesh(
         ),
     };
 
-    let ts = sample_normalized_params(doc, p, id);
+    let ts = place_samples(
+        |t| tangent(id, t).evaluate(doc, p).length(),
+        |t| doc.curve_curvature(id, p, t).unwrap_or(0.0),
+        tolerance,
+        MAX_MESH_EDGES,
+    );
     let mut prev = start_pt;
     for (i, &t) in ts.iter().enumerate().skip(1) {
         let pt = if i + 1 == ts.len() {
@@ -151,7 +172,7 @@ fn append_curve_mesh(
         } else {
             on_curve(id, t).evaluate(doc, p)
         };
-        edges.push(MeshEdge {
+        mesh.edges.push(MeshEdge {
             geometry: id,
             role,
             a: prev,
@@ -160,8 +181,8 @@ fn append_curve_mesh(
         prev = pt;
     }
     if let Some((start, end)) = ends {
-        endpoints.push((start, start_pt));
-        endpoints.push((end, end_pt));
+        mesh.endpoints.push((start, start_pt));
+        mesh.endpoints.push((end, end_pt));
     }
 }
 
@@ -174,49 +195,169 @@ fn tangent(id: GeometryId, t: f64) -> VecExpr {
     VecExpr::new(id, VecFormula::TangentAt { param: CurveParam::Normalized(t) })
 }
 
-/// Normalized \(t\) samples in \([0,1]\), inclusive, ordered.
-fn sample_normalized_params(doc: &Document, p: &Vector, id: GeometryId) -> Vec<f64> {
-    let mut ts = vec![0.0, 1.0];
-    refine_interval(doc, p, id, 0.0, 1.0, &mut ts);
-    ts.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
-    ts.dedup_by(|a, b| (*a - *b).abs() < 1e-15);
+/// Speed, curvature and edge density of a curve at normalized `t`.
+#[derive(Clone, Copy, Debug)]
+struct Node {
+    t: f64,
+    speed: f64,
+    curvature: f64,
+    density: f64,
+}
+
+/// Normalized parameters \(0 = t_0 < \dots < t_n = 1\) of a curve's polyline
+/// vertices, from its speed \(|\gamma'(t)|\) and unsigned curvature
+/// \(\kappa(t)\).
+///
+/// Edges per unit of `t` follow the osculating circle (see [`edge_density`]);
+/// the density is integrated (trapezoid rule) on a grid of [`GRID_INTERVALS`]
+/// intervals, refined where it varies strongly. The edge count starts at the
+/// smallest integer not below the integral, and the vertices split the
+/// integral into equal shares, so constant density gives \(t_j = j/n\).
+/// Where curvature varies along an edge, equal shares can exceed the
+/// tolerance (by up to about 15 % next to an inflection), so the count grows
+/// by single edges until every edge passes [`edges_within_tolerance`]; for
+/// constant curvature the first count already passes. The count is clamped
+/// to `1..=cap`.
+fn place_samples(
+    speed: impl Fn(f64) -> f64,
+    curvature: impl Fn(f64) -> f64,
+    tolerance: f64,
+    cap: usize,
+) -> Vec<f64> {
+    let node = |t: f64| {
+        let (speed, curvature) = (speed(t), curvature(t));
+        Node {
+            t,
+            speed,
+            curvature,
+            density: edge_density(speed, curvature, tolerance),
+        }
+    };
+
+    let mut nodes = vec![node(0.0)];
+    for i in 1..=GRID_INTERVALS {
+        let b = node(i as f64 / GRID_INTERVALS as f64);
+        let a = *nodes.last().expect("grid starts with t = 0");
+        refine_grid(&node, a, b, MAX_REFINE_DEPTH, &mut nodes);
+    }
+
+    let mut cumulative = Vec::with_capacity(nodes.len());
+    cumulative.push(0.0);
+    for w in nodes.windows(2) {
+        let last = *cumulative.last().expect("non-empty");
+        cumulative.push(last + 0.5 * (w[1].t - w[0].t) * (w[0].density + w[1].density));
+    }
+    let total = *cumulative.last().expect("non-empty");
+
+    let cap = cap.max(1);
+    if !total.is_finite() {
+        return (0..=cap).map(|j| j as f64 / cap as f64).collect();
+    }
+    // The offset keeps an exact integer count (e.g. 4.0000000001) from
+    // rounding up to one edge too many.
+    let mut n = ((total - 1e-9).ceil().max(1.0) as usize).min(cap);
+    loop {
+        let ts = equal_shares(&nodes, &cumulative, n);
+        if n == cap || edges_within_tolerance(&nodes, &ts, tolerance) {
+            return ts;
+        }
+        n += 1;
+    }
+}
+
+/// Pushes the nodes after `a` up to and including `b`, bisecting while the
+/// densities at the ends differ by more than [`REFINE_RATIO`] and the interval
+/// contributes at least [`REFINE_MIN_EDGES`].
+fn refine_grid(node: &impl Fn(f64) -> Node, a: Node, b: Node, depth: u32, nodes: &mut Vec<Node>) {
+    let contribution = 0.5 * (b.t - a.t) * (a.density + b.density);
+    let (lo, hi) = (a.density.min(b.density), a.density.max(b.density));
+    if depth > 0 && contribution >= REFINE_MIN_EDGES && hi > REFINE_RATIO * lo {
+        let mid = node(0.5 * (a.t + b.t));
+        refine_grid(node, a, mid, depth - 1, nodes);
+        refine_grid(node, mid, b, depth - 1, nodes);
+    } else {
+        nodes.push(b);
+    }
+}
+
+/// `n` edges splitting the density integral into equal shares (linear
+/// interpolation of the cumulative count inside each grid interval).
+fn equal_shares(nodes: &[Node], cumulative: &[f64], n: usize) -> Vec<f64> {
+    let total = *cumulative.last().expect("non-empty");
+    let mut ts = Vec::with_capacity(n + 1);
+    ts.push(0.0);
+    let mut k = 0;
+    for j in 1..n {
+        let target = total * j as f64 / n as f64;
+        while k + 2 < cumulative.len() && cumulative[k + 1] < target {
+            k += 1;
+        }
+        let (c0, c1) = (cumulative[k], cumulative[k + 1]);
+        let (t0, t1) = (nodes[k].t, nodes[k + 1].t);
+        let s = if c1 > c0 { ((target - c0) / (c1 - c0)).clamp(0.0, 1.0) } else { 0.0 };
+        ts.push(t0 + s * (t1 - t0));
+    }
+    ts.push(1.0);
     ts
 }
 
-fn refine_interval(
-    doc: &Document,
-    p: &Vector,
-    id: GeometryId,
-    t0: f64,
-    t1: f64,
-    ts: &mut Vec<f64>,
-) {
-    if ts.len() >= MAX_MESH_SAMPLES {
-        return;
+/// Whether every edge `[t_j, t_{j+1}]` turns at most \(\varphi_{\max}(\kappa_{\max})\)
+/// for its largest curvature: a curve of length \(L\) with curvature at most
+/// \(\kappa_{\max}\) deviates from its chord no more than a circular arc of
+/// that length and curvature, so \(L\,\kappa_{\max} \le \varphi_{\max}\) keeps
+/// the edge within `tolerance`. Speed and curvature between grid nodes are
+/// interpolated linearly.
+fn edges_within_tolerance(nodes: &[Node], ts: &[f64], tolerance: f64) -> bool {
+    let at = |k: usize, t: f64| {
+        let (a, b) = (nodes[k], nodes[k + 1]);
+        let s = if b.t > a.t { ((t - a.t) / (b.t - a.t)).clamp(0.0, 1.0) } else { 0.0 };
+        (a.speed + s * (b.speed - a.speed), a.curvature + s * (b.curvature - a.curvature))
+    };
+    let mut k = 0;
+    for w in ts.windows(2) {
+        let (ta, tb) = (w[0], w[1]);
+        while k + 2 < nodes.len() && nodes[k + 1].t <= ta {
+            k += 1;
+        }
+        let (mut speed, mut kappa_max) = at(k, ta);
+        let (mut t, mut length) = (ta, 0.0);
+        let mut i = k + 1;
+        while i + 1 < nodes.len() && nodes[i].t < tb {
+            length += 0.5 * (nodes[i].t - t) * (speed + nodes[i].speed);
+            (t, speed) = (nodes[i].t, nodes[i].speed);
+            kappa_max = kappa_max.max(nodes[i].curvature);
+            i += 1;
+        }
+        let (end_speed, end_kappa) = at(i - 1, tb);
+        length += 0.5 * (tb - t) * (speed + end_speed);
+        kappa_max = kappa_max.max(end_kappa);
+        if length > 0.0 && kappa_max > 0.0 {
+            let phi = phi_max(kappa_max, tolerance);
+            if length * kappa_max > phi * (1.0 + 1e-9) {
+                return false;
+            }
+        }
     }
-    let ta = tangent(id, t0).evaluate(doc, p);
-    let tb = tangent(id, t1).evaluate(doc, p);
-    if unsigned_turn(ta, tb) <= MAX_CHORD_TURN {
-        return;
-    }
-    let mid = 0.5 * (t0 + t1);
-    if (mid - t0).abs() < 1e-15 || (t1 - mid).abs() < 1e-15 {
-        return;
-    }
-    ts.push(mid);
-    refine_interval(doc, p, id, t0, mid, ts);
-    refine_interval(doc, p, id, mid, t1, ts);
+    true
 }
 
-/// Unsigned angle between free vectors in \([0,\pi]\); zero if either is degenerate.
-fn unsigned_turn(a: Vec2, b: Vec2) -> f64 {
-    let la = a.length();
-    let lb = b.length();
-    if la < 1e-15 || lb < 1e-15 {
+/// Edges per unit of normalized parameter: \(|\gamma'|\,\kappa/\varphi_{\max}(\kappa)\).
+///
+/// Zero where the curve is straight or has zero speed (a zero-radius arc:
+/// speed 0, \(\kappa = \infty\)).
+fn edge_density(speed: f64, curvature: f64, tolerance: f64) -> f64 {
+    if speed == 0.0 || curvature == 0.0 {
         return 0.0;
     }
-    let c = (a.dot(b) / (la * lb)).clamp(-1.0, 1.0);
-    c.acos()
+    speed * curvature / phi_max(curvature, tolerance)
+}
+
+/// Largest turn of a chord on a circle of curvature \(\kappa\) whose sagitta
+/// stays within `tolerance`: \(2\arccos(1-\varepsilon\kappa) =
+/// 4\arcsin\sqrt{\varepsilon\kappa/2}\); the arcsine form stays accurate when
+/// \(\varepsilon\kappa\) is tiny.
+fn phi_max(curvature: f64, tolerance: f64) -> f64 {
+    4.0 * (0.5 * tolerance * curvature).sqrt().min(1.0).asin()
 }
 
 fn distance_point_to_segment(q: Point2, a: Point2, b: Point2) -> f64 {

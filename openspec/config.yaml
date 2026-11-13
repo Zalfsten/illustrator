@@ -156,9 +156,11 @@ context: |
     4.5 w, base 0.75 L), arrow_tips (exact endpoint + outward tangent via
     capabilities), trim / dash by arc length (phase from the curve start),
     stroke_pieces; shared by the Canvas and future exports.
-  - mesh.rs: Display Mesh from Document+State; open curves tessellated via
-    on_curve + adaptive subdivision until tangent turn per interval ≤
-    MAX_CHORD_TURN (π/8), max 64 samples; endpoint hits use geometric
+  - mesh.rs: Display Mesh from Document+State+chord tolerance (world units;
+    the App passes 0.25 px via Viewport::px_to_world); curves tessellated via
+    on_curve at parameters placed by curvature (osculating-circle edge
+    density from speed and Document::curve_curvature, equal shares, minimal
+    count; arcs get equal edges), cap MAX_MESH_EDGES (1024) per curve; endpoint hits use geometric
     start/end expressions only, and only for kinds with the endpoints
     capability (tessellation itself needs only CurveExprs).
   - names.rs: user-visible object names (one namespace for geometries

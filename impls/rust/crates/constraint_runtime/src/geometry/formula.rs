@@ -66,6 +66,16 @@ pub trait Geometry: Chart + GeometryCaps + Sized + 'static {
         unsupported(Self::KIND, "shape")
     }
 
+    /// Unsigned curvature \(|\gamma'\times\gamma''|/|\gamma'|^3\) at normalized
+    /// `t ∈ [0, 1]` (curve capability only); 0 where the curve is straight.
+    ///
+    /// Evaluation-only (display tessellation): no Jacobian, not a constraint
+    /// operand. Accepts non-canonical solver iterates.
+    fn curvature(t: f64, c: Self::Init) -> f64 {
+        let _ = (t, c);
+        unsupported(Self::KIND, "curvature")
+    }
+
     fn point(f: PointFormula, c: Self::Init) -> Point2 {
         let _ = (f, c);
         unsupported(Self::KIND, "point")

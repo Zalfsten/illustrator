@@ -182,7 +182,7 @@ fn labels_are_painted_beside_the_mesh() {
     let s = joined("ab", "result");
     let (mut cache, _) = fake();
     let doc = s.document();
-    let mesh = Mesh::from_document(doc, doc.vector(), MeshFilter::RESULT_ONLY);
+    let mesh = Mesh::from_document(doc, doc.vector(), MeshFilter::RESULT_ONLY, 0.01);
     assert_eq!(mesh.edges.len(), 1);
     let items = cache.paint(doc, &viewport(100.0), MeshFilter::RESULT_ONLY);
     assert_eq!(items.len(), 1);

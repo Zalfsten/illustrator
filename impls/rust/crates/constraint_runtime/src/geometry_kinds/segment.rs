@@ -36,6 +36,10 @@ impl Geometry for Segment {
         vec![ShapePiece::Line { start, end }]
     }
 
+    fn curvature(_t: f64, _c: Self::Init) -> f64 {
+        0.0
+    }
+
     fn point(f: PointFormula, (a, b): Self::Init) -> Point2 {
         match f {
             PointFormula::OnCurve { param } => {

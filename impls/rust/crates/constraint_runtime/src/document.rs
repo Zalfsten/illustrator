@@ -245,6 +245,14 @@ impl Document {
         Some(with_kind!(g.kind(), K => K::shape(g.unpack::<K>(p))))
     }
 
+    /// Unsigned curvature of curve `id` at normalized `t` and State `p`
+    /// (geometry-ir, evaluation-only); `None` if `id` is not in the document
+    /// or has no curve capability.
+    pub fn curve_curvature(&self, id: GeometryId, p: &Vector, t: f64) -> Option<f64> {
+        let g = self.geometry(id).filter(|g| g.kind().caps().curve)?;
+        Some(with_kind!(g.kind(), K => K::curvature(t, g.unpack::<K>(p))))
+    }
+
     /// `formula` on `id` if the geometry exists and `has` its capability.
     ///
     /// Same `(id, tag)` expression the kind's static factory builds.

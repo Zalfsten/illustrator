@@ -171,7 +171,8 @@ fn styled_segment(len: f64, role: GeometryRole, look: StyleProps) -> (Document, 
 }
 
 fn paint_of(doc: &Document, id: GeometryId, viewport: &Viewport) -> CurvePaint {
-    let mesh = Mesh::from_document(doc, doc.vector(), MeshFilter::INCLUDE_CONSTRUCTION);
+    let tolerance = viewport.px_to_world(MESH_TOLERANCE_PX);
+    let mesh = Mesh::from_document(doc, doc.vector(), MeshFilter::INCLUDE_CONSTRUCTION, tolerance);
     let lines = polylines(&mesh);
     let (_, line) = lines.iter().find(|(g, _)| *g == id).unwrap();
     curve_paint(doc, id, line, viewport, 1.0)
