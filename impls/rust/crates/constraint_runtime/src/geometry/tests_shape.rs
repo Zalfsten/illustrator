@@ -106,6 +106,29 @@ fn label_has_no_curve_shape() {
 }
 
 #[test]
+fn curve_curvature_by_identity() {
+    let (doc, seg, arc, lbl) = drawing();
+    let p = doc.committed_vector();
+    for t in [0.0, 0.5, 1.0] {
+        assert_eq!(doc.curve_curvature(seg, p, t), Some(0.0));
+        let k = doc.curve_curvature(arc, p, t).unwrap();
+        assert!((k - 0.5).abs() < TOL, "arc curvature {k} at t = {t}");
+    }
+    assert_eq!(doc.curve_curvature(lbl, p, 0.5), None);
+    assert_eq!(doc.curve_curvature(GeometryId(99), p, 0.5), None);
+}
+
+#[test]
+fn curve_curvature_leaves_the_drawing_unchanged() {
+    let (doc, _, arc, _) = drawing();
+    let before = doc.committed_vector().clone();
+    let shape_before = doc.curve_shape(arc, &before);
+    let _ = doc.curve_curvature(arc, doc.committed_vector(), 0.25);
+    assert_eq!(doc.committed_vector(), &before);
+    assert_eq!(doc.curve_shape(arc, doc.committed_vector()), shape_before);
+}
+
+#[test]
 fn samples_lie_on_the_shape() {
     let (doc, seg, arc, _) = drawing();
     let p = doc.committed_vector();
@@ -171,4 +194,42 @@ fn sub_piece_keeps_its_kind() {
             end: Point2::new(2.0, 0.0)
         }
     );
+}
+
+/// Exact bounding box of `piece` as `(min, max)`.
+fn bounds(piece: &ShapePiece) -> (Point2, Point2) {
+    let pts = piece.bounding_points();
+    let fold = |f: fn(f64, f64) -> f64| {
+        pts.iter().skip(1).fold(pts[0], |m, p| Point2::new(f(m.x, p.x), f(m.y, p.y)))
+    };
+    (fold(f64::min), fold(f64::max))
+}
+
+#[test]
+fn line_bounding_points_are_its_ends() {
+    let piece = ShapePiece::Line { start: Point2::new(1.0, 2.0), end: Point2::new(-3.0, 5.0) };
+    assert_eq!(bounds(&piece), (Point2::new(-3.0, 2.0), Point2::new(1.0, 5.0)));
+}
+
+#[test]
+fn arc_bounding_points_include_the_extremes_it_passes() {
+    let arc = |start: f64, sweep: f64| ShapePiece::Arc {
+        center: Point2::new(1.0, 1.0),
+        radius: 2.0,
+        start: HeadingAngle::new(start),
+        sweep: TurnAngle::new(sweep),
+    };
+    // 0° → 120°: passes the top (heading 90°), not the left side.
+    let (min, max) = bounds(&arc(0.0, 2.0 * PI / 3.0));
+    assert!((max.y - 3.0).abs() < TOL && (max.x - 3.0).abs() < TOL);
+    assert!((min.x - 0.0).abs() < TOL && (min.y - 1.0).abs() < TOL);
+    // The same arc traversed clockwise has the same box.
+    let (cmin, cmax) = bounds(&arc(2.0 * PI / 3.0, -2.0 * PI / 3.0));
+    assert!(close(cmin, min) && close(cmax, max));
+    // A full turn reaches all four sides.
+    let (min, max) = bounds(&arc(0.3, 2.0 * PI));
+    assert!(close(min, Point2::new(-1.0, -1.0)) && close(max, Point2::new(3.0, 3.0)));
+    // A short arc between two extremes is bounded by its ends.
+    let piece = arc(0.1, 0.2);
+    assert_eq!(piece.bounding_points().len(), 2);
 }

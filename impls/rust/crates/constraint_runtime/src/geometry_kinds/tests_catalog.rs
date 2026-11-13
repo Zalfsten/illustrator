@@ -27,3 +27,24 @@ fn name_prefixes_are_valid_stems() {
         );
     }
 }
+
+/// A curve kind that keeps the panicking `shape` / `curvature` defaults
+/// compiles, but panics in the first Mesh or export; catch it here.
+#[test]
+fn curve_kinds_report_shape_and_curvature() {
+    for kind in ALL_KINDS.into_iter().filter(|k| k.caps().curve) {
+        with_kind!(kind, K => {
+            let params: Vec<f64> = (0..K::PARAMETER_COUNT).map(|i| 1.0 + i as f64).collect();
+            let c = K::unpack(&params);
+            assert!(!K::shape(c).is_empty(), "{kind:?} has no shape");
+            let k0 = K::curvature(0.0, c);
+            for t in [0.0, 0.3, 1.0] {
+                let k = K::curvature(t, c);
+                assert!(k >= 0.0, "{kind:?}: curvature {k} at t = {t}");
+                if K::UNIFORM_CURVE {
+                    assert_eq!(k, k0, "{kind:?} is uniform but its curvature varies");
+                }
+            }
+        });
+    }
+}

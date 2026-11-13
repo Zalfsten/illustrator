@@ -75,6 +75,7 @@ impl Arc {
 impl Geometry for Arc {
     const KIND: GeometryKind = GeometryKind::Arc;
     const NAME_PREFIX: &'static str = "arc";
+    const UNIFORM_CURVE: bool = true;
 
     /// `R < 0` → `(C, −R, θ₀ + π, Δθ)`: same curve, non-negative radius.
     fn shape(c: Self::Init) -> Vec<ShapePiece> {
@@ -85,6 +86,12 @@ impl Geometry for Arc {
             start,
             sweep,
         }]
+    }
+
+    /// \(1/|R|\) everywhere (`+∞` for `R = 0`); the sign of a solver iterate's
+    /// radius does not change the curve's bending.
+    fn curvature(_t: f64, (_, radius, _, _): Self::Init) -> f64 {
+        1.0 / radius.value().abs()
     }
 
     fn canonical((center, radius, start, sweep): Self::Init) -> Self::Init {

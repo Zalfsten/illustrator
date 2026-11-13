@@ -31,9 +31,14 @@ geometry_caps!(Segment: curve, endpoints, line);
 impl Geometry for Segment {
     const KIND: GeometryKind = GeometryKind::Segment;
     const NAME_PREFIX: &'static str = "seg";
+    const UNIFORM_CURVE: bool = true;
 
     fn shape((start, end): Self::Init) -> Vec<ShapePiece> {
         vec![ShapePiece::Line { start, end }]
+    }
+
+    fn curvature(_t: f64, _c: Self::Init) -> f64 {
+        0.0
     }
 
     fn point(f: PointFormula, (a, b): Self::Init) -> Point2 {

@@ -205,3 +205,11 @@ fn direction_jacobian_matches_fd() {
         assert!((a - f).abs() < 1e-6, "Jacobian mismatch at {idx}: analytic={a}, fd={f}");
     }
 }
+
+#[test]
+fn segment_curvature_is_zero() {
+    let init = (Point2::new(0.0, 0.0), Point2::new(3.0, 4.0));
+    for t in [0.0, 0.5, 1.0] {
+        assert_eq!(Segment::curvature(t, init), 0.0);
+    }
+}

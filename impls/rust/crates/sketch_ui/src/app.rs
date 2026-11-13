@@ -61,6 +61,10 @@ const WORLD_MIN: Point2 = Point2 { x: -0.5, y: -0.5 };
 const WORLD_MAX: Point2 = Point2 { x: 2.5, y: 2.5 };
 const VIEW_MARGIN: f32 = 40.0;
 
+/// Chord tolerance of the display Mesh in screen pixels: curves stay within
+/// a quarter pixel of their polyline at every view scale.
+const MESH_TOLERANCE_PX: f64 = 0.25;
+
 /// An export in progress: waiting for labels, or its bytes waiting for the host.
 enum Exporting {
     Job(Box<ExportJob>),
@@ -327,18 +331,27 @@ impl App {
     }
 
     /// Box around the visible geometry and the origins of visible labels.
+    ///
+    /// Uses the curves' exact shapes, not the Mesh: the Mesh's chord
+    /// tolerance follows the current view, which this box is about to replace.
     fn drawing_box(&self) -> Option<(Point2, Point2)> {
         let doc = self.doc();
+        let p = doc.vector();
         let filter = self.presentation.mesh_filter();
-        let edges = self.mesh().edges.into_iter().flat_map(|e| [e.a, e.b]);
-        let origins = doc
-            .geometries()
-            .values()
+        let visible = || {
+            doc.geometries()
+                .values()
+                .filter(|g| filter.include_construction || g.role() != GeometryRole::Construction)
+        };
+        let curves = visible()
+            .filter_map(|g| doc.curve_shape(g.id(), p))
+            .flatten()
+            .flat_map(|piece| piece.bounding_points());
+        let origins = visible()
             .filter(|g| doc.label_attrs(g.id()).is_some())
-            .filter(|g| filter.include_construction || g.role() != GeometryRole::Construction)
             .filter_map(|g| doc.origin_expr(g.id()))
-            .map(|e| e.evaluate(doc, doc.vector()));
-        world_box(edges.chain(origins))
+            .map(|e| e.evaluate(doc, p));
+        world_box(curves.chain(origins))
     }
 
     /// After a history step: handles and the unsaved state.
@@ -419,6 +432,7 @@ impl App {
             self.doc(),
             self.doc().vector(),
             self.presentation.mesh_filter(),
+            self.viewport.px_to_world(MESH_TOLERANCE_PX),
         )
     }
 
