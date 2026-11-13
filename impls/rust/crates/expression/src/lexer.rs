@@ -51,9 +51,7 @@ pub(crate) fn lex(src: &str) -> Result<Vec<Token>, ParseError> {
             b' ' | b'\t' => i += 1,
             b'0'..=b'9' => {
                 i = number(src, i)?;
-                let value = src[start..i].parse().map_err(|_| {
-                    err(ParseErrorKind::InvalidNumber, start..i)
-                })?;
+                let value = finite_number(src, start..i)?;
                 out.push(Token {
                     tok: Tok::Num(value),
                     span: start..i,
@@ -62,9 +60,7 @@ pub(crate) fn lex(src: &str) -> Result<Vec<Token>, ParseError> {
             b'.' => match at(i + 1) {
                 Some(b'0'..=b'9') => {
                     i = number(src, i)?;
-                    let value = src[start..i]
-                        .parse()
-                        .map_err(|_| err(ParseErrorKind::InvalidNumber, start..i))?;
+                    let value = finite_number(src, start..i)?;
                     out.push(Token {
                         tok: Tok::Num(value),
                         span: start..i,
@@ -167,6 +163,15 @@ pub(crate) fn lex(src: &str) -> Result<Vec<Token>, ParseError> {
         span: b.len()..b.len(),
     });
     Ok(out)
+}
+
+/// Value of the number literal `src[span]`; one that overflows to infinity
+/// (`1e999`) is invalid, so a later failure always has a location.
+fn finite_number(src: &str, span: Range<usize>) -> Result<f64, ParseError> {
+    match src[span.clone()].parse::<f64>() {
+        Ok(v) if v.is_finite() => Ok(v),
+        _ => Err(err(ParseErrorKind::InvalidNumber, span)),
+    }
 }
 
 /// End of the number starting at `i`: `digits [. digits?]? | . digits`, then

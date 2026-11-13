@@ -49,7 +49,7 @@ Public surface:
 ### 2. Hand-written lexer and precedence-climbing parser
 
 **Lexer.** It produces tokens with byte spans:
-- **Numbers:** regex-like `digits [. digits?]? | . digits`, then an optional `[eE][+-]?digits`. A `.` immediately followed by `*`, `/` or `^` ends the number and starts the operator.
+- **Numbers:** regex-like `digits [. digits?]? | . digits`, then an optional `[eE][+-]?digits`. A `.` immediately followed by `*`, `/` or `^` ends the number and starts the operator. A literal that overflows to infinity (`1e999`; Rust's `parse` returns `inf`) is an `InvalidNumber` at its span, so a later failure always has a location.
 - **Identifiers:** `[A-Za-z_][A-Za-z0-9_]*`.
 - **Operators.**
 - **Tokens with a dedicated rejection message:** `'`, `\`, `**`, `==`, `<`, `&`, `[`, and similar. A dedicated message beats a generic "unexpected character".
@@ -67,10 +67,11 @@ primary := number | 'pi' | variable | name '(' args ')' | '(' sum ')'
 ```
 
 - **Signed exponent followed by a power:** after a signed exponent, another `^` raises `ParseError::AmbiguousPower` at that `^`, with the hint "add parentheses". This keeps the accepted set inside the part of MATLAB's grammar where MATLAB and Octave agree. `2^-2^2` is the only place where their documented precedences are subtle.
-- **Implicit multiplication:** a primary directly followed by a number, an identifier or `(` raises `ImplicitMultiplication` at the second token.
+- **Implicit multiplication:** a primary directly followed by a number, an identifier or `(` raises `ImplicitMultiplication` at the second token. A number directly followed by `i` or `j` (`2i`, MATLAB's imaginary literal) raises `RejectedName` with the complex-number hint instead.
+- **Nesting limit:** every recursion passes through `unary`, which counts its depth; beyond 128 levels it raises `TooDeep`. Without it, 100 000 nested parentheses or minus signs overflowed the stack and aborted the process (review of PR #88); the deepest accepted input is tested on a 1 MiB thread stack, wasm's default.
 - **Identifiers are classified at parse time:** variable, `pi`, catalog function (must be followed by `(`), known-but-rejected names (`e` with the hint `exp(x)`, `i`, `j`, `sign`, `floor`, …), or unknown.
 
-`ParseError` is an enum with a `span: Range<usize>` (byte offsets into the source; the UI converts them to characters) and a `Display` text in English.
+`ParseError` is an enum with a `span: Range<usize>` (byte offsets into the UTF-8 source, as the spec states; the UI converts them to characters) and a `Display` text in English.
 
 ### 3. Tree as a flat node array
 
@@ -81,7 +82,7 @@ primary := number | 'pi' | variable | name '(' args ')' | '(' sum ')'
   - if the folded value is an integer within `i32` range, the node is `PowInt`;
   - otherwise it is `PowReal`, which requires base > 0.
 - **`nthroot`:** its second argument must fold to a constant nonzero integer. Otherwise the parser rejects it with a pointer to the argument. MATLAB also requires an integer `n`.
-- **Evaluation:** one forward loop over the array into a scratch `Vec<N>` (no recursion, no `Box`).
+- **Evaluation:** one forward loop over the array into a scratch `Vec<N>` (no recursion, no `Box`). `Expression::eval_in(x, &mut scratch)` takes the buffer from the caller and is allocation-free once it has `node_count()` entries; `eval` and `eval_with` allocate one per call. #81 evaluates in the solver's Jacobian path, which `alloc_free.rs` guards, so it uses `eval_in`.
 
 *Alternative:* a boxed recursive enum. It is simpler to write, but allocates per node and recurses. The flat array also makes "which node failed" a plain index for error messages.
 
@@ -143,12 +144,12 @@ Domain conditions live in the number types (decision 5), not in the evaluator, s
 `check_domain(x0, x1)` runs the following steps:
 1. Validate the range: both ends finite, x0 < x1.
 2. Evaluate `Dual2<Interval>` with the variable `[x0, x1]` and derivative seed (`d1 = [1, 1]`, `d2 = [0, 0]`).
-3. If the value, `d1` and `d2` are all finite (not poison, both bounds finite), the sub-range is proven.
+3. If no node is bad (value, `d1` and `d2` of every node finite: not poison, both bounds finite), the sub-range is proven. Every node, not only the result, as in `eval`: `Dual2::powi(0)` returns the constant 1 and drops a poisoned base, so checking only the result accepted `log(x)^0` on [-1, 1] (review of PR #88).
 4. Otherwise bisect and recurse, up to **depth 32**, and stop at a sub-range width below `1e-12·max(1, |x|)`.
 
 A sub-range that fails at the limit is reported with the culprit node's function name. Overestimation, for example the dependency effect in `x - x`, is resolved by bisection on ordinary ranges.
 
-The work is bounded: the check stops at the first failing leaf and bisects only failing sub-ranges, so at most 2·depth evaluations are spent per failing branch. Proven sub-ranges are not revisited.
+The work is bounded by a budget of 20 000 interval evaluations per check. Depth and width limits alone do not bound it: proven sub-ranges are not revisited, but overestimation that only very narrow sub-ranges resolve (`log(cosh(x) - sinh(x))` on [0, 10]) proves millions of them before a leaf fails, which took minutes (review of PR #88). When the budget is spent, the check returns `DomainCheckError::TooComplex` with the part of the range not yet proven, a conservative rejection the spec allows.
 
 *Alternative:* sampling plus root finding of critical subexpressions. That is not sound: it can miss a narrow pole between samples. It belongs to #83 for locating singularities, not to proving their absence.
 
@@ -168,7 +169,7 @@ The table is regenerated manually with `octave-cli generate.m` and committed, so
 ## Risks / Trade-offs
 
 - [Library functions may differ from Octave's by more than 4 ulps for extreme arguments] → Keep reference arguments moderate (|x| ≤ 1e3 for trigonometric functions). A larger difference shows up as a test failure that names the row, and can be investigated rather than hidden.
-- [4-ulp widening assumes the platform's libm is accurate to a few ulps] → This holds for the glibc and musl-derived implementations used natively and by Rust on wasm. The domain check only needs soundness at the domain boundaries, where the guards compare arguments, not library results.
+- [4-ulp widening assumes the platform's libm is accurate to a few ulps] → This holds for the glibc and musl-derived implementations used natively and by Rust on wasm, and it is an explicit soundness assumption: the domain guards compare intervals that are themselves built from library results (`sqrt(1 + sin(x))` compares the enclosure of `1 + sin(x)` with 0), so a library error beyond 4 ulps could let a guard pass wrongly.
 - [Interval overestimation rejects valid expressions] → The spec allows it, and bisection to depth 32 reduces it. A pathological case shows up as a rejection with a location, not as a wrong curve.
 - [Octave accepts a construct our parser rejects, or differs from MATLAB in an accepted construct] → Our parser defines acceptance. Reference rows only contain accepted expressions, and `2^-2^2` is rejected deliberately.
 - [Installing Octave in the dev container enlarges the image] → `octave-cli` only (no GUI), added to the Dockerfile. Alternatively it can be installed ad hoc; the committed table keeps CI independent of it.
@@ -179,4 +180,4 @@ This is a new crate; nothing existing changes. Rollback is a removal.
 
 ## Open Questions
 
-- Maximum source length or node count for a UI-entered expression (resource limit). It can be added in #81 or #84 without changing this layer's behaviour for ordinary input.
+- Maximum source length or node count for a UI-entered expression (resource limit). It can be added in #81 or #84 without changing this layer's behaviour for ordinary input. Nesting depth and domain-check work are already bounded here.

@@ -80,9 +80,17 @@ impl Expression {
     ///
     /// A domain error names the first function or operation whose result is
     /// outside its open domain or not finite.
+    ///
+    /// Allocates a scratch buffer per call; see [`Self::eval_in`] for hot paths.
     pub fn eval(&self, x: f64) -> Result<Jet, DomainError> {
-        let mut scratch = Vec::with_capacity(self.nodes.len());
-        let (r, bad) = tree::eval(&self.nodes, Dual2::variable(x), &mut scratch);
+        self.eval_in(x, &mut Vec::new())
+    }
+
+    /// [`Self::eval`] with a caller-owned scratch buffer: allocation-free once
+    /// `scratch` has room for [`Self::node_count`] entries (it is cleared and
+    /// reused, never shrunk).
+    pub fn eval_in(&self, x: f64, scratch: &mut Vec<Dual2<f64>>) -> Result<Jet, DomainError> {
+        let (r, bad) = tree::eval(&self.nodes, Dual2::variable(x), scratch);
         match bad {
             None => Ok(Jet {
                 value: r.v,
@@ -102,7 +110,13 @@ impl Expression {
         domain::check_domain(&self.nodes, x0, x1)
     }
 
-    /// Evaluates the expression with the variable set to `x`, in any number type.
+    /// Number of nodes: the scratch size [`Self::eval_in`] needs.
+    pub fn node_count(&self) -> usize {
+        self.nodes.len()
+    }
+
+    /// Evaluates the expression with the variable set to `x`, in any number
+    /// type (allocates a scratch buffer per call).
     pub fn eval_with<N: Number>(&self, x: N) -> N {
         tree::eval(&self.nodes, x, &mut Vec::with_capacity(self.nodes.len())).0
     }

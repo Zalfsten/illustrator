@@ -160,3 +160,46 @@ fn every_catalog_function_parses() {
         assert!(parse(src, "x").is_ok(), "{src}");
     }
 }
+
+#[test]
+fn deep_nesting_is_an_error_not_a_crash() {
+    for src in [
+        format!("{}x{}", "(".repeat(100_000), ")".repeat(100_000)),
+        format!("{}x", "-".repeat(100_000)),
+        format!("{}x{}", "sin(".repeat(100_000), ")".repeat(100_000)),
+        format!("2^{}x{}", "(2^".repeat(100_000), ")".repeat(100_000)),
+    ] {
+        let e = parse(&src, "x").unwrap_err();
+        assert_eq!(e.kind, ParseErrorKind::TooDeep, "{}…", &src[..12]);
+    }
+}
+
+/// The deepest accepted nesting fits wasm's default stack of 1 MiB, even
+/// in a debug build.
+#[test]
+fn deepest_accepted_nesting_fits_the_wasm_stack() {
+    // `sin(-(` takes three levels: the argument, the sign and the parenthesis.
+    let units = (super::MAX_NESTING - 1) / 3;
+    let src = format!("{}x{}", "sin(-(".repeat(units), "))".repeat(units));
+    let handle = std::thread::Builder::new()
+        .stack_size(1024 * 1024)
+        .spawn(move || parse(&src, "x").map(|nodes| nodes.len()))
+        .unwrap();
+    assert!(handle.join().unwrap().is_ok());
+}
+
+#[test]
+fn imaginary_literals_name_the_complex_unit() {
+    for (src, name) in [("2i", "i"), ("x + 3j", "j")] {
+        let e = fails(src);
+        match e.kind {
+            ParseErrorKind::RejectedName { name: n, hint: Some(h) } => {
+                assert_eq!(n, name, "{src}");
+                assert!(h.contains("complex"), "{src}: {h}");
+            }
+            other => panic!("{src}: {other:?}"),
+        }
+    }
+    // With a space it is an ordinary missing operator.
+    assert_eq!(fails("2 i").kind, ParseErrorKind::ImplicitMultiplication);
+}

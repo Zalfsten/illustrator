@@ -16,6 +16,11 @@ use crate::error::{ParseError, ParseErrorKind};
 use crate::lexer::{lex, Tok, Token};
 use crate::tree::{eval, BinOp, Func1, Func2, Node, NodeId};
 
+/// Deepest nesting of operands (parentheses, unary signs, call arguments,
+/// exponents). Every recursion of the parser passes through
+/// [`Parser::unary`], so this bounds its stack use (wasm has a small stack).
+const MAX_NESTING: usize = 128;
+
 /// Names MATLAB knows that this subset rejects on purpose.
 const REJECTED: [(&str, Option<&str>); 12] = [
     ("e", Some("write `exp(x)` for the exponential")),
@@ -40,6 +45,8 @@ struct Parser<'a> {
     nodes: Vec<Node>,
     /// Whether node `i`'s subtree contains the variable.
     has_var: Vec<bool>,
+    /// Current recursion depth of [`Self::unary`].
+    depth: usize,
 }
 
 fn err<T>(kind: ParseErrorKind, span: Range<usize>) -> Result<T, ParseError> {
@@ -55,6 +62,7 @@ pub(crate) fn parse(src: &str, variable: &str) -> Result<Vec<Node>, ParseError> 
         pos: 0,
         nodes: Vec::new(),
         has_var: Vec::new(),
+        depth: 0,
     };
     p.sum()?;
     let t = p.peek().clone();
@@ -118,6 +126,16 @@ impl Parser<'_> {
     }
 
     fn unary(&mut self) -> Result<NodeId, ParseError> {
+        if self.depth == MAX_NESTING {
+            return err(ParseErrorKind::TooDeep, self.peek().span.clone());
+        }
+        self.depth += 1;
+        let r = self.unary_inner();
+        self.depth -= 1;
+        r
+    }
+
+    fn unary_inner(&mut self) -> Result<NodeId, ParseError> {
         match self.peek().tok {
             Tok::Plus => {
                 self.next();
@@ -195,9 +213,22 @@ impl Parser<'_> {
             }
             _ => return err(ParseErrorKind::ExpectedOperand, t.span),
         };
-        let after = self.peek();
+        let after = self.peek().clone();
+        if matches!(t.tok, Tok::Num(_)) && after.tok == Tok::Ident && after.span.start == t.span.end {
+            // `2i`, `3j`: MATLAB's imaginary literals.
+            if let name @ ("i" | "j") = &self.src[after.span.clone()] {
+                let hint = REJECTED.iter().find(|(n, _)| n == &name).and_then(|(_, h)| *h);
+                return err(
+                    ParseErrorKind::RejectedName {
+                        name: name.to_string(),
+                        hint,
+                    },
+                    t.span.start..after.span.end,
+                );
+            }
+        }
         if matches!(after.tok, Tok::Num(_) | Tok::Ident | Tok::LParen) {
-            return err(ParseErrorKind::ImplicitMultiplication, after.span.clone());
+            return err(ParseErrorKind::ImplicitMultiplication, after.span);
         }
         Ok(id)
     }

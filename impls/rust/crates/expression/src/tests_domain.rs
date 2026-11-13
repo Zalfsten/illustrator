@@ -79,3 +79,42 @@ fn overflow_is_rejected_and_named() {
     let (_, f) = rejected("exp(x)", 0.0, 1000.0);
     assert_eq!(f, Some("exp"));
 }
+
+/// A zero power drops its base's value, but not its domain: the check must
+/// reject wherever `eval` does.
+#[test]
+fn zero_power_keeps_the_base_domain() {
+    for (src, culprit, bad_x) in [
+        ("log(x)^0", "log", -0.5),
+        ("sqrt(x)^0", "sqrt", -0.5),
+        ("(1/x)^0", "division", 0.0),
+        ("asin(x)^(2-2)", "asin", 1.0),
+    ] {
+        let e = Expression::parse(src, "x").unwrap();
+        assert!(e.eval(bad_x).is_err(), "{src} at {bad_x}");
+        let (_, f) = rejected(src, -1.0, 1.0);
+        assert_eq!(f, Some(culprit), "{src}");
+    }
+    assert_eq!(check("log(x)^0", 0.5, 2.0), Ok(()));
+}
+
+/// Overestimation that only very narrow sub-ranges resolve gives up after a
+/// bounded amount of work instead of running for minutes.
+#[test]
+fn work_is_bounded() {
+    for (src, x0, x1) in [
+        ("log(cosh(x) - sinh(x))", 0.0, 10.0),
+        ("1/(exp(x) - exp(x) + 1)", 0.0, 40.0),
+    ] {
+        let start = std::time::Instant::now();
+        match check(src, x0, x1) {
+            Err(DomainCheckError::TooComplex { range: (lo, hi) }) => {
+                assert!(x0 <= lo && lo < hi && hi == x1, "{src}: [{lo}, {hi}]");
+            }
+            other => panic!("{src}: {other:?}"),
+        }
+        assert!(start.elapsed().as_secs() < 10, "{src} took {:?}", start.elapsed());
+    }
+    // The same expression on a range it can prove within the budget.
+    assert_eq!(check("log(cosh(x) - sinh(x))", 0.0, 5.0), Ok(()));
+}

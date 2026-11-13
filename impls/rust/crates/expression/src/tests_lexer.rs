@@ -87,3 +87,13 @@ fn unexpected_characters_and_bad_numbers() {
     assert_eq!(e.span, 0..2);
     assert_eq!(error("1e+x").kind, ParseErrorKind::InvalidNumber);
 }
+
+#[test]
+fn overflowing_literals_are_invalid_numbers() {
+    for (src, span) in [("1e999", 0..5), ("2 + .5e400", 4..10)] {
+        let e = error(src);
+        assert_eq!((e.kind, e.span), (ParseErrorKind::InvalidNumber, span), "{src}");
+    }
+    // Underflow to zero is a finite value, as in MATLAB.
+    assert_eq!(toks("1e-999"), vec![Tok::Num(0.0), Tok::End]);
+}

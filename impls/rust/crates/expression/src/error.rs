@@ -47,6 +47,8 @@ pub enum ParseErrorKind {
     FunctionWithoutCall(&'static str),
     /// The degree of `nthroot` is not a constant nonzero integer.
     NthrootDegree,
+    /// Parentheses, signs or calls nested deeper than the parser allows.
+    TooDeep,
 }
 
 impl fmt::Display for ParseError {
@@ -79,6 +81,7 @@ impl fmt::Display for ParseError {
             ),
             FunctionWithoutCall(name) => write!(f, "`{name}` must be called, e.g. `{name}(x)`"),
             NthrootDegree => write!(f, "the degree of `nthroot` must be a constant nonzero integer"),
+            TooDeep => write!(f, "the expression is nested too deeply"),
         }
     }
 }
@@ -113,6 +116,9 @@ pub enum DomainCheckError {
         range: (f64, f64),
         function: Option<&'static str>,
     },
+    /// The work budget was spent before `range` (the part not yet proven,
+    /// up to the end) could be proven; the expression may still be valid.
+    TooComplex { range: (f64, f64) },
 }
 
 impl fmt::Display for DomainCheckError {
@@ -127,6 +133,10 @@ impl fmt::Display for DomainCheckError {
                 range: (a, b),
                 function: None,
             } => write!(f, "the function may not be finite in [{a}, {b}]"),
+            Self::TooComplex { range: (a, b) } => write!(
+                f,
+                "the expression is too complex to prove finite in [{a}, {b}]; try to simplify it"
+            ),
         }
     }
 }

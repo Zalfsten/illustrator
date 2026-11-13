@@ -62,6 +62,14 @@ Implementation: impls/rust, new crate `crates/expression` (see design.md). Unit 
 - [x] 6.2 Verify the whole workspace: `cargo test`, `cargo clippy --all-targets` and `scripts/check-wasm.sh` pass in `impls/rust`.
 - [x] 6.3 Validate the change: `openspec validate expression-language --strict` passes.
 
+## Review follow-ups (PR #88)
+
+- [x] 7.1 `check_domain` rejects a sub-range when any node is bad, as `eval` does (`log(x)^0` on [-1, 1]); test `zero_power_keeps_the_base_domain`.
+- [x] 7.2 Budget of 20 000 interval evaluations; `DomainCheckError::TooComplex` with the part not yet proven; test `work_is_bounded`.
+- [x] 7.3 Parser nesting limit 128 (`ParseErrorKind::TooDeep`); tests `deep_nesting_is_an_error_not_a_crash`, `deepest_accepted_nesting_fits_the_wasm_stack`.
+- [x] 7.4 `Expression::eval_in` with a caller-owned scratch buffer and `node_count`; test `eval_in_reuses_the_scratch_buffer`.
+- [x] 7.5 Overflowing literals are `InvalidNumber`; `2i` / `3j` get the complex-number hint; spec: byte range, new requirements for finite literals, nesting depth and the work bound.
+
 ## Workflow follow-up
 
 - Archive the change after review (`/opsx:archive`), then close #78.

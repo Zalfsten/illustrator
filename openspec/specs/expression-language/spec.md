@@ -43,6 +43,15 @@ A number SHALL be digits with an optional fractional part and an optional expone
 - **WHEN** `5.*x` is evaluated at x = 2
 - **THEN** the value is 10
 
+### Requirement: Number literals are finite
+
+A number whose value overflows to infinity (`1e999`) SHALL be rejected as an invalid number at its position.
+
+#### Scenario: Overflowing number
+
+- **WHEN** `x + 1e999` is parsed
+- **THEN** parsing fails with an invalid-number error at the position of `1e999`
+
 ### Requirement: The caller names the variable
 
 Parsing SHALL take the name of the single variable (for example `x`). Any other identifier that is neither `pi` nor a catalog function SHALL be rejected with an error naming it.
@@ -187,9 +196,18 @@ The following SHALL be rejected with an error naming the construct and its posit
 - **WHEN** `e^x` is parsed with variable `x`
 - **THEN** parsing fails with an error naming `e` and suggesting `exp(x)`
 
+### Requirement: Nesting depth is limited
+
+Parentheses, signs, calls and exponents nested more than 128 levels deep SHALL be rejected with an error. The deepest accepted nesting SHALL be parsed within a 1 MiB stack.
+
+#### Scenario: Deep nesting
+
+- **WHEN** an expression with 100 000 nested parentheses or leading minus signs is parsed
+- **THEN** parsing fails with an error that the expression is nested too deeply, without exhausting the stack
+
 ### Requirement: Parse errors carry source positions
 
-Every parse error SHALL state what is wrong and the position in the source text (a character range) where it occurs, so a user interface can point at it.
+Every parse error SHALL state what is wrong and the position in the source text (a byte range of the UTF-8 source text) where it occurs, so a user interface can point at it.
 
 #### Scenario: Unbalanced parenthesis
 
@@ -228,6 +246,11 @@ Given an accepted expression and a finite range [x0, x1] with x0 < x1, the syste
 - **WHEN** `x .* sin(x)` is checked on [0, 2π]
 - **THEN** the check accepts it
 
+#### Scenario: A zero power keeps the domain of its base
+
+- **WHEN** `log(x)^0` is checked on [-1, 1]
+- **THEN** the check rejects it and names `log`, as evaluation at x = -0.5 reports a domain error
+
 ### Requirement: Domain check failures name a location
 
 When the domain check rejects an expression, it SHALL report a sub-range of [x0, x1] where the proof failed and, where known, the function whose open domain may be violated. A range with x0 ≥ x1 or a non-finite end SHALL be reported as an invalid range.
@@ -251,3 +274,13 @@ When the domain check rejects an expression, it SHALL report a sub-range of [x0,
 
 - **WHEN** a range with x0 ≥ x1 or a non-finite end is given
 - **THEN** the check reports an invalid range
+
+### Requirement: The domain check bounds its work
+
+The domain check SHALL stop after a bounded number of interval evaluations, counting proven sub-ranges as well as failing ones. When the bound is reached before the whole range is proven, the check SHALL reject the expression (conservatively) and report the part of the range not yet proven, distinguishable from a located failure.
+
+#### Scenario: Overestimation does not stall the check
+
+- **WHEN** `log(cosh(x) - sinh(x))` is checked on [0, 10]
+- **THEN** the check returns within a bounded amount of work
+- **AND** it reports that the expression is too complex to prove on a sub-range ending at 10
