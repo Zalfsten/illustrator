@@ -84,10 +84,11 @@ fn instances_project_their_stored_attributes() {
     assert_eq!(doc.geometry(label).unwrap().attrs_of::<Label>(), &attrs);
 }
 
-/// Every curve kind bounds pieces soundly and with exact lengths (the display
-/// Mesh relies on both).
+/// Every curve kind bounds pieces soundly: curvature bounds at least the
+/// curvature, piece lengths summing to at least the curve length, exactly
+/// for uniform kinds (the display Mesh relies on all three).
 #[test]
-fn curve_kinds_bound_pieces_with_exact_lengths() {
+fn curve_kinds_bound_their_pieces() {
     use crate::geometry::LengthFormula;
     for kind in ALL_KINDS.into_iter().filter(|k| k.caps().curve) {
         with_kind!(kind, K => {
@@ -106,7 +107,12 @@ fn curve_kinds_bound_pieces_with_exact_lengths() {
                 total += b.length;
             }
             let length = K::length(LengthFormula::Length, c, a).value();
-            assert!((total - length).abs() <= 1e-12 * length.max(1.0), "{kind:?}: {total} vs {length}");
+            let slack = 1e-12 * length.max(1.0);
+            assert!(total >= length - slack, "{kind:?}: pieces {total} < length {length}");
+            if K::UNIFORM_CURVE {
+                // The closed-form path needs the exact length.
+                assert!(total <= length + slack, "{kind:?}: {total} vs {length}");
+            }
         });
     }
 }

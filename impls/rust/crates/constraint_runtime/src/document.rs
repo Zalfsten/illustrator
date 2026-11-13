@@ -255,9 +255,10 @@ impl Document {
         }))
     }
 
-    /// Exact length and curvature upper bound of the normalized piece
-    /// `[t0, t1]` of curve `id` at State `p` (geometry-ir, evaluation-only);
-    /// `None` if `id` is not in the document or has no curve capability.
+    /// Length and curvature upper bounds of the normalized piece `[t0, t1]`
+    /// (`0 ≤ t0 < t1 ≤ 1`) of curve `id` at State `p` (geometry-ir,
+    /// evaluation-only); `None` if `id` is not in the document or has no
+    /// curve capability.
     pub fn curve_piece_bound(
         &self,
         id: GeometryId,
@@ -265,6 +266,10 @@ impl Document {
         t0: f64,
         t1: f64,
     ) -> Option<PieceBound> {
+        debug_assert!(
+            0.0 <= t0 && t0 < t1 && t1 <= 1.0,
+            "piece [{t0}, {t1}] is not inside [0, 1]"
+        );
         let g = self.geometry(id).filter(|g| g.kind().caps().curve)?;
         Some(with_kind!(g.kind(), K => {
             K::piece_bound(t0, t1, g.unpack::<K>(p), g.attrs_of::<K>())

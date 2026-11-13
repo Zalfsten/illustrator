@@ -41,9 +41,9 @@ The default panics, as `shape` and `curvature` do. A `curve_kinds_report_shape_a
 |---|---|---|
 | segment | `|b − a|·(t1 − t0)` | 0 |
 | arc | `|R|·|Δθ|·(t1 − t0)` | `1/|R|` (∞ for R = 0) |
-| function curve (#81) | arc-length chart: exact | interval evaluation |
+| function curve (#81) | tabulated arc-length chart: upper bound (table length plus a margin) | interval evaluation |
 
-**The length is exact, not an upper bound.** Every kind we have or plan has a constant-speed normalized chart; for the function curve the chart is arc length (#74). The deviation bound in decision 3 uses arc-length positions inside an edge, which this makes exact. A future kind with a non-constant-speed chart would have to provide exact piece lengths too, for example by its own quadrature. Recorded as a risk.
+**The length is an upper bound, exact for segment and arc.** (Changed in review of PR #89; the first version required exact lengths.) The function curve's arc-length chart (#81) comes from a table `t → x`, so its piece lengths are exact only up to quadrature and interpolation error, and an under-estimate would make the deviation bound of decision 3 too small. An upper bound is sound: the turning `Σ κ̄ᵢ ℓᵢ` grows with every `ℓᵢ`, and the deviation bound does not decrease when a piece length grows (tested on random pieces, `green_bound_grows_with_piece_lengths`; the randomized check in the review found no decrease in 200 000 cases). The closed-form path for uniform kinds needs the exact length for its minimal count, which segment and arc provide.
 
 *Alternatives:*
 
@@ -79,7 +79,7 @@ For an edge [ta, tb], split it into M = 4 equal sub-pieces and query (ℓᵢ, κ
 
       |d(s)| ≤ ∫ G(s, u) κ(u) du ≤ B(s) = Σᵢ κ̄ᵢ ∫_{uᵢ}^{uᵢ₊₁} G(s, u) du.
 
-  The integrals are closed-form quadratics. `B` is concave in `s` (a sum of concave tents), so its maximum is found by ternary search over [0, L] (60 iterations, no further queries).
+  The integrals are closed-form quadratics. `B` is concave in `s` (a sum of concave tents), and on each piece it is a quadratic in `s` (other pieces contribute linearly), so its maximum is exact from the two ends and the vertex of every piece: at most 4 evaluations per piece, no further queries. (The first version used 100 rounds of ternary search, about 200 evaluations per edge; replaced in review of PR #89.)
 - **The edge passes when:**
   1. `max_s B(s) ≤ ε (1 + 1e-9)`: deviation from the chord line;
   2. `Σ κ̄ᵢ ℓᵢ ≤ π/2`: the total turning. The chord direction lies within the range of tangent directions, so every tangent stays within π/2 of the chord. The arc-length coordinate along the chord is then monotone, every point projects inside the edge, and its distance to the edge equals its distance to the chord line.
@@ -109,7 +109,9 @@ Check the edges left to right. A failing edge is replaced by its two halves in t
 
 ## Risks / Trade-offs
 
-- [A future kind without a constant-speed chart] → It must provide exact piece lengths. The trait doc states this, and the catalog test checks it for every kind by summing the 64 piece lengths against the length expression.
+- [A kind whose chart is only approximately arc length] → It returns length upper bounds (with a margin), never estimates. The trait doc states this, and the catalog test checks for every kind that the 64 piece lengths sum to at least the length expression, and exactly for uniform kinds.
+- [Depth-first halving shares one budget] → When the cap is reached, a region that converges slowly can spend the whole budget before the edges to its right are checked; those keep their initial placement. The spec allows it at the cap, and no current kind reaches it. #81 should refine by priority (largest deviation bound first) if interval bounds make this visible.
+- [An unbounded grid cell (κ̄ = ∞ on a piece of positive length)] → The whole curve gets cap edges at equal steps without checks, as the spec allows at the cap.
 - [Over-estimated curvature bounds (intervals in #81) cost edges] → They only add edges and never break soundness. Function-curve bounds are tested in #81.
 - [The App rebuilds the Mesh for every hit query] → Unchanged cost for segments and arcs. For function curves, caching the Mesh can follow if profiling asks for it (non-goal).
 - [Refinement order at the cap favours the left part of a curve] → Only at the cap, where the spec gives no guarantee anyway.

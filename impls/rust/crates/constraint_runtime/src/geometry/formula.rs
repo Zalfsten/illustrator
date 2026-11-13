@@ -30,7 +30,8 @@ use crate::matrix::DenseMatrix;
 /// ([`Geometry::piece_bound`]).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct PieceBound {
-    /// Exact arc length of the piece.
+    /// Upper bound of the arc length of the piece; exact for kinds whose
+    /// normalized chart has constant speed (segment, arc).
     pub length: f64,
     /// Upper bound of the unsigned curvature on the whole piece (`+∞` allowed).
     pub curvature: f64,
@@ -107,14 +108,18 @@ pub trait Geometry: Chart + GeometryCaps + Sized + 'static {
         unsupported(Self::KIND, "curvature")
     }
 
-    /// Exact arc length of the normalized piece `[t0, t1]` and an upper bound
-    /// of its unsigned curvature on the whole piece (curve capability only).
+    /// Upper bounds of the arc length of the normalized piece `[t0, t1]`
+    /// (`0 ≤ t0 < t1 ≤ 1`) and of its unsigned curvature on the whole piece
+    /// (curve capability only).
     ///
-    /// The length is exact because every kind's normalized chart has constant
-    /// speed; a kind without one must still return the exact piece length.
-    /// The bound may exceed the curvature but never fall below it, so
-    /// consumers (display tessellation) stay sound. Evaluation-only, like
-    /// [`curvature`](Self::curvature).
+    /// Both may exceed the true values but never fall below them, so
+    /// consumers (display tessellation) stay sound: the Mesh's deviation
+    /// bound does not decrease when a length grows. Kinds with constant
+    /// speed (segment, arc) return the exact length, which the closed-form
+    /// [`UNIFORM_CURVE`](Self::UNIFORM_CURVE) path needs for its minimal edge
+    /// count; a kind whose chart is only approximately arc length (a
+    /// tabulated function curve) adds a margin instead of returning an
+    /// estimate. Evaluation-only, like [`curvature`](Self::curvature).
     fn piece_bound(t0: f64, t1: f64, c: Self::Init, a: &Self::Attrs) -> PieceBound {
         let _ = (t0, t1, c, a);
         unsupported(Self::KIND, "piece bound")

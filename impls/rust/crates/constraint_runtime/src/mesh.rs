@@ -2,8 +2,8 @@
 //!
 //! Derived view only — not authoritative for parameters or constraints.
 //! Curves are sampled via the curve capability's on-curve expressions at
-//! normalized parameters chosen from piece bounds (exact length and a
-//! curvature upper bound per parameter piece, [`Document::curve_piece_bound`]):
+//! normalized parameters chosen from piece bounds (length and curvature
+//! upper bounds per parameter piece, [`Document::curve_piece_bound`]):
 //! each edge provably stays within the chord tolerance passed to
 //! [`Mesh::from_document`], up to [`MAX_MESH_EDGES`] per curve. Uniform kinds
 //! (segment, arc) get equal edges, as few as the tolerance allows; other
@@ -198,8 +198,8 @@ fn on_curve(id: GeometryId, t: f64) -> PointExpr {
 }
 
 /// Normalized parameters \(0 = t_0 < \dots < t_n = 1\) of a curve's polyline
-/// vertices, from its piece bounds (`piece(t0, t1)`: exact length and a
-/// curvature upper bound of that piece).
+/// vertices, from its piece bounds (`piece(t0, t1)`: length and curvature
+/// upper bounds of that piece).
 ///
 /// 1. **Placement:** the edge demand ([`edge_demand`]) of [`GRID_INTERVALS`]
 ///    equal cells is integrated; the smallest edge count not below it is
@@ -225,6 +225,9 @@ fn place_samples(piece: impl Fn(f64, f64) -> PieceBound, tolerance: f64, cap: us
     }
     let total = *cumulative.last().expect("non-empty");
     if !total.is_finite() {
+        // An unbounded cell (κ̄ = ∞ on a piece of positive length) leaves no
+        // provable placement: cap edges at equal steps, unchecked, which the
+        // spec allows at the cap.
         return (0..=cap).map(|j| j as f64 / cap as f64).collect();
     }
     let n = edge_count(total, cap);
@@ -302,38 +305,50 @@ fn edge_within_tolerance(
 }
 
 /// Upper bound of the distance of a curve from its chord line, for
-/// consecutive pieces of exact length \(\ell_i\) and curvature bound
-/// \(\bar\kappa_i\).
+/// consecutive pieces with length upper bounds \(\ell_i\) and curvature
+/// bounds \(\bar\kappa_i\).
 ///
 /// The distance \(d(s)\) at arc length \(s\) has \(d(0) = d(L) = 0\) and
 /// \(|d''| \le \kappa\), so \(|d(s)| \le \int_0^L G(s, u)\,\kappa(u)\,du\)
 /// with the Green function \(G(s,u) = u(L-s)/L\) for \(u \le s\) and
 /// \(s(L-u)/L\) for \(u \ge s\). With \(\kappa \le \bar\kappa_i\) on each
-/// piece the integral is a concave piecewise quadratic in \(s\), maximized by
-/// ternary search. Constant curvature gives \(\kappa L^2/8\); curvature only
-/// near an end of the chord contributes little.
+/// piece the integral is concave in \(s\) and quadratic on each piece, so its
+/// maximum is exact from the ends and the vertex of every piece. Constant
+/// curvature gives \(\kappa L^2/8\); curvature only near an end of the chord
+/// contributes little. The bound does not decrease when a piece length is
+/// over-estimated (tested), so length upper bounds keep it sound.
 fn deviation_bound(pieces: &[PieceBound]) -> f64 {
     let total: f64 = pieces.iter().map(|b| b.length).sum();
     if total <= 0.0 {
         return 0.0;
     }
-    let (mut a, mut b) = (0.0, total);
-    for _ in 0..100 {
-        let m1 = a + (b - a) / 3.0;
-        let m2 = b - (b - a) / 3.0;
-        if deviation_at(pieces, m1) < deviation_at(pieces, m2) {
-            a = m1;
-        } else {
-            b = m2;
+    let at = |s: f64| deviation_at(pieces, total, s);
+    let mut best = 0.0_f64;
+    let mut lo = 0.0;
+    for b in pieces {
+        let hi = lo + b.length;
+        if hi > lo {
+            let (h, m) = (0.5 * (hi - lo), 0.5 * (lo + hi));
+            let (fa, fm, fb) = (at(lo), at(m), at(hi));
+            best = best.max(fa).max(fm).max(fb);
+            // Vertex of the parabola through (−h, fa), (0, fm), (h, fb).
+            let curvature = fa - 2.0 * fm + fb;
+            if curvature < 0.0 {
+                let x = h * (fa - fb) / (2.0 * curvature);
+                if x.abs() < h {
+                    best = best.max(at(m + x));
+                }
+            }
         }
+        lo = hi;
     }
-    deviation_at(pieces, 0.5 * (a + b))
+    best
 }
 
 /// \(\sum_i \bar\kappa_i \int_{\text{piece } i} G(s, u)\,du\) at arc length `s`
-/// (see [`deviation_bound`]); closed form per piece.
-fn deviation_at(pieces: &[PieceBound], s: f64) -> f64 {
-    let total: f64 = pieces.iter().map(|b| b.length).sum();
+/// (see [`deviation_bound`]), `total` the sum of the piece lengths; closed
+/// form per piece.
+fn deviation_at(pieces: &[PieceBound], total: f64, s: f64) -> f64 {
     let mut u = 0.0;
     let mut sum = 0.0;
     for b in pieces {

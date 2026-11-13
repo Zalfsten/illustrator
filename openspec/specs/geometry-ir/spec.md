@@ -612,7 +612,7 @@ The curvature query and the piece bound query SHALL serve evaluation (for exampl
 
 ### Requirement: Curves bound length and curvature over a parameter piece
 
-For every geometry with the curve capability, the system SHALL report, for a normalized parameter piece [t0, t1] ⊆ [0, 1] with t0 < t1 and a State, the arc length of that piece and an upper bound of its unsigned curvature at every point of the piece. The bound SHALL NOT be smaller than the curvature anywhere on the piece. A caller SHALL obtain both by geometry identity without branching on the concrete kind.
+For every geometry with the curve capability, the system SHALL report, for a normalized parameter piece [t0, t1] ⊆ [0, 1] with t0 < t1 and a State, an upper bound of the arc length of that piece and an upper bound of its unsigned curvature at every point of the piece. Neither bound SHALL be smaller than the true value; the length bound SHALL be exact for segments and arcs. A caller SHALL obtain both by geometry identity without branching on the concrete kind.
 
 #### Scenario: Segment piece
 

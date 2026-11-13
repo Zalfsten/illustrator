@@ -119,8 +119,9 @@ context: |
       curve kinds only); values, Jacobians, shape, curvature and canonical
       read the chart values plus the kind's typed attributes
       (type Attrs, attrs_of; () for segment/arc), connectivity never does;
-      piece_bound(t0, t1) -> PieceBound (exact length, curvature upper
-      bound; evaluation-only, sound by contract) for the display Mesh
+      piece_bound(t0, t1) -> PieceBound (length and curvature upper
+      bounds, length exact for segment/arc; evaluation-only, sound by
+      contract) for the display Mesh
     - shape.rs: ShapePiece (Line / Arc with |R|; length, point_at, sub),
       read by identity via Document::curve_shape (None without curve);
       exports use it instead of the Mesh
@@ -165,7 +166,7 @@ context: |
   - mesh.rs: Display Mesh from Document+State+chord tolerance (world units;
     the App passes 0.25 px via Viewport::px_to_world); curves tessellated via
     on_curve at parameters from piece bounds (Document::curve_piece_bound:
-    exact length + curvature upper bound per parameter piece);
+    length + curvature upper bounds per parameter piece);
     UNIFORM_CURVE kinds (segment, arc) in closed form (osculating-circle
     count, φmax capped at π, equal edges, minimal); other curves: demand
     grid (64 cells) → equal shares, per-edge Green-function deviation bound

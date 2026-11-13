@@ -47,6 +47,13 @@ Implementation: impls/rust, crate `constraint_runtime` (see design.md). Run test
 - [x] 4.1 Verify the whole workspace: `cargo test`, `cargo clippy --all-targets` and `scripts/check-wasm.sh` pass in `impls/rust`.
 - [x] 4.2 Validate the change: `openspec validate mesh-local-refinement --strict` passes.
 
+## Review follow-ups (PR #89)
+
+- [x] 5.1 Piece length is an upper bound (exact for segment and arc): trait, `Document`, `mesh.rs`, geometry-ir requirement, `config.yaml`, `docs/constraint-mathematics.md`, design decision 1; catalog test checks `Σ ℓ ≥ length` (equality for uniform kinds); tests `green_bound_grows_with_piece_lengths`, `over_estimated_lengths_stay_within_tolerance`.
+- [x] 5.2 `deviation_bound` maximizes exactly per piece (ends and vertex) instead of ternary search; test `green_bound_is_the_exact_maximum`.
+- [x] 5.3 `debug_assert` on the piece range in `Document::curve_piece_bound`; the unbounded-cell fallback is commented.
+- [x] 5.4 Priority refinement when the cap is reached is recorded as a requirement for #81 (design risks).
+
 ## Workflow follow-up
 
 - Archive the change after review (`/opsx:archive`), then close #86.

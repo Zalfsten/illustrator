@@ -369,7 +369,7 @@ fn green_bound_of_constant_curvature_is_the_small_angle_sagitta() {
     let pieces = [PieceBound { length: 0.5, curvature: 2.0 }; 4];
     let l: f64 = 2.0;
     assert!((deviation_bound(&pieces) - 2.0 * l * l / 8.0).abs() < 1e-12);
-    assert!((deviation_at(&pieces, 1.0) - 1.0).abs() < 1e-12);
+    assert!((deviation_at(&pieces, 2.0, 1.0) - 1.0).abs() < 1e-12);
 }
 
 #[test]
@@ -389,7 +389,7 @@ fn green_bound_is_concave_and_matches_quadrature() {
         PieceBound { length: 0.4, curvature: 3.0 },
     ];
     let total = 1.2;
-    let b = |s: f64| deviation_at(&pieces, s);
+    let b = |s: f64| deviation_at(&pieces, total, s);
     for k in 1..119 {
         let (s0, s1, s2) = ((k - 1) as f64 / 100.0, k as f64 / 100.0, (k + 1) as f64 / 100.0);
         assert!(b(s0) - 2.0 * b(s1) + b(s2) <= 1e-12, "not concave at {s1}");
@@ -409,6 +409,68 @@ fn green_bound_is_concave_and_matches_quadrature() {
             .sum();
         assert!((b(s) - q).abs() < 1e-9, "s = {s}: {} vs {q}", b(s));
     }
+}
+
+/// Deterministic pseudo-random pieces (xorshift), some of them straight.
+fn random_pieces(state: &mut u64) -> Vec<PieceBound> {
+    let mut next = || {
+        *state ^= *state << 13;
+        *state ^= *state >> 7;
+        *state ^= *state << 17;
+        (*state >> 11) as f64 / (1u64 << 53) as f64
+    };
+    (0..4)
+        .map(|_| PieceBound {
+            length: 0.01 + next(),
+            curvature: if next() < 0.3 { 0.0 } else { 10.0 * next() },
+        })
+        .collect()
+}
+
+#[test]
+fn green_bound_is_the_exact_maximum() {
+    let mut state = 0x9E37_79B9_7F4A_7C15;
+    for _ in 0..500 {
+        let pieces = random_pieces(&mut state);
+        let total: f64 = pieces.iter().map(|b| b.length).sum();
+        let bound = deviation_bound(&pieces);
+        let sampled = (0..=4000)
+            .map(|k| deviation_at(&pieces, total, total * k as f64 / 4000.0))
+            .fold(0.0, f64::max);
+        assert!(bound >= sampled * (1.0 - 1e-12), "{bound} < sampled {sampled}");
+        assert!(bound <= sampled * (1.0 + 1e-5), "{bound} far above sampled {sampled}");
+    }
+}
+
+/// Length upper bounds keep the check sound: lengthening a piece never lowers
+/// the bound.
+#[test]
+fn green_bound_grows_with_piece_lengths() {
+    let mut state = 0x2545_F491_4F6C_DD1D;
+    for _ in 0..2000 {
+        let pieces = random_pieces(&mut state);
+        let before = deviation_bound(&pieces);
+        for i in 0..pieces.len() {
+            let mut longer = pieces.clone();
+            longer[i].length *= 1.37;
+            let after = deviation_bound(&longer);
+            assert!(after >= before * (1.0 - 1e-12), "piece {i}: {after} < {before}");
+        }
+    }
+}
+
+#[test]
+fn over_estimated_lengths_stay_within_tolerance() {
+    use std::f64::consts::PI;
+    let curve = Synth::piecewise(&[(PI, 0.0), (PI, 1.0)]);
+    let eps = 1e-3;
+    let padded = |a: f64, b: f64| {
+        let p = curve.piece(a, b);
+        PieceBound { length: p.length * 1.05, ..p }
+    };
+    let ts = place_samples(padded, eps, MAX_MESH_EDGES);
+    curve.assert_within(&ts, eps, "lengths over-estimated by 5 %");
+    assert!(ts.len() - 1 < MAX_MESH_EDGES / 4);
 }
 
 #[test]
