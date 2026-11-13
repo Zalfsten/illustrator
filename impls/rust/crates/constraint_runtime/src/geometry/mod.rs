@@ -14,6 +14,6 @@ pub use capabilities::{
     LineExprs, PointFormula, TurnFormula, VecFormula,
 };
 pub use chart::{Chart, ChartSlot, StateAtom};
-pub use formula::{Formula, Geometry};
+pub use formula::{Formula, Geometry, PieceBound};
 pub use shape::ShapePiece;
 pub use shell::{GeometryId, GeometryRole, GeometryShell};

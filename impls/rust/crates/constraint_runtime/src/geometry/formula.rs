@@ -26,6 +26,16 @@ use crate::geom::{HeadingAngle, Length, Point2, TurnAngle, Vec2};
 use crate::geometry_kinds::{GeometryKind, KindAttrs};
 use crate::matrix::DenseMatrix;
 
+/// Arc length and curvature upper bound of a curve piece
+/// ([`Geometry::piece_bound`]).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct PieceBound {
+    /// Exact arc length of the piece.
+    pub length: f64,
+    /// Upper bound of the unsigned curvature on the whole piece (`+∞` allowed).
+    pub curvature: f64,
+}
+
 /// Formula-local columns covering the whole chart block.
 pub fn all_params<K: Chart>() -> Range<usize> {
     0..K::PARAMETER_COUNT
@@ -95,6 +105,19 @@ pub trait Geometry: Chart + GeometryCaps + Sized + 'static {
     fn curvature(t: f64, c: Self::Init, a: &Self::Attrs) -> f64 {
         let _ = (t, c, a);
         unsupported(Self::KIND, "curvature")
+    }
+
+    /// Exact arc length of the normalized piece `[t0, t1]` and an upper bound
+    /// of its unsigned curvature on the whole piece (curve capability only).
+    ///
+    /// The length is exact because every kind's normalized chart has constant
+    /// speed; a kind without one must still return the exact piece length.
+    /// The bound may exceed the curvature but never fall below it, so
+    /// consumers (display tessellation) stay sound. Evaluation-only, like
+    /// [`curvature`](Self::curvature).
+    fn piece_bound(t0: f64, t1: f64, c: Self::Init, a: &Self::Attrs) -> PieceBound {
+        let _ = (t0, t1, c, a);
+        unsupported(Self::KIND, "piece bound")
     }
 
     fn point(f: PointFormula, c: Self::Init, a: &Self::Attrs) -> Point2 {

@@ -12,7 +12,7 @@ use crate::expr::{Expr, LengthExpr, PointExpr, VecExpr};
 use crate::geom::CurveParam;
 use crate::geometry::{
     Caps, Chart, Formula, Geometry, GeometryId, GeometryRole, GeometryShell, LengthFormula,
-    PointFormula, ShapePiece, VecFormula,
+    PieceBound, PointFormula, ShapePiece, VecFormula,
 };
 use crate::geometry_kinds::{with_kind, GeometryInst, KindAttrs, LabelAttrs};
 use crate::id::IdMap;
@@ -252,6 +252,22 @@ impl Document {
         let g = self.geometry(id).filter(|g| g.kind().caps().curve)?;
         Some(with_kind!(g.kind(), K => {
             K::curvature(t, g.unpack::<K>(p), g.attrs_of::<K>())
+        }))
+    }
+
+    /// Exact length and curvature upper bound of the normalized piece
+    /// `[t0, t1]` of curve `id` at State `p` (geometry-ir, evaluation-only);
+    /// `None` if `id` is not in the document or has no curve capability.
+    pub fn curve_piece_bound(
+        &self,
+        id: GeometryId,
+        p: &Vector,
+        t0: f64,
+        t1: f64,
+    ) -> Option<PieceBound> {
+        let g = self.geometry(id).filter(|g| g.kind().caps().curve)?;
+        Some(with_kind!(g.kind(), K => {
+            K::piece_bound(t0, t1, g.unpack::<K>(p), g.attrs_of::<K>())
         }))
     }
 
