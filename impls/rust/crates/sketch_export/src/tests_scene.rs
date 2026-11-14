@@ -339,3 +339,49 @@ fn missing_lines_name_the_label() {
     let one = LabelLines::from([(id, vec![square_line(1.0)])]);
     assert_eq!(scene(&doc, &one), Err(ExportError::MissingLines(id)), "all lines needed");
 }
+
+#[test]
+fn shape_tolerance_follows_the_document_scale() {
+    // Scale 10: 1 world unit = 10 mm, so 1 µm = 1e-4 world units.
+    let settings = DocumentSettings { scale: 10.0, ..DocumentSettings::default() };
+    let tolerance = export_tolerance(&settings);
+    assert!(tolerance > 0.0 && tolerance <= 1e-4, "tolerance = {tolerance}");
+    let coarse = DocumentSettings { scale: 1.0, ..DocumentSettings::default() };
+    assert_eq!(export_tolerance(&coarse), 10.0 * tolerance);
+}
+
+fn arch() -> ShapePiece {
+    ShapePiece::Cubic {
+        start: Point2::new(0.0, 0.0),
+        c1: Point2::new(1.0, 2.0),
+        c2: Point2::new(2.0, 2.0),
+        end: Point2::new(3.0, 0.0),
+    }
+}
+
+#[test]
+fn trim_cuts_a_cubic_at_arc_length() {
+    let piece = arch();
+    let total = piece.length();
+    let l = 0.4;
+    let out = trim(&[piece], l, l);
+    assert_eq!(out.len(), 1);
+    assert!(matches!(out[0], ShapePiece::Cubic { .. }));
+    let len: f64 = out.iter().map(ShapePiece::length).sum();
+    assert!((len - (total - 2.0 * l)).abs() < 1e-12 * total, "len {len}, expected {}", total - 2.0 * l);
+    // The new ends are the original curve's points at arc length l from each end.
+    assert!(close(out[0].start_point(), piece.point_at(l / total)));
+    assert!(close(out[0].end_point(), piece.point_at(1.0 - l / total)));
+}
+
+#[test]
+fn cubic_piece_becomes_one_cubic_path_command() {
+    let piece = arch();
+    assert_eq!(
+        path(&[piece]),
+        vec![
+            PathSeg::Move(Point2::new(0.0, 0.0)),
+            PathSeg::Cubic(Point2::new(1.0, 2.0), Point2::new(2.0, 2.0), Point2::new(3.0, 0.0)),
+        ]
+    );
+}

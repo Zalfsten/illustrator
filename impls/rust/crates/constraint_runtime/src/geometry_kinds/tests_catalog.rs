@@ -38,7 +38,7 @@ fn curve_kinds_report_shape_and_curvature() {
             let c = K::unpack(&params);
             let stored = K::default_attrs();
             let a = K::attrs_of(&stored);
-            assert!(!K::shape(c, a).is_empty(), "{kind:?} has no shape");
+            assert!(!K::shape(c, a, 1e-6).is_empty(), "{kind:?} has no shape");
             let k0 = K::curvature(0.0, c, a);
             for t in [0.0, 0.3, 1.0] {
                 let k = K::curvature(t, c, a);

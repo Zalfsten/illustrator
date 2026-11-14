@@ -5,6 +5,7 @@
 
 pub mod capabilities;
 pub mod chart;
+pub mod cubic;
 pub mod formula;
 pub mod shape;
 pub mod shell;

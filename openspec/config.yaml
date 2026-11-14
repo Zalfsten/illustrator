@@ -115,16 +115,25 @@ context: |
       pack/unpack from Init tuples)
     - formula.rs: Geometry (what a kind implements: value / Jacobian /
       connectivity per formula family) and Formula (tag family → that
-      triple), formula_family!; also Geometry::shape (exact curve shape,
-      curve kinds only); values, Jacobians, shape, curvature and canonical
+      triple), formula_family!; also Geometry::shape(c, a, tolerance)
+      (curve kinds only; segment/arc exact and ignore the tolerance); values, Jacobians, shape, curvature and canonical
       read the chart values plus the kind's typed attributes
       (type Attrs, attrs_of; () for segment/arc), connectivity never does;
       piece_bound(t0, t1) -> PieceBound (length and curvature upper
       bounds, length exact for segment/arc; evaluation-only, sound by
       contract) for the display Mesh
-    - shape.rs: ShapePiece (Line / Arc with |R|; length, point_at, sub),
-      read by identity via Document::curve_shape (None without curve);
+    - shape.rs: ShapePiece (Line / Arc with |R| / Cubic; length, point_at
+      and sub by arc-length fraction, bounding_points), read by identity
+      via Document::curve_shape(id, p, tolerance) (None without curve);
       exports use it instead of the Mesh
+    - cubic.rs: cubic Bézier helpers on [start, c1, c2, end] (point exact
+      at the ends, derivatives, curvature, axis extrema, de Casteljau
+      split / sub, adaptive Gauss–Legendre arc length and its Newton
+      inverse) and hermite_shape(point, tangent, knots, tolerance,
+      deviation): Hermite pieces γ ± γ′h/3, 4 per knot interval, halved
+      depth first, MAX_SHAPE_PIECES 4096; deviation is pluggable,
+      sampled_deviation (7 matched samples × 2) is an estimate, a provable
+      bound is #99
     - capabilities.rs: kind-agnostic formula tags (PointFormula,
       VecFormula, LengthFormula, HeadingFormula, TurnFormula) and opt-in
       factories CurveExprs / EndpointExprs, plus invariant capabilities
@@ -297,12 +306,15 @@ context: |
   generated with GNU Octave (generate.m; values only, Octave is more
   permissive than MATLAB, e.g. `--`).
   sketch_export (wasm-capable, serde-free; constraint_runtime + label_layout):
-  scene.rs turns result curves (Document::curve_shape, exact trim at arrow
-  heads, native dash array + phase) and result labels (typeset lines placed
+  scene.rs turns result curves (Document::curve_shape at
+  export_tolerance = SHAPE_TOLERANCE_MM 0.5 µm / scale, exact trim at arrow
+  heads by arc length, native dash array + phase) and result labels (typeset lines placed
   via label_layout::place) into print primitives (Object per geometry with
-  Stroke / Fill / Outline parts, PathSeg incl. Arc) in creation order;
-  bounds.rs exact tight bounds (butt rectangles, annular sectors, Bézier
-  extrema; dashes count as solid); svg.rs writes mm with y flip, 3 decimals,
+  Stroke / Fill / Outline parts, PathSeg incl. Arc, cubic pieces as
+  PathSeg::Cubic) in creation order; bounds.rs exact tight bounds (butt
+  rectangles, annular sectors, Bézier extrema; stroked cubics and quads from
+  end corners and offset points at axis tangents, plus a golden-section
+  maximum where sampled curvature reaches 0.5/h; dashes count as solid); svg.rs writes mm with y flip, 3 decimals,
   arcs split at π, <g id=name>; pdf.rs (pdf-writer, one page, MediaBox =
   bounds in bp, no flip, DeviceRGB, butt caps / miter joins, dash + phase,
   Flate content, no Info / ID) with arcs as cubics (arc_parts: quarter-turn

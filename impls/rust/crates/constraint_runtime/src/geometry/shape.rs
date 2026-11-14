@@ -1,12 +1,16 @@
-//! Exact curve shapes: pieces from a fixed, kind-independent vocabulary
-//! (geometry-ir: Curves describe their exact shape).
+//! Curve shapes: pieces from a fixed, kind-independent vocabulary of straight,
+//! circular-arc and cubic Bézier pieces (geometry-ir: Curves describe their
+//! exact shape).
 //!
-//! Kinds with the curve capability override [`Geometry::shape`]; exports read
-//! shapes by identity through
+//! Kinds with the curve capability override [`Geometry::shape`]. Segments and
+//! arcs are exact; kinds without closed-form pieces describe their shape with
+//! cubic pieces within a caller-given tolerance. Exports read shapes by
+//! identity through
 //! [`Document::curve_shape`](crate::document::Document::curve_shape).
 //!
 //! [`Geometry::shape`]: crate::geometry::Geometry::shape
 
+use super::cubic::{self, CubicPoints};
 use crate::geom::{HeadingAngle, Point2, TurnAngle, Vec2};
 
 /// One piece of a curve's exact shape.
@@ -22,6 +26,13 @@ pub enum ShapePiece {
         start: HeadingAngle,
         sweep: TurnAngle,
     },
+    /// Cubic Bézier piece from `start` to `end` with control points `c1`, `c2`.
+    Cubic {
+        start: Point2,
+        c1: Point2,
+        c2: Point2,
+        end: Point2,
+    },
 }
 
 impl ShapePiece {
@@ -30,10 +41,23 @@ impl ShapePiece {
         match *self {
             Self::Line { start, end } => (end - start).length(),
             Self::Arc { radius, sweep, .. } => radius * sweep.radians().abs(),
+            Self::Cubic { start, c1, c2, end } => cubic::arc_length(&[start, c1, c2, end], 0.0, 1.0),
         }
     }
 
-    /// Point at fraction `s` ∈ [0, 1] of the piece (uniform in arc length).
+    /// Bézier parameter of a cubic piece at arc-length fraction `s`.
+    fn cubic_param(b: &CubicPoints, s: f64) -> f64 {
+        if s <= 0.0 {
+            return 0.0;
+        }
+        if s >= 1.0 {
+            return 1.0;
+        }
+        cubic::param_at_length(b, s * cubic::arc_length(b, 0.0, 1.0))
+    }
+
+    /// Point at fraction `s` ∈ [0, 1] of the piece (uniform in arc length;
+    /// for a cubic by inverting its arc length).
     pub fn point_at(&self, s: f64) -> Point2 {
         match *self {
             Self::Line { start, end } => start + (end - start) * s,
@@ -45,6 +69,10 @@ impl ShapePiece {
             } => {
                 let a = start.radians() + s * sweep.radians();
                 center + Vec2::new(radius * a.cos(), radius * a.sin())
+            }
+            Self::Cubic { start, c1, c2, end } => {
+                let b = [start, c1, c2, end];
+                cubic::point(&b, Self::cubic_param(&b, s))
             }
         }
     }
@@ -59,9 +87,13 @@ impl ShapePiece {
 
     /// Points whose axis-aligned bounding box is the piece's exact one: its
     /// ends and, for an arc, every axis extreme (heading a multiple of π/2)
-    /// that the sweep passes.
+    /// that the sweep passes; for a cubic, its coordinate extrema.
     pub fn bounding_points(&self) -> Vec<Point2> {
         let mut points = vec![self.start_point(), self.end_point()];
+        if let Self::Cubic { start, c1, c2, end } = *self {
+            let b = [start, c1, c2, end];
+            points.extend(cubic::axis_extrema(&b).into_iter().map(|u| cubic::point(&b, u)));
+        }
         if let Self::Arc {
             center,
             radius,
@@ -87,8 +119,8 @@ impl ShapePiece {
         points
     }
 
-    /// The part between fractions `s0 ≤ s1` of the piece, as a piece of the
-    /// same kind.
+    /// The part between arc-length fractions `s0 ≤ s1` of the piece, as a
+    /// piece of the same kind.
     pub fn sub(&self, s0: f64, s1: f64) -> Self {
         match *self {
             Self::Line { .. } => Self::Line {
@@ -106,6 +138,11 @@ impl ShapePiece {
                 start: HeadingAngle::new(start.radians() + s0 * sweep.radians()),
                 sweep: TurnAngle::new((s1 - s0) * sweep.radians()),
             },
+            Self::Cubic { start, c1, c2, end } => {
+                let b = [start, c1, c2, end];
+                let [start, c1, c2, end] = cubic::sub(&b, Self::cubic_param(&b, s0), Self::cubic_param(&b, s1));
+                Self::Cubic { start, c1, c2, end }
+            }
         }
     }
 }

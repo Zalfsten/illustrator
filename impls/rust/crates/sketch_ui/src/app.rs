@@ -332,11 +332,13 @@ impl App {
 
     /// Box around the visible geometry and the origins of visible labels.
     ///
-    /// Uses the curves' exact shapes, not the Mesh: the Mesh's chord
-    /// tolerance follows the current view, which this box is about to replace.
+    /// Uses the curves' shapes, not the Mesh: the Mesh's chord tolerance
+    /// follows the current view, which this box is about to replace. The
+    /// shapes take the export's view-independent tolerance for the same reason.
     fn drawing_box(&self) -> Option<(Point2, Point2)> {
         let doc = self.doc();
         let p = doc.vector();
+        let tolerance = sketch_export::export_tolerance(doc.settings());
         let filter = self.presentation.mesh_filter();
         let visible = || {
             doc.geometries()
@@ -344,7 +346,7 @@ impl App {
                 .filter(|g| filter.include_construction || g.role() != GeometryRole::Construction)
         };
         let curves = visible()
-            .filter_map(|g| doc.curve_shape(g.id(), p))
+            .filter_map(|g| doc.curve_shape(g.id(), p, tolerance))
             .flatten()
             .flat_map(|piece| piece.bounding_points());
         let origins = visible()

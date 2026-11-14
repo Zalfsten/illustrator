@@ -20,7 +20,10 @@ use std::fmt;
 use constraint_runtime::{Document, GeometryId};
 
 pub use bounds::{bounds, Bounds};
-pub use scene::{exported_labels, scene, DashArray, LabelLines, Object, Part, PathSeg, Scene};
+pub use scene::{
+    export_tolerance, exported_labels, scene, DashArray, LabelLines, Object, Part, PathSeg, Scene,
+    SHAPE_TOLERANCE_MM,
+};
 pub use pdf::pdf;
 pub use svg::svg;
 

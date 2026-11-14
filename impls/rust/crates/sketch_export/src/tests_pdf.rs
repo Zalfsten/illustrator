@@ -269,3 +269,37 @@ fn svg_format_matches_export_svg() {
     assert_eq!((Format::Svg.extension(), Format::Pdf.extension()), ("svg", "pdf"));
     assert_eq!((Format::Svg.mime(), Format::Pdf.mime()), ("image/svg+xml", "application/pdf"));
 }
+
+#[test]
+fn cubic_piece_is_one_cubic_operator() {
+    use constraint_runtime::{DocumentSettings, GeometryId, Rgb};
+    let scene = crate::Scene {
+        objects: vec![crate::Object {
+            id: GeometryId(1),
+            name: "fn1".to_owned(),
+            parts: vec![crate::Part::Stroke {
+                path: vec![
+                    crate::PathSeg::Move(Point2::new(0.0, 0.0)),
+                    crate::PathSeg::Cubic(Point2::new(1.0, 2.0), Point2::new(2.0, 2.0), Point2::new(3.0, 0.0)),
+                ],
+                width: 0.01,
+                color: Rgb(0, 0, 0),
+                dash: None,
+            }],
+        }],
+    };
+    let bounds = crate::Bounds { min: Point2::new(0.0, 0.0), max: Point2::new(3.0, 2.0) };
+    let settings = DocumentSettings { scale: 10.0, ..DocumentSettings::default() };
+    let (_, ops) = parse(&crate::pdf(&scene, &bounds, &settings));
+    let path: Vec<_> = ops.iter().filter(|o| ["m", "l", "c"].contains(&o.operator.as_str())).collect();
+    assert_eq!(path.iter().map(|o| o.operator.as_str()).collect::<Vec<_>>(), ["m", "c"]);
+    // Page coordinates in bp: 10 mm per world unit, 72/25.4 bp per mm.
+    let k = 10.0 * 72.0 / 25.4;
+    let nums = |o: &lopdf::content::Operation| -> Vec<f64> {
+        o.operands.iter().map(|v| f64::from(v.as_float().unwrap())).collect()
+    };
+    let expect = [k, 2.0 * k, 2.0 * k, 2.0 * k, 3.0 * k, 0.0];
+    for (got, want) in nums(path[0]).iter().zip([0.0, 0.0]).chain(nums(path[1]).iter().zip(expect)) {
+        assert!((got - want).abs() < 1e-3, "got {got}, want {want}");
+    }
+}

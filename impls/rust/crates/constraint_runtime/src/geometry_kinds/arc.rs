@@ -87,7 +87,7 @@ impl Geometry for Arc {
     }
 
     /// `R < 0` → `(C, −R, θ₀ + π, Δθ)`: same curve, non-negative radius.
-    fn shape(c: Self::Init, a: &Self::Attrs) -> Vec<ShapePiece> {
+    fn shape(c: Self::Init, a: &Self::Attrs, _tolerance: f64) -> Vec<ShapePiece> {
         let (center, radius, start, sweep) = Self::canonical(c, a);
         vec![ShapePiece::Arc {
             center,

@@ -4,12 +4,22 @@
 use std::collections::HashMap;
 
 use constraint_runtime::{
-    arrow_head, arrow_length_pt, arrow_tips, pt_to_world, Document, GeometryId, GeometryRole,
+    arrow_head, arrow_length_pt, arrow_tips, pt_to_world, Document, DocumentSettings, GeometryId, GeometryRole,
     Point2, Rgb, ShapePiece, Vec2,
 };
 use label_layout::{label_requests, place, Contour, LineMetrics, LineRequest, Paint, Segment, TypesetLine};
 
 use crate::ExportError;
+
+/// Shape tolerance on paper in mm: half the 1 µm the spec allows
+/// (drawing-export: Export asks for shapes within 1 µm on paper), leaving
+/// room for rounding and for the estimated deviation of cubic shapes.
+pub const SHAPE_TOLERANCE_MM: f64 = 0.5e-3;
+
+/// Shape tolerance in world units for `settings`' document scale.
+pub fn export_tolerance(settings: &DocumentSettings) -> f64 {
+    SHAPE_TOLERANCE_MM / settings.scale
+}
 
 /// One command of a path in world coordinates.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -132,7 +142,8 @@ pub fn scene(doc: &Document, labels: &LabelLines) -> Result<Scene, ExportError> 
 fn curve_parts(doc: &Document, id: GeometryId) -> Vec<Part> {
     let p = doc.committed_vector();
     let settings = doc.settings();
-    let (Some(shape), Some(style)) = (doc.curve_shape(id, p), doc.resolved_style(id)) else {
+    let tolerance = export_tolerance(settings);
+    let (Some(shape), Some(style)) = (doc.curve_shape(id, p, tolerance), doc.resolved_style(id)) else {
         return Vec::new();
     };
     let width = pt_to_world(style.width, settings);
@@ -210,6 +221,7 @@ fn path(pieces: &[ShapePiece]) -> Vec<PathSeg> {
                 start: start.radians(),
                 sweep: sweep.radians(),
             },
+            ShapePiece::Cubic { c1, c2, end, .. } => PathSeg::Cubic(c1, c2, end),
         });
     }
     out
