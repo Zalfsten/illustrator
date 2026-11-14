@@ -8,6 +8,8 @@ use crate::geometry_kinds::{Arc, Label, Segment};
 use crate::vector::Vector;
 
 const TOL: f64 = 1e-12;
+/// Tolerance passed to shape queries; segments and arcs ignore it.
+const SHAPE_TOL: f64 = 1e-6;
 
 fn close(a: Point2, b: Point2) -> bool {
     (a - b).length() < TOL
@@ -35,6 +37,10 @@ fn on_shape(pieces: &[ShapePiece], q: Point2) -> bool {
                 u = 0.0;
             }
             (v.length() - radius).abs() < TOL && u <= sweep.abs() + 1e-9
+        }
+        ShapePiece::Cubic { start, c1, c2, end } => {
+            let b = [start, c1, c2, end];
+            (0..=10_000).any(|k| close(crate::geometry::cubic::point(&b, k as f64 / 10_000.0), q))
         }
     })
 }
@@ -73,7 +79,7 @@ fn drawing() -> (Document, GeometryId, GeometryId, GeometryId) {
 #[test]
 fn segment_shape_is_one_straight_piece() {
     let (doc, seg, _, _) = drawing();
-    let shape = doc.curve_shape(seg, doc.committed_vector()).unwrap();
+    let shape = doc.curve_shape(seg, doc.committed_vector(), SHAPE_TOL).unwrap();
     assert_eq!(
         shape,
         vec![ShapePiece::Line {
@@ -86,7 +92,7 @@ fn segment_shape_is_one_straight_piece() {
 #[test]
 fn arc_shape_is_one_arc_piece() {
     let (doc, _, arc, _) = drawing();
-    let shape = doc.curve_shape(arc, doc.committed_vector()).unwrap();
+    let shape = doc.curve_shape(arc, doc.committed_vector(), SHAPE_TOL).unwrap();
     assert_eq!(
         shape,
         vec![ShapePiece::Arc {
@@ -101,8 +107,8 @@ fn arc_shape_is_one_arc_piece() {
 #[test]
 fn label_has_no_curve_shape() {
     let (doc, _, _, lbl) = drawing();
-    assert_eq!(doc.curve_shape(lbl, doc.committed_vector()), None);
-    assert_eq!(doc.curve_shape(GeometryId(99), doc.committed_vector()), None);
+    assert_eq!(doc.curve_shape(lbl, doc.committed_vector(), SHAPE_TOL), None);
+    assert_eq!(doc.curve_shape(GeometryId(99), doc.committed_vector(), SHAPE_TOL), None);
 }
 
 #[test]
@@ -122,10 +128,10 @@ fn curve_curvature_by_identity() {
 fn curve_curvature_leaves_the_drawing_unchanged() {
     let (doc, _, arc, _) = drawing();
     let before = doc.committed_vector().clone();
-    let shape_before = doc.curve_shape(arc, &before);
+    let shape_before = doc.curve_shape(arc, &before, SHAPE_TOL);
     let _ = doc.curve_curvature(arc, doc.committed_vector(), 0.25);
     assert_eq!(doc.committed_vector(), &before);
-    assert_eq!(doc.curve_shape(arc, doc.committed_vector()), shape_before);
+    assert_eq!(doc.curve_shape(arc, doc.committed_vector(), SHAPE_TOL), shape_before);
 }
 
 #[test]
@@ -133,7 +139,7 @@ fn samples_lie_on_the_shape() {
     let (doc, seg, arc, _) = drawing();
     let p = doc.committed_vector();
     for id in [seg, arc] {
-        let shape = doc.curve_shape(id, p).unwrap();
+        let shape = doc.curve_shape(id, p, SHAPE_TOL).unwrap();
         for t in [0.0, 0.25, 0.5, 1.0] {
             assert!(on_shape(&shape, sample(&doc, p, id, t)), "{id:?} t={t}");
         }
@@ -147,7 +153,7 @@ fn shape_length_equals_curve_length() {
     let (doc, seg, arc, _) = drawing();
     let p = doc.committed_vector();
     for id in [seg, arc] {
-        let total: f64 = doc.curve_shape(id, p).unwrap().iter().map(ShapePiece::length).sum();
+        let total: f64 = doc.curve_shape(id, p, SHAPE_TOL).unwrap().iter().map(ShapePiece::length).sum();
         let len = Segment::length_expr(id).evaluate(&doc, p).value();
         assert!((total - len).abs() < TOL, "{id:?}: {total} vs {len}");
     }
@@ -159,7 +165,7 @@ fn negative_intermediate_radius_gives_the_canonical_piece() {
     let mut p = doc.committed_vector().clone();
     // Arc block starts after the segment's 4 parameters: radius is at 4 + 2.
     p[6] = -2.0;
-    let shape = doc.curve_shape(arc, &p).unwrap();
+    let shape = doc.curve_shape(arc, &p, SHAPE_TOL).unwrap();
     let ShapePiece::Arc { radius, start, .. } = shape[0] else {
         panic!("arc piece expected")
     };
@@ -254,4 +260,68 @@ fn curve_piece_bound_leaves_the_drawing_unchanged() {
     let before = doc.committed_vector().clone();
     let _ = doc.curve_piece_bound(arc, doc.committed_vector(), 0.1, 0.4);
     assert_eq!(doc.committed_vector(), &before);
+}
+
+fn arch() -> ShapePiece {
+    ShapePiece::Cubic {
+        start: Point2::new(0.0, 0.0),
+        c1: Point2::new(1.0, 2.0),
+        c2: Point2::new(2.0, 2.0),
+        end: Point2::new(3.0, 0.0),
+    }
+}
+
+#[test]
+fn cubic_piece_ends_and_length_fractions() {
+    let piece = arch();
+    assert_eq!(piece.point_at(0.0), Point2::new(0.0, 0.0));
+    assert_eq!(piece.point_at(1.0), Point2::new(3.0, 0.0));
+    // Symmetric arch: half the arc length is at the apex.
+    assert!(close(piece.point_at(0.5), Point2::new(1.5, 1.5)));
+    let ShapePiece::Cubic { start, c1, c2, end } = piece else { unreachable!() };
+    let b = [start, c1, c2, end];
+    let total = piece.length();
+    for s in [0.1, 0.37, 0.8] {
+        let q = piece.point_at(s);
+        let u = crate::geometry::cubic::param_at_length(&b, s * total);
+        assert!(close(q, crate::geometry::cubic::point(&b, u)));
+        let len = crate::geometry::cubic::arc_length(&b, 0.0, u);
+        assert!((len - s * total).abs() < 1e-12 * total, "s = {s}");
+    }
+}
+
+#[test]
+fn cubic_sub_piece_keeps_points_and_length() {
+    let piece = arch();
+    let part = piece.sub(0.2, 0.7);
+    assert!(matches!(part, ShapePiece::Cubic { .. }));
+    assert!((part.length() - 0.5 * piece.length()).abs() < 1e-12 * piece.length());
+    assert!(close(part.start_point(), piece.point_at(0.2)));
+    assert!(close(part.end_point(), piece.point_at(0.7)));
+    for k in 0..=8 {
+        let s = k as f64 / 8.0;
+        assert!(close(part.point_at(s), piece.point_at(0.2 + 0.5 * s)), "s = {s}");
+    }
+}
+
+#[test]
+fn cubic_bounding_points_span_the_exact_box() {
+    let points = arch().bounding_points();
+    let max_y = points.iter().map(|p| p.y).fold(f64::NEG_INFINITY, f64::max);
+    let min_x = points.iter().map(|p| p.x).fold(f64::INFINITY, f64::min);
+    let max_x = points.iter().map(|p| p.x).fold(f64::NEG_INFINITY, f64::max);
+    assert!((max_y - 1.5).abs() < 1e-15, "apex, not the control points' height 2");
+    assert_eq!((min_x, max_x), (0.0, 3.0));
+}
+
+#[test]
+fn closed_form_shapes_ignore_the_tolerance() {
+    let (doc, seg, arc, _) = drawing();
+    let p = doc.committed_vector();
+    for id in [seg, arc] {
+        let coarse = doc.curve_shape(id, p, 1.0).unwrap();
+        let fine = doc.curve_shape(id, p, 1e-9).unwrap();
+        assert_eq!(coarse.len(), 1);
+        assert_eq!(coarse, fine);
+    }
 }

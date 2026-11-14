@@ -1,9 +1,11 @@
 //! Exact bounds of a scene: the smallest axis-aligned box around every drawn
-//! shape (drawing-export: Export bounds are tight). Dashed strokes count as
+//! shape (drawing-export: Export bounds are tight), curved strokes measured
+//! from the curve, not from its control points. Dashed strokes count as
 //! undashed.
 
 use std::f64::consts::FRAC_PI_2;
 
+use constraint_runtime::geometry::cubic::{self, CubicPoints};
 use constraint_runtime::{Point2, Vec2};
 
 use crate::scene::{on_circle, Part, PathSeg, Scene};
@@ -88,8 +90,9 @@ fn filled(acc: &mut Acc, path: &[PathSeg]) {
                 }
             }
             PathSeg::Cubic(c1, c2, p) => {
-                for t in extrema_cubic(from, c1, c2, p) {
-                    acc.add(cubic(from, c1, c2, p, t));
+                let b = [from, c1, c2, p];
+                for t in cubic::axis_extrema(&b) {
+                    acc.add(cubic::point(&b, t));
                 }
             }
             PathSeg::Arc {
@@ -140,20 +143,104 @@ fn stroked(acc: &mut Acc, path: &[PathSeg], width: f64) {
                     }
                 }
             }
-            PathSeg::Quad(c, p) => widened_box(acc, &[from, c, p], h),
-            PathSeg::Cubic(c1, c2, p) => widened_box(acc, &[from, c1, c2, p], h),
+            PathSeg::Quad(c, p) => {
+                // Degree elevation: the same curve as a cubic.
+                let (c1, c2) = (from + (c - from) * (2.0 / 3.0), p + (c - p) * (2.0 / 3.0));
+                stroked_cubic(acc, &[from, c1, c2, p], h);
+            }
+            PathSeg::Cubic(c1, c2, p) => stroked_cubic(acc, &[from, c1, c2, p], h),
             PathSeg::Move(_) | PathSeg::Close => {}
         }
     }
 }
 
-/// Control-polygon box widened by `h` (conservative for curved strokes).
-fn widened_box(acc: &mut Acc, points: &[Point2], h: f64) {
-    for p in points {
-        for d in [Vec2::new(h, h), Vec2::new(-h, -h)] {
-            acc.add(*p + d);
+/// Curvature samples deciding whether a cubic stroke may have offset cusps.
+const CURVATURE_SAMPLES: usize = 32;
+/// Samples bracketing the numeric maximum on such strokes.
+const OFFSET_SAMPLES: usize = 64;
+
+/// Unit tangent of `b` at `u`; where `B′` vanishes (a control point on its
+/// end), the limit direction from the higher derivatives or the chord.
+fn unit_tangent(b: &CubicPoints, u: f64) -> Vec2 {
+    let scale = (b[3] - b[0]).length() + (b[1] - b[0]).length() + (b[2] - b[1]).length();
+    let tiny = 1e-14 * scale.max(f64::MIN_POSITIVE);
+    let d1 = cubic::derivative(b, u);
+    let dir = if d1.length() > tiny {
+        d1
+    } else {
+        let d2 = cubic::second_derivative(b, u);
+        // At u = 1 the curve arrives from behind: B′(1 − ε) ≈ −ε·B″(1).
+        let d2 = if u > 0.5 { d2 * -1.0 } else { d2 };
+        if d2.length() > tiny { d2 } else { b[3] - b[0] }
+    };
+    let len = dir.length();
+    if len == 0.0 {
+        Vec2::new(1.0, 0.0)
+    } else {
+        dir * (1.0 / len)
+    }
+}
+
+/// Point on the stroke's side `side` (±1) at `u`: `B(u) + side·h·n(u)`.
+fn offset(b: &CubicPoints, u: f64, h: f64, side: f64) -> Point2 {
+    cubic::point(b, u) + unit_tangent(b, u).left_normal() * (side * h)
+}
+
+/// Region a butt-ended stroke of half-width `h` along cubic `b` covers.
+///
+/// The region is the union of the normal segments `B(u) ± h·n(u)`, so its
+/// extremes lie on the two offset curves. Along side `s`, a coordinate's
+/// derivative is `B′ₓ·(1 − s·h·κ)`: extremes are at the ends, where `B′ₓ = 0`,
+/// or where `h·|κ| = 1` (offset cusps). Pieces whose sampled curvature comes
+/// near `1/h` additionally get a numeric maximization per direction.
+fn stroked_cubic(acc: &mut Acc, b: &CubicPoints, h: f64) {
+    let extrema = cubic::axis_extrema(b);
+    for side in [1.0, -1.0] {
+        for u in [0.0, 1.0].into_iter().chain(extrema.iter().copied()) {
+            acc.add(offset(b, u, h, side));
         }
     }
+    let max_curvature = (0..=CURVATURE_SAMPLES)
+        .map(|k| cubic::curvature(b, k as f64 / CURVATURE_SAMPLES as f64).abs())
+        .fold(0.0, f64::max);
+    if h * max_curvature < 0.5 {
+        return;
+    }
+    let dirs = [Vec2::new(1.0, 0.0), Vec2::new(-1.0, 0.0), Vec2::new(0.0, 1.0), Vec2::new(0.0, -1.0)];
+    for side in [1.0, -1.0] {
+        for dir in dirs {
+            let f = |u: f64| (offset(b, u, h, side) - b[0]).dot(dir);
+            let n = OFFSET_SAMPLES;
+            let best = (0..=n).max_by(|&i, &j| f(i as f64 / n as f64).total_cmp(&f(j as f64 / n as f64)));
+            let i = best.expect("samples exist");
+            let lo = (i.saturating_sub(1)) as f64 / n as f64;
+            let hi = ((i + 1).min(n)) as f64 / n as f64;
+            acc.add(offset(b, golden_max(f, lo, hi), h, side));
+        }
+    }
+}
+
+/// Maximizer of `f` on `[lo, hi]` by golden-section search (unimodal there).
+fn golden_max(f: impl Fn(f64) -> f64, mut lo: f64, mut hi: f64) -> f64 {
+    const R: f64 = 0.618_033_988_749_894_8;
+    let (mut a, mut b) = (hi - R * (hi - lo), lo + R * (hi - lo));
+    let (mut fa, mut fb) = (f(a), f(b));
+    while hi - lo > 1e-13 {
+        if fa < fb {
+            lo = a;
+            (a, fa) = (b, fb);
+            b = lo + R * (hi - lo);
+            fb = f(b);
+        } else {
+            hi = b;
+            (b, fb) = (a, fa);
+            a = hi - R * (hi - lo);
+            fa = f(a);
+        }
+    }
+    let mid = 0.5 * (lo + hi);
+    // The bracket's ends may be the maximum (a sample at u = 0 or 1).
+    [lo, mid, hi].into_iter().max_by(|&x, &y| f(x).total_cmp(&f(y))).expect("three candidates")
 }
 
 /// Multiples of π/2 within the closed heading range of an arc.
@@ -172,15 +259,6 @@ fn quad(p0: Point2, c: Point2, p1: Point2, t: f64) -> Point2 {
     )
 }
 
-fn cubic(p0: Point2, c1: Point2, c2: Point2, p1: Point2, t: f64) -> Point2 {
-    let u = 1.0 - t;
-    let (a, b, c, d) = (u * u * u, 3.0 * u * u * t, 3.0 * u * t * t, t * t * t);
-    Point2::new(
-        a * p0.x + b * c1.x + c * c2.x + d * p1.x,
-        a * p0.y + b * c1.y + c * c2.y + d * p1.y,
-    )
-}
-
 fn inner(t: f64) -> bool {
     t > 0.0 && t < 1.0
 }
@@ -192,31 +270,6 @@ fn extrema_quad(p0: Point2, c: Point2, p1: Point2) -> Vec<f64> {
         (den != 0.0).then(|| (a - b) / den).filter(|&t| inner(t))
     };
     [root(p0.x, c.x, p1.x), root(p0.y, c.y, p1.y)].into_iter().flatten().collect()
-}
-
-/// Parameters in (0, 1) where a coordinate of a cubic is extreme.
-fn extrema_cubic(p0: Point2, c1: Point2, c2: Point2, p1: Point2) -> Vec<f64> {
-    let mut out = Vec::new();
-    for (a, b, c, d) in [(p0.x, c1.x, c2.x, p1.x), (p0.y, c1.y, c2.y, p1.y)] {
-        // Derivative / 3: A t² + B t + C.
-        let qa = -a + 3.0 * b - 3.0 * c + d;
-        let qb = 2.0 * (a - 2.0 * b + c);
-        let qc = b - a;
-        if qa.abs() < 1e-12 * (qb.abs() + qc.abs()).max(1e-300) {
-            if qb != 0.0 {
-                out.push(-qc / qb);
-            }
-        } else {
-            let disc = qb * qb - 4.0 * qa * qc;
-            if disc >= 0.0 {
-                let s = disc.sqrt();
-                out.push((-qb + s) / (2.0 * qa));
-                out.push((-qb - s) / (2.0 * qa));
-            }
-        }
-    }
-    out.retain(|&t| inner(t));
-    out
 }
 
 #[cfg(test)]

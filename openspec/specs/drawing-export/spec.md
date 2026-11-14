@@ -47,6 +47,29 @@ An export SHALL write each curve from its exact shape (geometry-ir), at the comm
 - **WHEN** a quarter arc of radius 0.1 world units at scale 10 (1 mm on paper) is exported as PDF
 - **THEN** its path is a single cubic Bézier piece, which already stays within 1 µm
 
+### Requirement: Cubic pieces are written as cubic path pieces
+
+An export SHALL write a cubic Bézier shape piece as one cubic Bézier path piece with the piece's start point, control points and end point, in every format.
+
+#### Scenario: Cubic piece in SVG
+
+- **WHEN** a shape consisting of one cubic Bézier piece is exported as SVG
+- **THEN** its path is one move to the piece's start point and one cubic command with the piece's control points and end point in output units
+
+#### Scenario: Cubic piece in PDF
+
+- **WHEN** a shape consisting of one cubic Bézier piece is exported as PDF
+- **THEN** its path is one move to the piece's start point and one cubic curve operator with the piece's control points and end point in output units
+
+### Requirement: Export asks for shapes within 1 µm on paper
+
+An export SHALL query each curve's shape (geometry-ir) at a tolerance of at most 1 µm on paper at the export's physical size. A curve without closed-form pieces is then written within 1 µm of the exact curve, as far as its shape's deviation check finds; segments and circular arcs are written as specified for their pieces.
+
+#### Scenario: Tolerance follows the document scale
+
+- **WHEN** a drawing with scale 10 (1 world unit = 10 mm) is exported
+- **THEN** every curve's shape is queried with a tolerance of at most 10⁻⁴ world units
+
 ### Requirement: Strokes are written in their resolved style
 
 Each exported curve SHALL be drawn with its resolved style (styling) at its physical size. The style SHALL set the stroke colour and width, the flat stroke ends, the dash pattern laid along the arc length from the curve's start, and the filled arrow heads with the stroke ending at their base. These SHALL follow the exact curve.
@@ -135,6 +158,12 @@ The exported area SHALL be the smallest axis-aligned rectangle that contains all
 
 - **WHEN** a horizontal segment with arrow `end` is exported
 - **THEN** the exported height is the arrow head's base width 0.75 L, not the stroke width
+
+#### Scenario: Cubic bounds use the curve, not its control points
+
+- **WHEN** a stroke of width w along the cubic Bézier piece (0, 0), (1, 2), (2, 2), (3, 0) is exported
+- **THEN** the top of the exported area is the curve's highest point 1.5 plus w/2
+- **AND** it does not reach the control points' height 2
 
 ### Requirement: Nothing visible is not exported
 

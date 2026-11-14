@@ -41,7 +41,7 @@ impl Geometry for Segment {
         }
     }
 
-    fn shape((start, end): Self::Init, _a: &Self::Attrs) -> Vec<ShapePiece> {
+    fn shape((start, end): Self::Init, _a: &Self::Attrs, _tolerance: f64) -> Vec<ShapePiece> {
         vec![ShapePiece::Line { start, end }]
     }
 

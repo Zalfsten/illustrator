@@ -238,11 +238,13 @@ impl Document {
         self.geometry(id).map(|g| g.kind().caps())
     }
 
-    /// Exact shape of curve `id` at State `p` (geometry-ir); `None` if `id`
-    /// is not in the document or has no curve capability.
-    pub fn curve_shape(&self, id: GeometryId, p: &Vector) -> Option<Vec<ShapePiece>> {
+    /// Shape of curve `id` at State `p` within `tolerance` (positive, in
+    /// world units; segments and arcs are exact regardless) (geometry-ir);
+    /// `None` if `id` is not in the document or has no curve capability.
+    pub fn curve_shape(&self, id: GeometryId, p: &Vector, tolerance: f64) -> Option<Vec<ShapePiece>> {
+        debug_assert!(tolerance > 0.0, "shape tolerance must be positive, got {tolerance}");
         let g = self.geometry(id).filter(|g| g.kind().caps().curve)?;
-        Some(with_kind!(g.kind(), K => K::shape(g.unpack::<K>(p), g.attrs_of::<K>())))
+        Some(with_kind!(g.kind(), K => K::shape(g.unpack::<K>(p), g.attrs_of::<K>(), tolerance)))
     }
 
     /// Unsigned curvature of curve `id` at normalized `t` and State `p`

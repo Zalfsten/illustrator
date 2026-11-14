@@ -167,3 +167,31 @@ fn standalone_file_has_only_paths() {
     assert_eq!(ids, ["seg1", "arc1", "lbl1"]);
     assert!(text.contains(" C "), "glyph curves kept");
 }
+
+/// A scene with one stroke along the cubic (0, 0), (1, 2), (2, 2), (3, 0).
+fn cubic_scene() -> crate::Scene {
+    use constraint_runtime::Rgb;
+    crate::Scene {
+        objects: vec![crate::Object {
+            id: GeometryId(1),
+            name: "fn1".to_owned(),
+            parts: vec![crate::Part::Stroke {
+                path: vec![
+                    crate::PathSeg::Move(Point2::new(0.0, 0.0)),
+                    crate::PathSeg::Cubic(Point2::new(1.0, 2.0), Point2::new(2.0, 2.0), Point2::new(3.0, 0.0)),
+                ],
+                width: 0.01,
+                color: Rgb(0, 0, 0),
+                dash: None,
+            }],
+        }],
+    }
+}
+
+#[test]
+fn cubic_piece_is_one_cubic_command() {
+    let bounds = crate::Bounds { min: Point2::new(0.0, 0.0), max: Point2::new(3.0, 2.0) };
+    let settings = constraint_runtime::DocumentSettings { scale: 10.0, ..Default::default() };
+    let text = crate::svg(&cubic_scene(), &bounds, &settings);
+    assert!(text.contains("d=\"M 0 20 C 10 0 20 0 30 20\""), "{text}");
+}

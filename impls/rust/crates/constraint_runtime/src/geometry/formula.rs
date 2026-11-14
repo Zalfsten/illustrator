@@ -86,9 +86,12 @@ pub trait Geometry: Chart + GeometryCaps + Sized + 'static {
         init
     }
 
-    /// Exact shape (curve capability only), at canonical chart values.
-    fn shape(c: Self::Init, a: &Self::Attrs) -> Vec<ShapePiece> {
-        let _ = (c, a);
+    /// Shape (curve capability only), at canonical chart values. Kinds with
+    /// closed-form pieces (segment, arc) are exact and ignore `tolerance`;
+    /// other kinds return cubic pieces within `tolerance` (world units, > 0)
+    /// of the curve (geometry-ir).
+    fn shape(c: Self::Init, a: &Self::Attrs, tolerance: f64) -> Vec<ShapePiece> {
+        let _ = (c, a, tolerance);
         unsupported(Self::KIND, "shape")
     }
 
