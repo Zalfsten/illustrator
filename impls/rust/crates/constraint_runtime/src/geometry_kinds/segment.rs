@@ -5,7 +5,7 @@ use std::ops::Range;
 use crate::geom::{Length, Point2, Vec2};
 use crate::geometry::capabilities::geometry_caps;
 use crate::geometry::chart::chart_atoms;
-use crate::geometry::{Geometry, LengthFormula, PointFormula, ShapePiece, VecFormula};
+use crate::geometry::{Geometry, LengthFormula, PieceBound, PointFormula, ShapePiece, VecFormula};
 use crate::geometry_kinds::{GeometryKind, KindAttrs};
 use crate::matrix::DenseMatrix;
 
@@ -47,6 +47,13 @@ impl Geometry for Segment {
 
     fn curvature(_t: f64, _c: Self::Init, _a: &Self::Attrs) -> f64 {
         0.0
+    }
+
+    fn piece_bound(t0: f64, t1: f64, (a, b): Self::Init, _a: &Self::Attrs) -> PieceBound {
+        PieceBound {
+            length: (b - a).length() * (t1 - t0),
+            curvature: 0.0,
+        }
     }
 
     fn point(f: PointFormula, (a, b): Self::Init, _a: &Self::Attrs) -> Point2 {

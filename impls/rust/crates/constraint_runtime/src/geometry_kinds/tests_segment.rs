@@ -213,3 +213,16 @@ fn segment_curvature_is_zero() {
         assert_eq!(Segment::curvature(t, init, &()), 0.0);
     }
 }
+
+#[test]
+fn segment_piece_bound() {
+    use crate::geometry::PieceBound;
+    let init = (Point2::new(1.0, 1.0), Point2::new(1.0, 5.0));
+    assert_eq!(
+        Segment::piece_bound(0.25, 0.75, init, &()),
+        PieceBound {
+            length: 2.0,
+            curvature: 0.0
+        }
+    );
+}

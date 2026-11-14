@@ -233,3 +233,25 @@ fn arc_bounding_points_include_the_extremes_it_passes() {
     let piece = arc(0.1, 0.2);
     assert_eq!(piece.bounding_points().len(), 2);
 }
+
+#[test]
+fn curve_piece_bound_by_identity() {
+    let (doc, seg, arc, lbl) = drawing();
+    let p = doc.committed_vector();
+    let s = doc.curve_piece_bound(seg, p, 0.25, 0.75).unwrap();
+    assert!((s.length - 2.5).abs() < TOL, "{s:?}");
+    assert_eq!(s.curvature, 0.0);
+    let a = doc.curve_piece_bound(arc, p, 0.0, 0.5).unwrap();
+    assert!((a.length - 2.0 * 1.2 * PI * 0.5).abs() < TOL, "{a:?}");
+    assert!((a.curvature - 0.5).abs() < TOL);
+    assert_eq!(doc.curve_piece_bound(lbl, p, 0.0, 1.0), None);
+    assert_eq!(doc.curve_piece_bound(GeometryId(99), p, 0.0, 1.0), None);
+}
+
+#[test]
+fn curve_piece_bound_leaves_the_drawing_unchanged() {
+    let (doc, _, arc, _) = drawing();
+    let before = doc.committed_vector().clone();
+    let _ = doc.curve_piece_bound(arc, doc.committed_vector(), 0.1, 0.4);
+    assert_eq!(doc.committed_vector(), &before);
+}

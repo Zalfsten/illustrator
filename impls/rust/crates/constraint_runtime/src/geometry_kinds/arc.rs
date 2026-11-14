@@ -7,7 +7,8 @@ use crate::geom::{HeadingAngle, Length, Point2, TurnAngle, Vec2};
 use crate::geometry::capabilities::geometry_caps;
 use crate::geometry::chart::chart_atoms;
 use crate::geometry::{
-    Geometry, GeometryId, HeadingFormula, LengthFormula, PointFormula, ShapePiece, TurnFormula,
+    Geometry, GeometryId, HeadingFormula, LengthFormula, PieceBound, PointFormula, ShapePiece,
+    TurnFormula,
     VecFormula,
 };
 use crate::geometry_kinds::{GeometryKind, KindAttrs};
@@ -100,6 +101,20 @@ impl Geometry for Arc {
     /// radius does not change the curve's bending.
     fn curvature(_t: f64, (_, radius, _, _): Self::Init, _a: &Self::Attrs) -> f64 {
         1.0 / radius.value().abs()
+    }
+
+    /// Length \(|R|\,|\Delta\theta|\,(t_1 - t_0)\); curvature \(1/|R|\) everywhere.
+    fn piece_bound(
+        t0: f64,
+        t1: f64,
+        (_, radius, _, sweep): Self::Init,
+        _a: &Self::Attrs,
+    ) -> PieceBound {
+        let r = radius.value().abs();
+        PieceBound {
+            length: r * sweep.radians().abs() * (t1 - t0),
+            curvature: 1.0 / r,
+        }
     }
 
     fn canonical((center, radius, start, sweep): Self::Init, _a: &Self::Attrs) -> Self::Init {

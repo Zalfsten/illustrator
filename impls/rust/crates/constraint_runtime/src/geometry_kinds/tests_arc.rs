@@ -367,3 +367,22 @@ fn zero_radius_arc_has_infinite_curvature() {
     );
     assert_eq!(Arc::curvature(0.5, init, &()), f64::INFINITY);
 }
+
+#[test]
+fn arc_piece_bound() {
+    use std::f64::consts::PI;
+    for radius in [2.0, -2.0] {
+        let init = (
+            Point2::new(0.5, -1.0),
+            Length::new(radius),
+            HeadingAngle::new(0.3),
+            TurnAngle::new(PI),
+        );
+        let b = Arc::piece_bound(0.0, 0.5, init, &());
+        assert!((b.length - PI).abs() < 1e-15, "R = {radius}: {b:?}");
+        assert_eq!(b.curvature, 0.5);
+    }
+    let point = (Point2::new(0.0, 0.0), Length::new(0.0), HeadingAngle::new(0.0), TurnAngle::new(1.0));
+    let b = Arc::piece_bound(0.0, 1.0, point, &());
+    assert_eq!((b.length, b.curvature), (0.0, f64::INFINITY));
+}
