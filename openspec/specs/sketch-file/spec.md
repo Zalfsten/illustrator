@@ -8,7 +8,7 @@ Defines the native file of a drawing: a versioned list of declarative commands t
 
 ### Requirement: Sketch file envelope
 
-A sketch file SHALL be UTF-8 JSON text holding one object. In version 3 it SHALL have exactly the fields `format` (the string `"illustrator-sketch"`), `version` (an integer), `scale` and `font_size` (numbers), `preamble` (a string), `styles` (an object) and `commands` (an array of commands in the declarative subset of sketch-commands, in their interchange form).
+A sketch file SHALL be UTF-8 JSON text holding one object. In versions 3 and 4 it SHALL have exactly the fields `format` (the string `"illustrator-sketch"`), `version` (an integer), `scale` and `font_size` (numbers), `preamble` (a string), `styles` (an object) and `commands` (an array of commands in the declarative subset of sketch-commands, in their interchange form).
 
 #### Scenario: Minimal file
 
@@ -56,7 +56,7 @@ The three settings fields hold the document settings and SHALL obey their value 
 
 ### Requirement: Saving writes the drawing as a sketch file
 
-Saving SHALL write the drawing's document settings, its style table and its declarative command list (sketch-commands) as a version 3 sketch file. Saving SHALL be deterministic: the same drawing SHALL give identical bytes, and saving, loading and saving again SHALL give identical bytes.
+Saving SHALL write the drawing's document settings, its style table and its declarative command list (sketch-commands) as a version 4 sketch file. Saving SHALL be deterministic: the same drawing SHALL give identical bytes, and saving, loading and saving again SHALL give identical bytes.
 
 #### Scenario: One command per line
 
@@ -101,7 +101,7 @@ Each command SHALL be on a line of its own, so that changing one object changes 
 
 ### Requirement: Files are recognized by content and version
 
-Loading SHALL fail with `not a sketch file` for bytes that are not JSON text, with `unknown format` for JSON whose `format` is missing or different, and with `unsupported version` for a version this reader does not know, naming that version. Versions 1, 2 and 3 SHALL be supported. A reader SHALL read every JSON layout of a file, not only the layout it writes. Readers SHALL recognize a file by its content, not by its name; the recommended file name extension SHALL be `.sketch.json`.
+Loading SHALL fail with `not a sketch file` for bytes that are not JSON text, with `unknown format` for JSON whose `format` is missing or different, and with `unsupported version` for a version this reader does not know, naming that version. Versions 1, 2, 3 and 4 SHALL be supported. A reader SHALL read every JSON layout of a file, not only the layout it writes. Readers SHALL recognize a file by its content, not by its name; the recommended file name extension SHALL be `.sketch.json`.
 
 #### Scenario: Compressed or binary bytes
 
@@ -110,12 +110,12 @@ Loading SHALL fail with `not a sketch file` for bytes that are not JSON text, wi
 
 #### Scenario: Newer version
 
-- **WHEN** a file with `"version": 4` is loaded by a reader that knows only versions 1 to 3
-- **THEN** loading fails with `unsupported version` naming version 4
+- **WHEN** a file with `"version": 5` is loaded by a reader that knows only versions 1 to 4
+- **THEN** loading fails with `unsupported version` naming version 5
 
 #### Scenario: Other layout loads
 
-- **WHEN** a version 3 file is written as a single line, or with every field on its own line
+- **WHEN** a version 4 file is written as a single line, or with every field on its own line
 - **THEN** it loads to the same drawing as the file saved in the standard layout
 
 ### Requirement: Load mode executes commands without solving
@@ -184,7 +184,7 @@ The displacement of a component SHALL be the largest distance, in drawing units,
 
 ### Requirement: Version 1 files load with default settings
 
-A version 1 file SHALL have exactly the fields `format`, `version` and `commands`. It SHALL load as before, and its drawing SHALL get the default document settings (document-settings) and only the style `default` without properties. Saving it again SHALL write version 3.
+A version 1 file SHALL have exactly the fields `format`, `version` and `commands`. It SHALL load as before, and its drawing SHALL get the default document settings (document-settings) and only the style `default` without properties. Saving it again SHALL write version 4.
 
 #### Scenario: Old file, new settings
 
@@ -198,7 +198,7 @@ A version 1 file SHALL have exactly the fields `format`, `version` and `commands
 
 ### Requirement: Version 2 files load without styles
 
-A version 2 file SHALL have exactly the fields of version 3 except `styles`. It SHALL load as before, with only the style `default` without properties. Style fields in its commands and a `styles` field SHALL be rejected. Saving it again SHALL write version 3.
+A version 2 file SHALL have exactly the fields of version 3 except `styles`. It SHALL load as before, with only the style `default` without properties. Style fields in its commands and a `styles` field SHALL be rejected. Saving it again SHALL write version 4.
 
 #### Scenario: Version 2 file
 
@@ -209,3 +209,17 @@ A version 2 file SHALL have exactly the fields of version 3 except `styles`. It 
 
 - **WHEN** a version 2 file has the field `"styles": {}`
 - **THEN** loading fails because of the unknown field `styles`
+
+### Requirement: Version 3 files load without function curves
+
+A version 3 file SHALL have the same fields as version 4 and SHALL load as before. A function curve `create` in its commands SHALL be rejected. Saving it again SHALL write version 4.
+
+#### Scenario: Version 3 file
+
+- **WHEN** the file `{"format": "illustrator-sketch", "version": 3, "scale": 10, "font_size": 10, "preamble": "", "styles": {}, "commands": []}` is loaded and saved again
+- **THEN** loading succeeds and the saved file has version 4
+
+#### Scenario: Function curve in version 3 is rejected
+
+- **WHEN** a version 3 file has a command creating a function curve
+- **THEN** loading fails because the kind `function` needs version 4

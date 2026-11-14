@@ -17,7 +17,7 @@ Commands SHALL refer to existing objects by name and to points, free vectors and
 
 ### Requirement: Create geometry commands
 
-The session SHALL provide commands that create a line segment (start and end point), a circular arc (center, radius, start heading, sweep) and a label (origin, heading and its attributes, labels). Each SHALL accept an optional name, an optional role (result by default), an optional style name (`default` by default) and optional style overrides (styling). On success the result SHALL report the name of the created geometry.
+The session SHALL provide commands that create a line segment (start and end point), a circular arc (center, radius, start heading, sweep), a label (origin, heading and its attributes, labels) and a function curve (origin, heading, expression, range and optional scale). Each SHALL accept an optional name, an optional role (result by default), an optional style name (`default` by default) and optional style overrides (styling). On success the result SHALL report the name of the created geometry.
 
 #### Scenario: Create a segment with an automatic name
 
@@ -155,6 +155,22 @@ Later capabilities MAY add classes without changing these. A failure with one of
 - **THEN** it reports the `unknown style` class added by the style commands
 - **AND** a command failing for one of the classes above still reports that class
 
+### Requirement: Expression error class
+
+A command with an expression that does not parse, or whose domain check on its range is not proven, SHALL fail with the error class `invalid expression`. The error SHALL state what is wrong: for a parse error its position in the source, for an unproven domain the sub-range where the proof failed, or that the check exceeded its budget.
+
+#### Scenario: Parse error with position
+
+- **WHEN** a function `create` has expression `2x`
+- **THEN** the command fails with the `invalid expression` class
+- **AND** the error names the position of `x` in the source
+
+#### Scenario: Unproven domain with sub-range
+
+- **WHEN** a function `create` has expression `1/x` and range \([-1, 1]\)
+- **THEN** the command fails with the `invalid expression` class
+- **AND** the error names a sub-range of \([-1, 1]\) that contains 0
+
 ### Requirement: Undo and redo
 
 Every successful command SHALL be one step in the session's history. Undo SHALL restore the drawing exactly as it was before the most recent step (structure, values, names); redo SHALL restore exactly the undone result. A failed command SHALL NOT create a step. Applying a command after undo SHALL discard the redo steps. Undo or redo with no step available SHALL report that and leave the drawing unchanged.
@@ -288,6 +304,25 @@ Style fields SHALL be: `style` a style name; `width` a number of pt; `color` a s
 - **WHEN** a `create` object has `"color": "red"`
 - **THEN** reading fails because `color` has a wrong value
 
+### Requirement: Function interchange fields
+
+Function curve fields SHALL be: `origin` a point; `heading` an angle; `expression` a string in the expression language with variable `x`; `range` a two-element array `[x0, x1]` with \(x_0 < x_1\); `scale` a two-element array `[su, sv]` of numbers greater than zero. On `create`, `origin`, `heading`, `expression` and `range` SHALL be required; an absent `scale` SHALL mean `[1, 1]`.
+
+#### Scenario: Function curve in interchange form
+
+- **WHEN** `{"op": "create", "kind": "function", "origin": [0, 0], "heading": 0, "expression": "sin(x)", "range": [0, 6.283185307179586]}` is read
+- **THEN** it is the create command for a sine curve over one period with scales 1 and an automatic name `fn1` when executed in an empty drawing
+
+#### Scenario: Reversed range is rejected
+
+- **WHEN** a function `create` has `"range": [1, 0]`
+- **THEN** the command fails with the `invalid value` class
+
+#### Scenario: Zero scale is rejected
+
+- **WHEN** a function `create` has `"scale": [1, 0]`
+- **THEN** the command fails with the `invalid value` class
+
 ### Requirement: Interchange reading is strict
 
 Reading SHALL reject an object with an unknown field, a missing required field, a field of the wrong shape, or an unknown `op` or `kind`, and SHALL NOT fall back to defaults for misspelled fields. The field names `op`, `kind`, `name`, `role`, `style`, `width`, `color`, `dash` and `arrow` SHALL be reserved: no kind SHALL use them for its own parameters.
@@ -404,7 +439,7 @@ The session SHALL produce, for its current drawing, a declarative command list: 
 
 ### Requirement: Declarative list carries attributes and styles, not settings
 
-A label's `create` SHALL carry every attribute explicitly, except `size` when it is inherited. A geometry's `create` SHALL carry `style` when it is not `default`, and each of its overrides. The list SHALL NOT contain document settings or style definitions.
+A label's `create` SHALL carry every attribute explicitly, except `size` when it is inherited. A function curve's `create` SHALL carry `expression`, `range` and `scale` explicitly. A geometry's `create` SHALL carry `style` when it is not `default`, and each of its overrides. The list SHALL NOT contain document settings or style definitions.
 
 #### Scenario: Settings and style definitions stay out
 
@@ -508,7 +543,7 @@ The session SHALL list its conflicted components, each with the names of its geo
 
 ### Requirement: Set command changes object attributes
 
-The session SHALL provide a `set` command that changes attributes of the named object: properties that are not parameters, such as a label's source or offset. It SHALL change only the attributes it carries, SHALL NOT change parameter values, names or roles, and SHALL NOT solve. Attributes of a conflicted component MAY be set.
+The session SHALL provide a `set` command that changes attributes of the named object: properties that are not parameters, such as a label's source or offset. It SHALL change only the attributes it carries and SHALL NOT change names or roles. Unless it changes a curve's geometry (see *Setting geometric attributes solves*), it SHALL NOT change parameter values and SHALL NOT solve, and attributes of a conflicted component MAY be set.
 
 #### Scenario: Change a label's source
 
@@ -526,6 +561,20 @@ The session SHALL provide a `set` command that changes attributes of the named o
 
 - **WHEN** `set` with kind `label` names the constraint `par1`
 - **THEN** the command fails with the wrong-object-type class
+
+### Requirement: Setting geometric attributes solves
+
+A `set` that changes the expression, range or scale of a function curve changes the curve's geometry. It SHALL then solve the curve's component structurally, as a constraint command does, and SHALL fail with `unsatisfiable` if the component's constraints cannot be satisfied. In a conflicted component it SHALL fail with `frozen`.
+
+#### Scenario: Joined end follows a longer range
+
+- **WHEN** the end of sine curve `fn1` on \([0, \pi]\) is joined to the start of segment `seg1`, and `set` changes the range to \([0, 2\pi]\)
+- **THEN** the command succeeds and `fn1.end` and `seg1.start` coincide within solve tolerance
+
+#### Scenario: Frozen component
+
+- **WHEN** `fn1` belongs to a conflicted component and `set` changes its range
+- **THEN** the command fails with the `frozen` class and the drawing is unchanged
 
 ### Requirement: Set names the kind it expects
 
@@ -550,6 +599,21 @@ In a label `set`, a `size` of JSON `null` SHALL make the label inherit the docum
 
 - **WHEN** label `lbl1` has size 8 and `{"op": "set", "kind": "label", "name": "lbl1", "size": null}` is applied
 - **THEN** `lbl1` inherits the document font size
+
+### Requirement: Function set command
+
+A `set` with kind `function` SHALL change any of `expression`, `range` and `scale` of the named function curve, with the same shapes and checks as on `create`.
+
+#### Scenario: New expression
+
+- **WHEN** `set` is applied to function curve `fn1` with expression `cos(x)`
+- **THEN** the command succeeds and `fn1` has expression `cos(x)` with its range, scales, origin and heading unchanged
+
+#### Scenario: Rejected expression keeps the curve
+
+- **WHEN** `set` is applied to `fn1` on \([0, 1]\) with expression `log(x)`
+- **THEN** the command fails with the `invalid expression` class
+- **AND** `fn1` keeps its previous expression
 
 ### Requirement: Set document command
 
