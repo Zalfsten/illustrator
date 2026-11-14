@@ -8,7 +8,7 @@ Defines that geometries (and derived constraint contributions) expose evaluable 
 
 ### Requirement: Expressions evaluate geometry quantities from State
 
-The production evaluate/solve path SHALL obtain geometric quantities needed by residuals and assembly (endpoint locations, on-curve samples, tangent and normal vectors, segment direction, and other chart-defined outputs) by evaluating **opaque point expressions** and **opaque vector expressions** against Document (or an equivalent geometry-resolution port) and an explicit State \(p\). Those expressions SHALL map the involved geometries' local parameters (via connectivity into \(p\)) to points or free vectors by applying the **kind-owned** chart formulas of the named geometries. Point-valued outputs SHALL be distinguished from free-vector-valued outputs. Constraint and assembly code SHALL NOT match on private formula kinds.
+The production evaluate/solve path SHALL obtain geometric quantities needed by residuals and assembly (endpoint locations, on-curve samples, tangent and normal vectors, segment direction, and other chart-defined outputs) by evaluating **opaque point expressions** and **opaque vector expressions** against Document (or an equivalent geometry-resolution port) and an explicit State \(p\). Point-valued outputs SHALL be distinguished from free-vector-valued outputs.
 
 #### Scenario: Endpoint expression depends on local parameters
 
@@ -22,11 +22,19 @@ The production evaluate/solve path SHALL obtain geometric quantities needed by r
 - **THEN** the result is computed from that segment’s local parameters in \(p\)
 - **AND** the result is a point, not a free vector
 
+### Requirement: Expressions apply kind-owned chart formulas
+
+Point and vector expressions SHALL map the involved geometries' local parameters (via connectivity into \(p\)) to points or free vectors by applying the **kind-owned** chart formulas of the named geometries. Constraint and assembly code SHALL NOT match on private formula kinds.
+
+#### Scenario: One constraint, two kinds
+
+- **WHEN** a Congruence relates the end of an arc to the start of a segment
+- **THEN** each endpoint is computed by its own kind's chart formula
+- **AND** the Congruence evaluates both through the same opaque point-expression interface
+
 ### Requirement: Expressions expose derivatives w.r.t. local parameters
 
-Point and vector expressions that appear in structural constraints SHALL provide analytical derivative information with respect to the local parameters they depend on (or equivalent information sufficient to form local Jacobian contributions). For a point expression, that information SHALL be a \(2 \times n\) Jacobian of the map from the expression's **formula-local** parameters to \((x,y)\), where \(n\) is the number of parameters the formula depends on (which MAY be a sparse subset of the owning geometry's full parameter block — e.g. a segment endpoint depends on two of four segment parameters). For a free-vector expression, that information SHALL be a \(2 \times n\) Jacobian of the map from formula-local parameters to \((v_x,v_y)\) with the same layout and column-order rules. Column order SHALL match the expression's reported parameter-index list. Expressions SHALL be able to report that formula-local DOF count \(n\) without requiring callers to allocate the full parameter-index list when only the count is needed.
-
-The production path SHALL write those analytical derivatives into the contribution Jacobian matrix buffer (formula-local columns), not via finite-difference. Writes MAY apply a contribution scale (for example \(+1\) / \(-1\) when a residual is a difference of two expressions). When a scalar residual depends on a free vector through a fixed contraction \(g^\top (\partial v/\partial p)\) (for example VectorsParallel or VectorsOrthogonal), the production path MAY derive that contracted \(1 \times n\) row from the vector expression’s \(2 \times n\) Jacobian (including via bounded stack scratch) rather than requiring each geometry kind to hand-write the contraction. Finite-difference approximation SHALL NOT be used as a fallback or as the production Jacobian path. Structural constraints that combine two vector expressions (VectorsParallel, VectorsOrthogonal) SHALL form residuals and local Jacobians by composing those vector evaluations and vector Jacobians — they SHALL NOT bypass the opaque vector-expression API with geometry-kind-specific direction tables.
+Point and vector expressions that appear in structural constraints SHALL provide analytical derivative information with respect to the local parameters they depend on (or equivalent information sufficient to form local Jacobian contributions). Column order SHALL match the expression's reported parameter-index list.
 
 #### Scenario: Local Jacobian contribution can be formed analytically
 
@@ -42,6 +50,61 @@ The production path SHALL write those analytical derivatives into the contributi
 - **AND** the point Jacobian width is two, not the full four-parameter segment block
 - **AND** the \(2 \times 2\) map is the identity on those coordinates
 
+### Requirement: Point Jacobians are 2×n in formula-local parameters
+
+For a point expression, the derivative information SHALL be a \(2 \times n\) Jacobian of the map from the expression's **formula-local** parameters to \((x,y)\), where \(n\) is the number of parameters the formula depends on (which MAY be a sparse subset of the owning geometry's full parameter block — e.g. a segment endpoint depends on two of four segment parameters).
+
+#### Scenario: Segment endpoint is 2×2
+
+- **WHEN** the Jacobian of a segment's start point expression is requested
+- **THEN** it has two rows and two columns, the identity, over the start point's two parameters
+
+### Requirement: Free-vector Jacobians are 2×n in formula-local parameters
+
+For a free-vector expression, the derivative information SHALL be a \(2 \times n\) Jacobian of the map from formula-local parameters to \((v_x,v_y)\) with the same layout and column-order rules as for point expressions.
+
+#### Scenario: Segment direction is 2×4
+
+- **WHEN** the Jacobian of a segment's direction expression \(b - a\) is requested
+- **THEN** it has two rows and four columns: \(-I\) over \(a\) and \(I\) over \(b\), in the order of its parameter-index list
+
+### Requirement: Expressions report their formula-local DOF count
+
+Expressions SHALL be able to report that formula-local DOF count \(n\) without requiring callers to allocate the full parameter-index list when only the count is needed.
+
+#### Scenario: Count without the index list
+
+- **WHEN** the formula-local DOF count of a segment's start point expression is requested
+- **THEN** it is 2, obtained without building its parameter-index list
+
+### Requirement: Analytical derivatives are written into the contribution matrix
+
+The production path SHALL write those analytical derivatives into the contribution Jacobian matrix buffer (formula-local columns), not via finite-difference. Writes MAY apply a contribution scale (for example \(+1\) / \(-1\) when a residual is a difference of two expressions). Finite-difference approximation SHALL NOT be used as a fallback or as the production Jacobian path.
+
+#### Scenario: Congruence block from two point Jacobians
+
+- **WHEN** the Jacobian of a Congruence between two segment endpoints is assembled
+- **THEN** its block is the first endpoint's analytical Jacobian next to the second endpoint's with scale \(-1\)
+- **AND** no finite-difference evaluation takes place
+
+### Requirement: Contracted vector rows may be derived generically
+
+When a scalar residual depends on a free vector through a fixed contraction \(g^\top (\partial v/\partial p)\) (for example VectorsParallel or VectorsOrthogonal), the production path MAY derive that contracted \(1 \times n\) row from the vector expression’s \(2 \times n\) Jacobian (including via bounded stack scratch) rather than requiring each geometry kind to hand-write the contraction. The derived row SHALL equal \(g^\top\) times that Jacobian.
+
+#### Scenario: Parallel row from the direction Jacobian
+
+- **WHEN** the VectorsParallel row for a segment direction \(v\) is formed with contraction vector \(g\)
+- **THEN** it equals \(g^\top\) times the direction expression's \(2 \times 4\) Jacobian
+
+### Requirement: Vector constraints compose the vector-expression API
+
+Structural constraints that combine two vector expressions (VectorsParallel, VectorsOrthogonal) SHALL form residuals and local Jacobians by composing those vector evaluations and vector Jacobians — they SHALL NOT bypass the opaque vector-expression API with geometry-kind-specific direction tables.
+
+#### Scenario: Label direction needs no special case
+
+- **WHEN** VectorsParallel relates a label's direction to a segment's direction
+- **THEN** its residual and Jacobian come from the two direction expressions alone
+
 ### Requirement: Constraints contribute residuals and local Jacobians
 
 Each structural constraint SHALL define a residual contribution \(r_N\) as a function of the local parameters of the geometries it involves (via their quantities), and SHALL define the corresponding local Jacobian \(J_N = \partial r_N / \partial p_N\) (or blocks thereof) with respect to those local parameters.
@@ -55,7 +118,7 @@ Each structural constraint SHALL define a residual contribution \(r_N\) as a fun
 
 ### Requirement: Scalar expressions evaluate with analytical derivatives
 
-Opaque scalar expressions that appear in structural constraints SHALL evaluate to a real number from Document (or an equivalent geometry-resolution port) and State \(p\), applying kind-owned formulas of the named geometries. They SHALL provide analytical derivative information with respect to the formula-local parameters they depend on as a \(1 \times n\) Jacobian (row \(\partial s / \partial p_i\)), where \(n\) is the number of parameters the formula depends on and column order matches the expression's reported parameter-index list. The production Jacobian path SHALL use those analytical derivatives; finite-difference SHALL NOT be the production path for scalar-expression derivatives.
+Opaque scalar expressions that appear in structural constraints SHALL evaluate to a real number from Document (or an equivalent geometry-resolution port) and State \(p\), applying kind-owned formulas of the named geometries. The production Jacobian path SHALL use those analytical derivatives; finite-difference SHALL NOT be the production path for scalar-expression derivatives.
 
 #### Scenario: Segment length Jacobian feeds EqualLength
 
@@ -70,9 +133,18 @@ Opaque scalar expressions that appear in structural constraints SHALL evaluate t
 - **THEN** the scalar equals \(\sqrt{(x_2-x_1)^2+(y_2-y_1)^2}\) from those endpoint coordinates in \(p\)
 - **AND** the expression's parameter indices cover the parameters that length depends on
 
+### Requirement: Scalar Jacobians are 1×n rows
+
+Scalar expressions SHALL provide analytical derivative information with respect to the formula-local parameters they depend on as a \(1 \times n\) Jacobian (row \(\partial s / \partial p_i\)), where \(n\) is the number of parameters the formula depends on and column order matches the expression's reported parameter-index list.
+
+#### Scenario: Segment length row
+
+- **WHEN** the Jacobian of the length of a segment from \(a\) to \(b\) is requested
+- **THEN** it is one row of four entries, \(-(b-a)/|b-a|\) for \(a\) and \((b-a)/|b-a|\) for \(b\), in the order of its parameter-index list
+
 ### Requirement: Heading-angle and turn-angle expressions expose analytical 1×n Jacobians
 
-Opaque heading-angle expressions and opaque turn-angle expressions that appear in structural constraints or other production evaluate paths SHALL evaluate to a heading angle or turn angle (radians) from Document (or an equivalent geometry-resolution port) and State \(p\), applying kind-owned formulas of the named geometries. They SHALL provide analytical derivative information with respect to the formula-local parameters they depend on as a \(1 \times n\) Jacobian (row \(\partial \theta / \partial p_i\)), where \(n\) is the number of parameters the formula depends on and column order matches the expression's reported parameter-index list. The production Jacobian path SHALL use those analytical derivatives; finite-difference SHALL NOT be the production path for those derivatives.
+Opaque heading-angle expressions and opaque turn-angle expressions that appear in structural constraints or other production evaluate paths SHALL evaluate to a heading angle or turn angle (radians) from Document (or an equivalent geometry-resolution port) and State \(p\), applying kind-owned formulas of the named geometries. The production Jacobian path SHALL use those analytical derivatives; finite-difference SHALL NOT be the production path for those derivatives.
 
 #### Scenario: Heading-angle Jacobian is analytical when a formula exists
 
@@ -86,9 +158,18 @@ Opaque heading-angle expressions and opaque turn-angle expressions that appear i
 - **THEN** analytical \(1 \times n\) derivative information for that expression is available
 - **AND** column order matches the expression's reported parameter-index list
 
+### Requirement: Angle Jacobians are 1×n rows
+
+Heading-angle and turn-angle expressions SHALL provide analytical derivative information with respect to the formula-local parameters they depend on as a \(1 \times n\) Jacobian (row \(\partial \theta / \partial p_i\)), where \(n\) is the number of parameters the formula depends on and column order matches the expression's reported parameter-index list.
+
+#### Scenario: Arc sweep row
+
+- **WHEN** the Jacobian of an arc's sweep turn-angle expression is requested
+- **THEN** it is the single entry 1 over the arc's sweep parameter
+
 ### Requirement: Curve frame expressions evaluate with derivatives
 
-For curve geometries, on-curve point expressions and tangent/normal vector expressions at a stated curve parameter SHALL evaluate from local parameters in the supplied State using the length and orientation semantics of the curve contract (tangent = chart derivative; normal = leftward planar rotate of tangent with equal length). They SHALL provide analytical derivatives with respect to the involved local parameters sufficient to form Jacobian contributions when those expressions appear in residuals. The production Jacobian path for these quantities SHALL be analytical; finite-difference approximation SHALL NOT be used as a substitute for those derivatives.
+For curve geometries, on-curve point expressions and tangent/normal vector expressions at a stated curve parameter SHALL evaluate from local parameters in the supplied State using the length and orientation semantics of the curve contract (tangent = chart derivative; normal = leftward planar rotate of tangent with equal length).
 
 #### Scenario: Segment tangent expression derivatives feed assembly
 
@@ -103,9 +184,19 @@ For curve geometries, on-curve point expressions and tangent/normal vector expre
 - **THEN** the normal equals the leftward rotate of the tangent
 - **AND** analytical derivatives of the normal expression are consistent with differentiating that rotate of the tangent
 
+### Requirement: Curve frame derivatives are analytical
+
+On-curve point and tangent/normal vector expressions SHALL provide analytical derivatives with respect to the involved local parameters sufficient to form Jacobian contributions when those expressions appear in residuals. The production Jacobian path for these quantities SHALL be analytical; finite-difference approximation SHALL NOT be used as a substitute for those derivatives.
+
+#### Scenario: Arc tangent Jacobian matches finite differences
+
+- **WHEN** the Jacobian of an arc's tangent at normalized t = 0.3 is evaluated
+- **THEN** it agrees with a finite-difference derivative within tolerance
+- **AND** evaluating it perturbs no State entry
+
 ### Requirement: Circular arc expressions evaluate with analytical derivatives
 
-For circular-arc geometries, on-curve point expressions, tangent/normal vector expressions, endpoint point expressions, length scalar expressions, start-heading expressions, and sweep turn-angle expressions SHALL evaluate from Document (or an equivalent geometry-resolution port) and State \(p\) using the arc chart (center, radius, start heading, sweep). They SHALL provide analytical derivatives with respect to formula-local parameters sufficient for Jacobian assembly. The production Jacobian path SHALL be analytical; finite-difference SHALL NOT be used as a substitute for those derivatives. Tangent at normalized \(t\) SHALL be the chart derivative \(\gamma'(t)\) (parametric velocity along increasing \(t\)); normal SHALL be the leftward planar rotate of that tangent with equal length.
+For circular-arc geometries, on-curve point expressions, tangent/normal vector expressions, endpoint point expressions, length scalar expressions, start-heading expressions, and sweep turn-angle expressions SHALL evaluate from Document (or an equivalent geometry-resolution port) and State \(p\) using the arc chart (center, radius, start heading, sweep). They SHALL provide analytical derivatives with respect to formula-local parameters sufficient for Jacobian assembly.
 
 #### Scenario: Arc on-curve Jacobian is analytical
 
@@ -126,9 +217,28 @@ For circular-arc geometries, on-curve point expressions, tangent/normal vector e
 - **THEN** analytical \(1 \times n\) derivative information for that expression is available
 - **AND** column order matches the expression's reported parameter-index list
 
+### Requirement: Arc derivatives are analytical in production
+
+For circular-arc expressions, the production Jacobian path SHALL be analytical; finite-difference SHALL NOT be used as a substitute for those derivatives.
+
+#### Scenario: Arc endpoint Jacobian without finite differences
+
+- **WHEN** the Jacobian of an arc's end point expression is assembled in a solve
+- **THEN** it agrees with a finite-difference derivative within tolerance
+- **AND** no finite-difference evaluation takes place
+
+### Requirement: Arc tangent is the chart derivative
+
+Tangent at normalized \(t\) SHALL be the chart derivative \(\gamma'(t)\) (parametric velocity along increasing \(t\)); normal SHALL be the leftward planar rotate of that tangent with equal length.
+
+#### Scenario: Quarter arc of radius 2
+
+- **WHEN** the tangent and normal of an arc with center (0, 0), radius 2, start heading 0 and sweep π/2 are evaluated at t = 0
+- **THEN** the tangent is (0, π) and the normal is (−π, 0)
+
 ### Requirement: On-curve and Uniform parameters are evaluable
 
-Point expressions that sample a curve at `Normalized` or `Uniform` parameters, and vector expressions for tangents and normals at those parameters, SHALL be evaluable against a state vector given Document (or an equivalent geometry store that resolves geometry identities). Evaluation SHALL obtain the named geometry by identity resolution from that structure, then apply the curve (or endpoint) capability of that geometry. For line segments, evaluation at `Uniform(u)` SHALL match evaluation at `Normalized(t)` for \(t = u\), including derivatives w.r.t. the segment's local parameters. Implementations SHALL document how `Uniform` will be obtained for future non-constant-speed curves (closed form or inversion); this capability requires a correct segment path and a defined extension point, not a general numerical arc-length solver.
+Point expressions that sample a curve at `Normalized` or `Uniform` parameters, and vector expressions for tangents and normals at those parameters, SHALL be evaluable against a state vector given Document (or an equivalent geometry store that resolves geometry identities). Evaluation SHALL obtain the named geometry by identity resolution from that structure, then apply the curve (or endpoint) capability of that geometry.
 
 #### Scenario: Segment OnCurve Uniform matches Normalized
 
@@ -142,3 +252,21 @@ Point expressions that sample a curve at `Normalized` or `Uniform` parameters, a
 - **WHEN** residual or Jacobian assembly evaluates a constraint that names geometries by identity
 - **THEN** each named geometry is obtained from Document by identity resolution
 - **AND** assembly SHALL NOT scan the full geometry list once per named identity to locate that geometry
+
+### Requirement: Uniform equals Normalized on segments
+
+For line segments, evaluation at `Uniform(u)` SHALL match evaluation at `Normalized(t)` for \(t = u\), including derivatives w.r.t. the segment's local parameters.
+
+#### Scenario: Quarter point of a segment
+
+- **WHEN** a segment is sampled at `Uniform(0.25)` and at `Normalized(0.25)`
+- **THEN** both give the same point and the same Jacobian
+
+### Requirement: Uniform for non-constant-speed curves is documented
+
+Implementations SHALL document how `Uniform` will be obtained for future non-constant-speed curves (closed form or inversion); this capability requires a correct segment path and a defined extension point, not a general numerical arc-length solver.
+
+#### Scenario: Extension point is named
+
+- **WHEN** an implementation's design for curve evaluation is read
+- **THEN** it states how `Uniform` is obtained for curves without constant speed

@@ -30,7 +30,7 @@ The system SHALL provide a Mesh that is computed solely from Document, a concret
 
 ### Requirement: Mesh exposes drawable edges tagged with geometry identity
 
-The Mesh SHALL expose a collection of drawable edges. Each edge SHALL provide two endpoint locations (points) in **document/world coordinates** (the same space as State-evaluated geometry positions), suitable for stroking after a view transform, and SHALL carry the stable geometry identity of the geometry that produced it and that geometry's result/construction role (for presentation). For geometries tessellated into multiple edges in later slices, every edge of that geometry SHALL carry the same geometry identity. Mesh positions SHALL NOT be defined as window-pixel coordinates. Edge vertex locations SHALL be obtained by evaluating point expressions of the curve capability (on-curve samples, and endpoint expressions where the geometry has the endpoints capability) at the State used to build the Mesh, not by bypassing the expression evaluate path with geometry-only State sampling APIs. Tessellating a curve SHALL NOT require the endpoints capability. Geometries without the curve capability (labels) SHALL contribute no edges and no endpoint hit targets.
+The Mesh SHALL expose a collection of drawable edges. Each edge SHALL provide two endpoint locations (points) in **document/world coordinates** (the same space as State-evaluated geometry positions), suitable for stroking after a view transform, and SHALL carry the stable geometry identity of the geometry that produced it and that geometry's result/construction role (for presentation). Mesh positions SHALL NOT be defined as window-pixel coordinates.
 
 #### Scenario: Segment becomes one tagged edge
 
@@ -51,9 +51,37 @@ The Mesh SHALL expose a collection of drawable edges. Each edge SHALL provide tw
 - **THEN** the Mesh contains exactly the segment's edge
 - **AND** no edge or endpoint hit target carries the label's identity
 
+### Requirement: All edges of a geometry share its identity
+
+For geometries tessellated into multiple edges in later slices, every edge of that geometry SHALL carry the same geometry identity.
+
+#### Scenario: Arc edges share one identity
+
+- **WHEN** an arc is meshed into several edges
+- **THEN** every one of those edges carries the arc's geometry identity
+
+### Requirement: Mesh vertices come from point expressions
+
+Edge vertex locations SHALL be obtained by evaluating point expressions of the curve capability (on-curve samples, and endpoint expressions where the geometry has the endpoints capability) at the State used to build the Mesh, not by bypassing the expression evaluate path with geometry-only State sampling APIs. Tessellating a curve SHALL NOT require the endpoints capability.
+
+#### Scenario: Vertices follow a working State
+
+- **WHEN** the Mesh of an arc is built from a working State that differs from the committed State
+- **THEN** every vertex equals an on-curve or endpoint expression of the arc evaluated at that working State
+
+### Requirement: Geometries without the curve capability have no Mesh presence
+
+Geometries without the curve capability (labels) SHALL contribute no edges and no endpoint hit targets.
+
+#### Scenario: Label alone gives an empty Mesh
+
+- **WHEN** a Document contains only a label and the Mesh is built
+- **THEN** the Mesh has no edges
+- **AND** an endpoint hit query at the label's origin returns no hit
+
 ### Requirement: Circular arcs tessellate into polyline Mesh edges
 
-When the Document contains a circular arc geometry that passes the Mesh visibility filter, building the Mesh at State \(p\) SHALL emit one or more drawable edges that approximate the arc as a polyline in world coordinates. Every edge produced for that arc SHALL carry the same geometry identity and role. The polyline SHALL begin at the arc's evaluated start endpoint and end at its evaluated end endpoint. The edges of an arc SHALL be of equal length, and their number SHALL be the smallest that keeps the arc within the chord tolerance (see *Curve edges stay within the chord tolerance*), unless the per-curve edge cap is reached. Segment geometries SHALL continue to contribute a single edge between their endpoints.
+When the Document contains a circular arc geometry that passes the Mesh visibility filter, building the Mesh at State \(p\) SHALL emit one or more drawable edges that approximate the arc as a polyline in world coordinates. Every edge produced for that arc SHALL carry the same geometry identity and role. The polyline SHALL begin at the arc's evaluated start endpoint and end at its evaluated end endpoint. Segment geometries SHALL continue to contribute a single edge between their endpoints.
 
 #### Scenario: Arc becomes multiple tagged edges
 
@@ -86,9 +114,18 @@ When the Document contains a circular arc geometry that passes the Mesh visibili
 - **THEN** the edge count never decreases
 - **AND** consecutive edge counts differ by at most one
 
+### Requirement: Arc edges are equal and minimal in number
+
+The edges of an arc SHALL be of equal length, and their number SHALL be the smallest that keeps the arc within the chord tolerance (see *Curve edges stay within the chord tolerance*), unless the per-curve edge cap is reached.
+
+#### Scenario: Half circle at tolerance 0.01
+
+- **WHEN** a half circle of radius 1 is meshed with chord tolerance 0.01
+- **THEN** it has 12 edges of equal length, since 11 edges would have a sagitta above 0.01
+
 ### Requirement: Mesh supports endpoint hit queries
 
-The Mesh SHALL support a hit query that, given a query point and a radius in the **same world coordinate space** as Mesh positions, returns the nearest Mesh endpoint within that radius together with enough identity to form an endpoint reference (geometry identity and which end: start or end), or indicates no hit. Endpoint classification (start vs end) SHALL match the endpoints capability of the underlying geometry for geometries that expose endpoints. Geometries without the endpoints capability SHALL NOT contribute endpoint hit targets. Converting a screen-pixel pick radius into world length is outside this Mesh requirement (App / Viewport concern).
+The Mesh SHALL support a hit query that, given a query point and a radius in the **same world coordinate space** as Mesh positions, returns the nearest Mesh endpoint within that radius together with enough identity to form an endpoint reference (geometry identity and which end: start or end), or indicates no hit. Converting a screen-pixel pick radius into world length is outside this Mesh requirement (App / Viewport concern).
 
 #### Scenario: Hit near a segment start
 
@@ -103,6 +140,16 @@ The Mesh SHALL support a hit query that, given a query point and a radius in the
 - **AND** an endpoint hit query is issued at the location of its normalized \(t = 0\) sample
 - **THEN** the query returns no hit
 - **AND** a geometry hit query at that location returns that geometry's identity
+
+### Requirement: Endpoint hits follow the endpoints capability
+
+Endpoint classification (start vs end) SHALL match the endpoints capability of the underlying geometry for geometries that expose endpoints. Geometries without the endpoints capability SHALL NOT contribute endpoint hit targets.
+
+#### Scenario: Arc end is classified as its end
+
+- **WHEN** a Mesh is built from a document containing an arc with negative sweep
+- **AND** an endpoint hit query is issued at the location of the arc's end endpoint expression
+- **THEN** the query returns the arc's identity and the end endpoint kind
 
 ### Requirement: Mesh supports geometry hit queries via edges
 
@@ -134,7 +181,7 @@ Building a Mesh for display or hit-testing SHALL accept a visibility filter that
 
 ### Requirement: Canvas paints from Mesh edges
 
-Painting the sketch on the Canvas SHALL stroke Mesh edges (evaluated at the State being displayed, normally the committed State) rather than iterating Document geometries by kind. Labels, which contribute no Mesh edges, SHALL be painted from their typesetting result and placement instead (label-typesetting). The Canvas MAY obtain logical handle points from point expressions separately from Mesh edges. Logical handle points shown for picking or decoration SHALL NOT include endpoints that belong only to geometries excluded by the same visibility filter used for the Mesh being painted (invisible ⇒ not presented as pick targets).
+Painting the sketch on the Canvas SHALL stroke Mesh edges (evaluated at the State being displayed, normally the committed State) rather than iterating Document geometries by kind. Labels, which contribute no Mesh edges, SHALL be painted from their typesetting result and placement instead (label-typesetting).
 
 #### Scenario: Paint does not require segment iteration
 
@@ -153,6 +200,16 @@ Painting the sketch on the Canvas SHALL stroke Mesh edges (evaluated at the Stat
 - **WHEN** the App paints a drawing with a segment and a label
 - **THEN** the segment is stroked from its Mesh edge
 - **AND** the label is painted from its typeset lines at its placement
+
+### Requirement: Handles follow the Mesh visibility filter
+
+The Canvas MAY obtain logical handle points from point expressions separately from Mesh edges. Logical handle points shown for picking or decoration SHALL NOT include endpoints that belong only to geometries excluded by the same visibility filter used for the Mesh being painted (invisible ⇒ not presented as pick targets).
+
+#### Scenario: Point shared with a visible geometry stays a handle
+
+- **WHEN** the end of a result segment is joined to the start of a construction segment
+- **AND** the App paints in a mode that excludes construction geometries
+- **THEN** the joined point is still presented as a handle, because it belongs to the visible result segment
 
 ### Requirement: Mesh building takes a chord tolerance
 

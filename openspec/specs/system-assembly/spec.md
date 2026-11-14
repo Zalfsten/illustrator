@@ -24,7 +24,7 @@ The system SHALL form the global Jacobian \(J(p) = \partial r / \partial p\) as 
 
 \(J[M_N^{\mathrm{row}}(i), M_N^{\mathrm{col}}(j)] \mathrel{+}= (J_N)_{ij}\) (up to residual-row indexing conventions).
 
-Entries that several block columns map to (including duplicate columns within one contribution's connectivity) SHALL accumulate; no block entry SHALL overwrite another. Implementations MAY store each \(J_N\) as a packed dense block next to its row and column mapping, without materialising a global matrix, or MAY write blocks into a global matrix through a connectivity scatter view. When a contribution concatenates several formula blocks, implementations MAY place successive column windows with same-kind matrix block slices. Formula Jacobians MAY be written as dense row-major blocks into the contribution window, optionally multiplied by a contribution scale (for example \(\pm 1\) for difference residuals). The observable contract is the global \(J\) defined by the sum above.
+The observable contract is the global \(J\) defined by the sum above.
 
 #### Scenario: Local derivative lands at mapped global indices
 
@@ -45,11 +45,36 @@ Entries that several block columns map to (including duplicate columns within on
 - **THEN** its block contributes zero to the global Jacobian at \(p\)
 - **AND** it keeps the same row and column mapping as when active
 
+### Requirement: Overlapping block entries accumulate
+
+Entries that several block columns map to (including duplicate columns within one contribution's connectivity) SHALL accumulate; no block entry SHALL overwrite another.
+
+#### Scenario: Two contributions on one entry
+
+- **WHEN** two contributions both have a derivative for the same residual row and global parameter
+- **THEN** the global \(J\) entry there is the sum of both derivatives
+
+### Requirement: Formula blocks may be windowed and scaled
+
+When a contribution concatenates several formula blocks, implementations MAY place successive column windows with same-kind matrix block slices. Formula Jacobians MAY be written as dense row-major blocks into the contribution window, optionally multiplied by a contribution scale (for example \(\pm 1\) for difference residuals). The global \(J\) SHALL be the same as without windows or scales.
+
+#### Scenario: Difference residual with a scale of minus one
+
+- **WHEN** a Congruence residual \(P_a - P_b\) writes the Jacobian of \(P_b\) with contribution scale \(-1\)
+- **THEN** its global \(J\) entries equal the derivative of \(P_a - P_b\)
+
+### Requirement: Jacobian storage is an implementation choice
+
+Implementations MAY store each \(J_N\) as a packed dense block next to its row and column mapping, without materialising a global matrix, or MAY write blocks into a global matrix through a connectivity scatter view. Every storage SHALL represent the same global \(J\).
+
+#### Scenario: Packed and scattered storage agree
+
+- **WHEN** the same assembled system is evaluated at \(p\) once into packed contribution blocks and once into a global matrix
+- **THEN** both represent the same global \(J\)
+
 ### Requirement: Assembly is re-evaluated at the current state
 
 Because the system is nonlinear, residual and Jacobian **values** SHALL be recomputed at the current \(p\) whenever the solver requests an evaluation. The system SHALL NOT treat a previously assembled residual or Jacobian matrix as valid for a different \(p\) unless an explicit caching contract says otherwise.
-
-Parameter **connectivity** (local→global column maps for contributions) depends on the Document graph, not on \(p\). An assembled system view for a fixed Document MAY cache those connectivity lists for the lifetime of that view and reuse them on every Jacobian evaluation. Caching connectivity SHALL NOT substitute for re-evaluating residual/Jacobian entries at the requested \(p\).
 
 #### Scenario: Solver iteration triggers fresh assembly
 
@@ -64,9 +89,18 @@ Parameter **connectivity** (local→global column maps for contributions) depend
 - **THEN** assembly MAY reuse the contribution connectivity maps computed at build time
 - **AND** Jacobian numeric entries are still filled from the current \(p\)
 
+### Requirement: Connectivity may be cached for a fixed Document
+
+Parameter **connectivity** (local→global column maps for contributions) depends on the Document graph, not on \(p\). An assembled system view for a fixed Document MAY cache those connectivity lists for the lifetime of that view and reuse them on every Jacobian evaluation. Caching connectivity SHALL NOT substitute for re-evaluating residual/Jacobian entries at the requested \(p\).
+
+#### Scenario: Structural edit needs a new view
+
+- **WHEN** a geometry is added to the Document after an assembled system view was built
+- **THEN** Jacobian evaluations for the edited Document use connectivity that includes the new geometry, not the lists cached in the earlier view
+
 ### Requirement: Contribution Jacobian columns follow connectivity order
 
-Each structural contribution's Jacobian columns SHALL follow the same order as that contribution's parameter connectivity list (residual arity × connectivity length, whether packed locally or written straight into global \(J\)). Assembly SHALL map those columns to solver columns via an assembly-owned column mapping. For an assembled system that does not reduce the parameter set, that mapping SHALL be the identity on global State indices, so the solver columns are the State indices. Implementations MAY fill contributions by writing point/vector/scalar formula Jacobians (formula-local columns) into the contribution matrix window, placing successive operand blocks via same-kind column block slices; the observable contract is the global \(J\).
+Each structural contribution's Jacobian columns SHALL follow the same order as that contribution's parameter connectivity list (residual arity × connectivity length, whether packed locally or written straight into global \(J\)). Assembly SHALL map those columns to solver columns via an assembly-owned column mapping. For an assembled system that does not reduce the parameter set, that mapping SHALL be the identity on global State indices, so the solver columns are the State indices.
 
 #### Scenario: Joined contribution concatenates operand connectivities
 
@@ -87,9 +121,18 @@ Each structural contribution's Jacobian columns SHALL follow the same order as t
 - **THEN** every contribution column maps to the global State index from its connectivity list
 - **AND** the global \(J\) has one column per State parameter
 
+### Requirement: Formula Jacobians may be written in formula-local columns
+
+Implementations MAY fill contributions by writing point/vector/scalar formula Jacobians (formula-local columns) into the contribution matrix window, placing successive operand blocks via same-kind column block slices; the observable contract is the global \(J\). The global \(J\) SHALL not depend on whether contributions are filled this way.
+
+#### Scenario: Formula-filled Congruence matches finite differences
+
+- **WHEN** a Congruence between endpoints of two segments is filled from the endpoints' formula Jacobians
+- **THEN** its entries in the global \(J\) equal a finite-difference derivative of its residual within tolerance
+
 ### Requirement: Soft interaction terms assemble the same way
 
-Temporary soft terms used during interaction (for example mouse-follow, stay-near-previous, or soft curve-length floor) SHALL, when active, contribute residual and Jacobian blocks that are assembled with the same connectivity/scatter rules, without becoming persistent document constraints. Soft residual scale relative to unweighted structural residuals SHALL be carried by the soft terms’ own weights (or equivalent per-term strength), not by a separate mandatory global rescale of structural rows during assembly. A soft length-floor contribution SHALL use the length expression’s parameter connectivity and SHALL contribute a one-sided residual that is zero when the evaluated length is at or above its session floor.
+Temporary soft terms used during interaction (for example mouse-follow, stay-near-previous, or soft curve-length floor) SHALL, when active, contribute residual and Jacobian blocks that are assembled with the same connectivity/scatter rules, without becoming persistent document constraints.
 
 #### Scenario: Soft term adds rows without persisting constraints
 
@@ -109,3 +152,21 @@ Temporary soft terms used during interaction (for example mouse-follow, stay-nea
 - **AND** the session floor is \(\ell_{\min}\)
 - **THEN** the contribution residual is zero when \(L \ge \ell_{\min}\)
 - **AND** when \(L < \ell_{\min}\) the residual and its Jacobian follow the length expression’s connectivity
+
+### Requirement: Soft weights carry soft strength
+
+Soft residual scale relative to unweighted structural residuals SHALL be carried by the soft terms’ own weights (or equivalent per-term strength), not by a separate mandatory global rescale of structural rows during assembly.
+
+#### Scenario: Doubling soft weights leaves structural rows alone
+
+- **WHEN** the same evaluation is assembled once with all soft weights doubled
+- **THEN** the structural residual rows and their Jacobian rows are unchanged
+
+### Requirement: Soft length floor contribution
+
+A soft length-floor contribution SHALL use the length expression’s parameter connectivity and SHALL contribute a one-sided residual that is zero when the evaluated length is at or above its session floor.
+
+#### Scenario: Floor on a segment uses its endpoint parameters
+
+- **WHEN** a soft length-floor term on a segment is assembled
+- **THEN** its Jacobian columns are the segment's four endpoint parameters
