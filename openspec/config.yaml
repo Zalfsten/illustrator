@@ -130,8 +130,9 @@ context: |
       at the ends, derivatives, curvature, axis extrema, de Casteljau
       split / sub, adaptive Gauss–Legendre arc length and its Newton
       inverse) and hermite_shape(point, tangent, knots, tolerance,
-      deviation): Hermite pieces γ ± γ′h/3, 4 per knot interval, halved
-      depth first, MAX_SHAPE_PIECES 4096; deviation is pluggable,
+      deviation) -> HermiteShape { pieces, capped }: Hermite pieces
+      γ ± γ′h/3, 4 per knot interval, the largest deviation halved first,
+      MAX_SHAPE_PIECES 4096; deviation is pluggable,
       sampled_deviation (7 matched samples × 2) is an estimate, a provable
       bound is #99
     - capabilities.rs: kind-agnostic formula tags (PointFormula,

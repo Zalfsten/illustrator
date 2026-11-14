@@ -584,7 +584,7 @@ The pieces of a curve's shape SHALL run from the curve's normalized position t =
 
 ### Requirement: Shapes without closed-form pieces stay within the tolerance
 
-A curve whose shape is not a segment's or a circular arc's SHALL describe it with cubic Bézier pieces. Every point of the shape SHALL lie within the requested tolerance of the curve, and every point of the curve within the tolerance of the shape. Each piece SHALL start and end exactly on the curve, and the shape's total length SHALL differ from the curve's length expression by at most the tolerance.
+A curve whose shape is not a segment's or a circular arc's SHALL describe it with cubic Bézier pieces, each starting and ending exactly on the curve. Pieces SHALL be refined until a deviation check finds each within the requested tolerance of the curve, both ways; the check MAY estimate from samples. The shape's total length SHOULD differ from the curve's length expression by at most the tolerance.
 
 #### Scenario: Pieces stay within the tolerance
 
@@ -601,6 +601,12 @@ A curve whose shape is not a segment's or a circular arc's SHALL describe it wit
 
 - **WHEN** the shape of a curve without closed-form pieces is queried with tolerance δ
 - **THEN** the total length of its pieces differs from the curve's length expression by at most δ
+
+#### Scenario: A piece cap spreads the remaining error
+
+- **WHEN** a curve needs more pieces than the cap to reach the tolerance
+- **THEN** the pieces with the largest deviation were refined first, so no part of the curve keeps a coarse initial piece
+- **AND** the caller is told that the cap stopped the refinement
 
 ### Requirement: Curves report their curvature
 
