@@ -14,7 +14,8 @@ fn capability_sets_match_kinds() {
 }
 
 /// Every geometry kind (extend with the catalog).
-const ALL_KINDS: [GeometryKind; 3] = [GeometryKind::Segment, GeometryKind::Arc, GeometryKind::Label];
+const ALL_KINDS: [GeometryKind; 4] =
+    [GeometryKind::Segment, GeometryKind::Arc, GeometryKind::Label, GeometryKind::Function];
 
 #[test]
 fn name_prefixes_are_valid_stems() {

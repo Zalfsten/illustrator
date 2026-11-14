@@ -46,7 +46,8 @@ pub use geometry::{
     GeometryId, GeometryRole, GeometryShell, LineExprs, PieceBound, ShapePiece, StateAtom,
 };
 pub use geometry_kinds::{
-    Arc, GeometryInst, GeometryKind, HAlign, KindAttrs, Label, LabelAttrs, Markup, Segment, VAlign,
+    Arc, Function, FunctionAttrs, FunctionAttrsError, GeometryInst, GeometryKind, HAlign, KindAttrs, Label,
+    LabelAttrs, Markup, Segment, VAlign,
 };
 pub use id::IdMap;
 pub use interact::{DragSession, InteractiveSolve, SoftTerms, SolveError};

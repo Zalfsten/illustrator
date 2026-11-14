@@ -173,6 +173,11 @@ pub enum CommandError {
     Frozen {
         name: String,
     },
+    /// An expression does not parse, or its domain on the range is not
+    /// proven; `message` says what and where.
+    InvalidExpression {
+        message: String,
+    },
     /// No style has this name.
     UnknownStyle(String),
     /// `default`, or a style that the geometries `users` refer to, cannot be
@@ -211,6 +216,7 @@ impl fmt::Display for CommandError {
             CommandError::Frozen { name } => {
                 write!(f, "frozen: {name} is in a conflicted component")
             }
+            CommandError::InvalidExpression { message } => write!(f, "invalid expression: {message}"),
             CommandError::UnknownStyle(s) => write!(f, "unknown style: {s}"),
             CommandError::StyleInUse { style, users } if users.is_empty() => {
                 write!(f, "style in use: {style} cannot be deleted")

@@ -432,7 +432,7 @@ impl Document {
     pub fn label_attrs(&self, id: GeometryId) -> Option<&LabelAttrs> {
         match self.geometry(id)?.attrs() {
             KindAttrs::Label(a) => Some(a),
-            KindAttrs::None => None,
+            KindAttrs::None | KindAttrs::Function(_) => None,
         }
     }
 

@@ -19,7 +19,7 @@ use crate::session::{Mode, Session};
 /// Value of the envelope's `format` field.
 pub const FORMAT: &str = "illustrator-sketch";
 /// The file version this implementation writes; it reads 1 to this one.
-pub const VERSION: u64 = 3;
+pub const VERSION: u64 = 4;
 
 /// Envelope fields of the document settings (since version 2).
 const SETTINGS_FIELDS: [&str; 3] = ["scale", "font_size", "preamble"];
@@ -146,6 +146,11 @@ impl Session {
                     ))));
                 }
             }
+            if version < 4 && value.get("kind").and_then(Value::as_str) == Some("function") {
+                return Err(read_error(serde_json::Error::custom(
+                    "the kind `function` needs version 4",
+                )));
+            }
             let cmd: DeclCommand = serde_json::from_value(value).map_err(read_error)?;
             session
                 .execute(cmd.into(), Mode::Load)
@@ -159,6 +164,7 @@ impl Session {
 ///
 /// Version 1 has no settings fields; it gets the default settings.
 /// Versions 1 and 2 have no `styles`; they get an empty table.
+/// Version 3 has the envelope of version 4 (it only lacks function curves).
 fn migrate(version: u64, mut envelope: Map<String, Value>) -> Result<Map<String, Value>, LoadError> {
     let unknown = |field: &str| LoadError::Envelope(format!("unknown field `{field}`"));
     if version == 1 {

@@ -7,9 +7,11 @@ license = "GPL-3.0-or-later"
 
 [dependencies]
 constraint_runtime = { path = "../constraint_runtime" }
+expression = { path = "../expression" }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["float_roundtrip"] }
 schemars = "1.2"
 
 [dev-dependencies]
 jsonschema = { version = "0.60", default-features = false }
+sketch_export = { path = "../sketch_export" }
