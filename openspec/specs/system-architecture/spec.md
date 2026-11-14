@@ -8,13 +8,22 @@ Defines the top-level shared component model for the illustrator: Document as st
 
 ### Requirement: Document holds discrete sketch plus committed state
 
-The system SHALL treat a Document as owning the discrete sketch (geometries, structural constraints, and the connectivity schema that maps local parameters into indices of \(p\)) together with a committed State vector \(p\). The committed State SHALL hold the continuous values of those parameters. Evaluate, assemble, and Mesh construction SHALL take Document for identity/connectivity resolution plus an explicit State (committed or working). Document SHALL NOT depend on a GUI, renderer, or solver backend.
+The system SHALL treat a Document as owning the discrete sketch (geometries, structural constraints, and the connectivity schema that maps local parameters into indices of \(p\)) together with a committed State vector \(p\). The committed State SHALL hold the continuous values of those parameters. Document SHALL NOT depend on a GUI, renderer, or solver backend.
 
 #### Scenario: Structure remains meaningful without evaluating p
 
 - **WHEN** a Document's geometries and constraints are inspected without reading coordinate values
 - **THEN** which geometries and structural relationships exist is fully determined by Document
 - **AND** concrete endpoint locations are obtained only by evaluating expressions against a State \(p\)
+
+### Requirement: Evaluation takes Document plus an explicit State
+
+Evaluate, assemble, and Mesh construction SHALL take Document for identity/connectivity resolution plus an explicit State (committed or working).
+
+#### Scenario: Working State leaves the committed State alone
+
+- **WHEN** geometries are evaluated at a working State during a drag
+- **THEN** the Document's committed State is unchanged until the drag commits
 
 ### Requirement: App owns presentation and edits through the command session
 
@@ -54,7 +63,7 @@ Nonlinear solves that update continuous parameters during interaction SHALL be p
 
 ### Requirement: Display Mesh is the Canvas geometry source
 
-The system SHALL provide a display Mesh (or equivalent view-layer edge list) derived from Document plus a concrete State \(p\). The Mesh SHALL NOT be part of Document or Interact as authoritative structure or parameters. The Canvas SHALL obtain stroked sketch geometry from that Mesh. Until richer tessellation is needed, a Mesh whose edges correspond one-to-one with line segment geometries SHALL satisfy this requirement. Hit-testing against Mesh primitives MAY be used by tools; when used, hit results SHALL carry stable geometry identities consistent with the Mesh edge tags.
+The system SHALL provide a display Mesh (or equivalent view-layer edge list) derived from Document plus a concrete State \(p\). The Mesh SHALL NOT be part of Document or Interact as authoritative structure or parameters. The Canvas SHALL obtain stroked sketch geometry from that Mesh. Until richer tessellation is needed, a Mesh whose edges correspond one-to-one with line segment geometries SHALL satisfy this requirement.
 
 #### Scenario: Canvas paints via Mesh
 
@@ -68,9 +77,18 @@ The system SHALL provide a display Mesh (or equivalent view-layer edge list) der
 - **THEN** Document remains the sole authority for parameters and constraints
 - **AND** any Mesh used for display is rebuilt or invalidated from that Document rather than written back into Document
 
+### Requirement: Mesh hits carry geometry identity
+
+Hit-testing against Mesh primitives MAY be used by tools; when used, hit results SHALL carry stable geometry identities consistent with the Mesh edge tags.
+
+#### Scenario: Hit on an arc edge names the arc
+
+- **WHEN** a tool hit-tests near an edge of an arc's Mesh
+- **THEN** the hit carries the arc's geometry identity, the same identity the edge is tagged with
+
 ### Requirement: App owns a Viewport for world–screen mapping
 
-The App SHALL own a Viewport as UI session state that maps between **world coordinates** (document/Mesh space, y-up) and **screen coordinates** (Canvas pixels). Canvas paint SHALL transform Mesh edge positions from world to screen via the Viewport. Pointer (or equivalent) input SHALL be mapped from screen to world via the Viewport before updating Document State, Interact soft targets, or issuing Mesh hit queries against world-space Mesh positions. The Viewport SHALL NOT be part of Document or committed State.
+The App SHALL own a Viewport as UI session state that maps between **world coordinates** (document/Mesh space, y-up) and **screen coordinates** (Canvas pixels). Canvas paint SHALL transform Mesh edge positions from world to screen via the Viewport. The Viewport SHALL NOT be part of Document or committed State.
 
 #### Scenario: Paint uses screen positions derived from world Mesh
 
@@ -90,9 +108,18 @@ The App SHALL own a Viewport as UI session state that maps between **world coord
 - **THEN** the App converts that radius to world length using the Viewport scale before calling the Mesh hit API
 - **AND** a successful hit still returns stable geometry identity from the world-space Mesh
 
+### Requirement: Pointer input maps through the Viewport
+
+Pointer (or equivalent) input SHALL be mapped from screen to world via the Viewport before updating Document State, Interact soft targets, or issuing Mesh hit queries against world-space Mesh positions.
+
+#### Scenario: Same click, different scale
+
+- **WHEN** the same screen position is clicked under two Viewports with different scales
+- **THEN** the world positions passed on differ according to the two Viewports
+
 ### Requirement: Constraints are resolved by stable identity
 
-Each structural constraint in Document SHALL have a stable constraint identity, distinct from geometry identities and from positions in the State vector. Document SHALL resolve a constraint identity to that constraint without scanning every constraint in the document for each lookup (lookup cost SHALL be independent of the number of constraints, aside from ordinary hash/map overhead). Adding a structural constraint SHALL allocate a fresh identity; removing a constraint SHALL drop that identity from resolution. Constraints SHALL NOT be identified solely by their index in an unordered list when a stable handle is required (for example incidence queries or later UI selection).
+Each structural constraint in Document SHALL have a stable constraint identity, distinct from geometry identities and from positions in the State vector. Document SHALL resolve a constraint identity to that constraint without scanning every constraint in the document for each lookup (lookup cost SHALL be independent of the number of constraints, aside from ordinary hash/map overhead).
 
 #### Scenario: Add returns a resolvable constraint identity
 
@@ -105,9 +132,19 @@ Each structural constraint in Document SHALL have a stable constraint identity, 
 - **WHEN** a structural constraint is removed from Document
 - **THEN** its identity is no longer resolvable
 
+### Requirement: Constraint identities are fresh handles
+
+Adding a structural constraint SHALL allocate a fresh identity; removing a constraint SHALL drop that identity from resolution. Constraints SHALL NOT be identified solely by their index in an unordered list when a stable handle is required (for example incidence queries or later UI selection).
+
+#### Scenario: Removed identity is not handed out again
+
+- **WHEN** a constraint is removed and another constraint is added afterwards
+- **THEN** the new constraint's identity differs from the removed one's
+- **AND** the identities of the other constraints are unchanged
+
 ### Requirement: Geometry–constraint incidence is queryable
 
-Document SHALL answer which structural constraints reference a given geometry identity. Each structural constraint SHALL report the **deduplicated** set of geometry identities it depends on (each identity at most once; when several of its expressions name the same geometry, that identity appears once). Removing a geometry SHALL remove every structural constraint that referenced that identity (orphan drop), consistent with geometry-ir structural-edit rules. Incidence answers SHALL remain consistent after add/remove of geometries and constraints.
+Document SHALL answer which structural constraints reference a given geometry identity. Each structural constraint SHALL report the **deduplicated** set of geometry identities it depends on (each identity at most once; when several of its expressions name the same geometry, that identity appears once).
 
 #### Scenario: Constraints on a geometry are listed after join
 
@@ -128,6 +165,15 @@ Document SHALL answer which structural constraints reference a given geometry id
 - **WHEN** a geometry is removed
 - **THEN** no remaining constraint in Document references the removed identity
 - **AND** incidence queries for other geometries no longer list those removed constraints
+
+### Requirement: Incidence stays consistent across edits
+
+Removing a geometry SHALL remove every structural constraint that referenced that identity (orphan drop), consistent with geometry-ir structural-edit rules. Incidence answers SHALL remain consistent after add/remove of geometries and constraints.
+
+#### Scenario: Removed constraint leaves incidence
+
+- **WHEN** a Congruence between geometries A and B is removed
+- **THEN** incidence for A and for B no longer lists that Congruence
 
 ### Requirement: World coordinates are y-up
 
