@@ -147,13 +147,13 @@ A failed command SHALL report exactly one error class: unknown name, invalid or 
 
 ### Requirement: Error classes are extensible
 
-Later capabilities MAY add classes without changing these. A failure with one of the causes above SHALL keep reporting its class from the list above.
+Later capabilities MAY add error classes without changing the classes listed in *Command errors are classified*. A failure with one of those listed causes SHALL keep reporting its listed class.
 
 #### Scenario: Style commands add classes
 
 - **WHEN** a style command fails because it names a style that does not exist
 - **THEN** it reports the `unknown style` class added by the style commands
-- **AND** a command failing for one of the classes above still reports that class
+- **AND** a command failing for one of the classes listed in *Command errors are classified* still reports that class
 
 ### Requirement: Undo and redo
 
