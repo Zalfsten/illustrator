@@ -188,7 +188,8 @@ context: |
     length + curvature upper bounds per parameter piece);
     UNIFORM_CURVE kinds (segment, arc) in closed form (osculating-circle
     count, φmax capped at π, equal edges, minimal); other curves: demand
-    grid (64 cells) → equal shares, per-edge Green-function deviation bound
+    on an adaptive grid (64 cells, halved while a cell needs more than one
+    edge and halving lowers its demand) → equal shares, per-edge Green-function deviation bound
     over 4 sub-pieces + turning ≤ π/2, failing edges halved locally; cap
     MAX_MESH_EDGES (1024) per curve; endpoint hits use geometric
     start/end expressions only, and only for kinds with the endpoints

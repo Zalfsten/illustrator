@@ -912,7 +912,7 @@ Creating a function curve, or changing its expression or range, SHALL succeed on
 
 ### Requirement: Function curve attributes move only the local curve
 
-Changing a function curve's attributes SHALL keep \(O\) and \(\theta\) as they are and SHALL change the curve's points accordingly. A solve SHALL change only \(O\) and \(\theta\) of a function curve, never its attributes.
+Changing a function curve's attributes SHALL NOT itself change \(O\) and \(\theta\); it SHALL change the curve's points accordingly. A solve, including the one that follows a geometry-changing `set` (sketch-commands), SHALL change only \(O\) and \(\theta\) of a function curve, never its attributes.
 
 #### Scenario: Longer range, same origin
 

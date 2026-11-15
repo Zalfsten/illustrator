@@ -48,9 +48,25 @@ const TABLE_START_INTERVALS: usize = 16;
 pub const MAX_TABLE_INTERVALS: usize = 65_536;
 /// Accuracy of the arc-length inverse, relative to the total length.
 const TABLE_REL_TOL: f64 = 1e-11;
-/// Relative accuracy of the adaptive arc-length quadrature.
+/// Most speed evaluations one table build may spend; beyond it the
+/// attributes are rejected as too complex (the build runs on user input).
+/// About twice what the largest table under [`MAX_TABLE_INTERVALS`] needs
+/// (`sin(x)` on [0, 900π], 59 752 intervals).
+const MAX_TABLE_EVALUATIONS: usize = 15_000_000;
+/// A table build is rejected early when the projected interval count
+/// exceeds [`MAX_TABLE_INTERVALS`] by this factor (the Hermite inverse's
+/// error falls like h⁴, so an interval with error e needs about
+/// (e/tol)^¼ parts; e is the first failing point's error, a lower bound of
+/// the interval's largest, so the projection does not overshoot).
+const TABLE_PROJECTION_SAFETY: f64 = 2.0;
+/// Relative accuracy of the adaptive arc-length quadrature of the table.
 const QUADRATURE_REL_TOL: f64 = 1e-14;
-/// Margin added to piece lengths so they stay upper bounds.
+/// Relative accuracy of piece lengths ([`Geometry::piece_bound`]), well below
+/// [`PIECE_LENGTH_MARGIN`]; tighter tolerances made steep flanks recurse deep.
+const PIECE_QUADRATURE_REL_TOL: f64 = 1e-11;
+/// Relative margin on piece lengths so they stay upper bounds. Relative to
+/// the piece, not to the curve: an absolute margin of 1e-9·L dwarfed the
+/// tiny pieces at a sharp peak, so the Mesh could never refine them.
 const PIECE_LENGTH_MARGIN: f64 = 1e-9;
 
 /// Why function attributes were rejected.
@@ -64,7 +80,8 @@ pub enum FunctionAttrsError {
     Range,
     /// A scale is not finite or not greater than zero.
     Scale,
-    /// The arc-length table needs more than [`MAX_TABLE_INTERVALS`] intervals.
+    /// The arc-length table needs more than [`MAX_TABLE_INTERVALS`] intervals
+    /// or more than [`MAX_TABLE_EVALUATIONS`] speed evaluations.
     TooComplex,
 }
 
@@ -161,20 +178,32 @@ impl FunctionAttrs {
         self.table.inverse(s)
     }
 
-    /// Arc length of the scaled graph between `xa ≤ xb` (adaptive quadrature).
+    /// Arc length of the scaled graph between `xa ≤ xb` (adaptive quadrature,
+    /// accurate to about 1e-11 relative to that piece's own length).
     pub fn arc_length(&self, xa: f64, xb: f64) -> f64 {
         let speed = |x: f64| self.speed(x);
-        integrate(&speed, xa, xb, QUADRATURE_REL_TOL * self.length().max(f64::MIN_POSITIVE))
+        let estimate = gauss(&speed, xa, xb);
+        integrate(&speed, xa, xb, PIECE_QUADRATURE_REL_TOL * estimate.max(f64::MIN_POSITIVE))
+    }
+
+    /// `x` clamped to the range; NaN (a NaN curve parameter) becomes `x0`, so
+    /// evaluation never leaves the proven domain and never panics.
+    fn in_range(&self, x: f64) -> f64 {
+        if x.is_nan() {
+            self.range.0
+        } else {
+            x.clamp(self.range.0, self.range.1)
+        }
     }
 
     /// `f(x)` with first and second derivative (`x` clamped to the range).
     fn jet(&self, x: f64) -> Jet {
-        jet(&self.expression, x.clamp(self.range.0, self.range.1))
+        jet(&self.expression, self.in_range(x))
     }
 
     /// `ds/dx` of the scaled graph.
     fn speed(&self, x: f64) -> f64 {
-        speed(&self.expression, self.scale, x.clamp(self.range.0, self.range.1))
+        speed(&self.expression, self.scale, self.in_range(x))
     }
 
     /// Local point `(su·x, sv·f(x))` (frame coordinates, before `O`, `θ`).
@@ -186,6 +215,7 @@ impl FunctionAttrs {
     /// `x`, local point and local chart derivative `dγ/dt` at normalized `t`.
     fn local_at(&self, t: f64) -> (f64, Vec2, Vec2) {
         let l = self.length();
+        let t = if t.is_nan() { 0.0 } else { t };
         let (x, dxds) = self.table.inverse(t * l);
         let j = self.jet(x);
         let (su, sv) = self.scale;
@@ -219,9 +249,13 @@ impl FunctionAttrs {
 
 impl Default for FunctionAttrs {
     /// `x` on [0, 1] with scales 1: a valid diagonal ([`Geometry::default_attrs`]
-    /// must be infallible).
+    /// must be infallible). Built once and cloned (the table is shared), since
+    /// every new function curve starts with it before its own attributes.
     fn default() -> Self {
-        Self::new("x", (0.0, 1.0), (1.0, 1.0)).expect("the identity on [0, 1] is smooth")
+        static DEFAULT: std::sync::OnceLock<FunctionAttrs> = std::sync::OnceLock::new();
+        DEFAULT
+            .get_or_init(|| Self::new("x", (0.0, 1.0), (1.0, 1.0)).expect("the identity on [0, 1] is smooth"))
+            .clone()
     }
 }
 
@@ -265,20 +299,41 @@ fn gauss(f: &impl Fn(f64) -> f64, a: f64, b: f64) -> f64 {
         * h
 }
 
+/// Below this relative difference two quadrature estimates agree within
+/// rounding: the halved tolerance of a deep subinterval can fall under the
+/// rounding noise of its own value, and the recursion then never converged
+/// (`sin(100*x)` on [0, 1000] ran for minutes).
+const QUADRATURE_NOISE: f64 = 64.0 * f64::EPSILON;
+
 /// `∫ f` on `[a, b]` by adaptive Gauss–Legendre to absolute `tol`.
 fn integrate(f: &impl Fn(f64) -> f64, a: f64, b: f64, tol: f64) -> f64 {
-    fn step(f: &impl Fn(f64) -> f64, a: f64, b: f64, whole: f64, tol: f64, depth: u32) -> f64 {
+    integrate_until(f, a, b, tol, &|| false)
+}
+
+/// [`integrate`] that stops refining as soon as `stop()` returns true (the
+/// result is then meaningless; the caller checks `stop` itself).
+fn integrate_until(f: &impl Fn(f64) -> f64, a: f64, b: f64, tol: f64, stop: &impl Fn() -> bool) -> f64 {
+    fn step(
+        f: &impl Fn(f64) -> f64,
+        a: f64,
+        b: f64,
+        whole: f64,
+        tol: f64,
+        depth: u32,
+        stop: &impl Fn() -> bool,
+    ) -> f64 {
         let m = 0.5 * (a + b);
         let (l, r) = (gauss(f, a, m), gauss(f, m, b));
-        if depth >= 30 || (l + r - whole).abs() <= tol {
+        let noise = QUADRATURE_NOISE * (l.abs() + r.abs());
+        if depth >= 30 || (l + r - whole).abs() <= tol.max(noise) || stop() {
             return l + r;
         }
-        step(f, a, m, l, 0.5 * tol, depth + 1) + step(f, m, b, r, 0.5 * tol, depth + 1)
+        step(f, a, m, l, 0.5 * tol, depth + 1, stop) + step(f, m, b, r, 0.5 * tol, depth + 1, stop)
     }
     if b <= a {
         return 0.0;
     }
-    step(f, a, b, gauss(f, a, b), tol, 0)
+    step(f, a, b, gauss(f, a, b), tol, 0, stop)
 }
 
 /// Arc length `s(x)` of the scaled graph at table nodes, and its inverse
@@ -292,54 +347,107 @@ struct ArcTable {
 }
 
 impl ArcTable {
+    /// Table whose inverse is within [`TABLE_REL_TOL`]·L in arc length at
+    /// the checked points (quarter, half and three quarters of each
+    /// interval's length), halving failing intervals.
+    ///
+    /// The check of an interval reads only its own nodes, length and end
+    /// slopes, so an interval that passed stays passed: each round integrates
+    /// and checks only the new halves. (Re-checking every interval each round
+    /// made a rejection at the interval cap take seconds.)
     fn build(e: &Expression, range: (f64, f64), scale: (f64, f64)) -> Result<Self, FunctionAttrsError> {
-        let speed = |x: f64| speed(e, scale, x.clamp(range.0, range.1));
+        let evaluations = std::cell::Cell::new(0usize);
+        let speed = |x: f64| {
+            evaluations.set(evaluations.get() + 1);
+            speed(e, scale, x.clamp(range.0, range.1))
+        };
+        let spent = || evaluations.get() > MAX_TABLE_EVALUATIONS;
+        let integrate = |f: &dyn Fn(f64) -> f64, a: f64, b: f64, tol: f64| integrate_until(&f, a, b, tol, &spent);
         let n = TABLE_START_INTERVALS;
-        let mut xs: Vec<f64> = (0..=n)
+        let mut x: Vec<f64> = (0..=n)
             .map(|i| match i {
                 0 => range.0,
                 i if i == n => range.1,
                 i => range.0 + (range.1 - range.0) * i as f64 / n as f64,
             })
             .collect();
+        let crude: f64 = x.windows(2).map(|w| gauss(&speed, w[0], w[1])).sum();
+        let qtol = QUADRATURE_REL_TOL * crude;
+        let mut len: Vec<f64> = x.windows(2).map(|w| integrate(&speed, w[0], w[1], qtol)).collect();
+        if spent() {
+            return Err(FunctionAttrsError::TooComplex);
+        }
+        let mut slope: Vec<f64> = x.iter().map(|&xi| 1.0 / speed(xi)).collect();
+        let mut passed = vec![false; n];
+        let tol = TABLE_REL_TOL * len.iter().sum::<f64>();
         loop {
-            let crude: f64 = xs.windows(2).map(|w| gauss(&speed, w[0], w[1])).sum();
-            let qtol = QUADRATURE_REL_TOL * crude;
-            let mut s = vec![0.0];
-            for w in xs.windows(2) {
-                let len = integrate(&speed, w[0], w[1], qtol);
-                s.push(s.last().expect("starts with 0") + len);
-            }
-            let slope: Vec<f64> = xs.iter().map(|&x| 1.0 / speed(x)).collect();
-            let table = Self { x: xs, s, slope };
-            let total = table.length();
-            let tol = TABLE_REL_TOL * total;
-            let failing: Vec<bool> = (0..table.x.len() - 1)
-                .map(|i| {
-                    let (s0, s1) = (table.s[i], table.s[i + 1]);
-                    [0.25, 0.5, 0.75].iter().any(|&tau| {
-                        let target = s0 + tau * (s1 - s0);
-                        let (x, _) = table.inverse_in(i, target);
-                        let exact = s0 + integrate(&speed, table.x[i], x, qtol);
-                        (exact - target).abs() > tol
+            // First error above `tol` of interval i alone (nodes, length, end
+            // slopes), or 0 if it passes; stopping at the first failing
+            // point keeps wild intervals cheap.
+            let error = |i: usize| {
+                let single = Self {
+                    x: vec![x[i], x[i + 1]],
+                    s: vec![0.0, len[i]],
+                    slope: vec![slope[i], slope[i + 1]],
+                };
+                [0.25, 0.5, 0.75]
+                    .iter()
+                    .map(|&tau| {
+                        let target = tau * len[i];
+                        let (xm, _) = single.inverse_in(0, target);
+                        (integrate(&speed, x[i], xm, qtol) - target).abs()
                     })
-                })
-                .collect();
-            if !failing.contains(&true) {
-                return Ok(table);
-            }
-            let mut next = Vec::with_capacity(table.x.len() * 2);
-            for (i, &bad) in failing.iter().enumerate() {
-                next.push(table.x[i]);
-                if bad {
-                    next.push(0.5 * (table.x[i] + table.x[i + 1]));
-                }
-            }
-            next.push(*table.x.last().expect("at least two nodes"));
-            if next.len() - 1 > MAX_TABLE_INTERVALS {
+                    .find(|&err| err > tol)
+                    .unwrap_or(0.0)
+            };
+            let errors: Vec<f64> = (0..len.len()).map(|i| if passed[i] { 0.0 } else { error(i) }).collect();
+            if spent() {
                 return Err(FunctionAttrsError::TooComplex);
             }
-            xs = next;
+            let failing: Vec<bool> = errors.iter().map(|&err| err > tol).collect();
+            let split = failing.iter().filter(|&&f| f).count();
+            let projected: f64 = errors
+                .iter()
+                .map(|&err| if err > tol { (err / tol).powf(0.25).ceil().max(2.0) } else { 1.0 })
+                .sum();
+            if projected > TABLE_PROJECTION_SAFETY * MAX_TABLE_INTERVALS as f64 {
+                return Err(FunctionAttrsError::TooComplex);
+            }
+            if split == 0 {
+                let mut s = Vec::with_capacity(x.len());
+                s.push(0.0);
+                for l in &len {
+                    s.push(s.last().expect("starts with 0") + l);
+                }
+                return Ok(Self { x, s, slope });
+            }
+            if len.len() + split > MAX_TABLE_INTERVALS {
+                return Err(FunctionAttrsError::TooComplex);
+            }
+            let cap = len.len() + split;
+            let (mut nx, mut nlen, mut nslope, mut npassed) =
+                (Vec::with_capacity(cap + 1), Vec::with_capacity(cap), Vec::with_capacity(cap + 1), Vec::with_capacity(cap));
+            for i in 0..len.len() {
+                nx.push(x[i]);
+                nslope.push(slope[i]);
+                if failing[i] {
+                    let m = 0.5 * (x[i] + x[i + 1]);
+                    nx.push(m);
+                    nslope.push(1.0 / speed(m));
+                    nlen.push(integrate(&speed, x[i], m, qtol));
+                    nlen.push(integrate(&speed, m, x[i + 1], qtol));
+                    npassed.extend([false, false]);
+                } else {
+                    nlen.push(len[i]);
+                    npassed.push(true);
+                }
+            }
+            if spent() {
+                return Err(FunctionAttrsError::TooComplex);
+            }
+            nx.push(*x.last().expect("at least two nodes"));
+            nslope.push(*slope.last().expect("at least two nodes"));
+            (x, len, slope, passed) = (nx, nlen, nslope, npassed);
         }
     }
 
@@ -429,7 +537,9 @@ impl Geometry for Function {
     fn shape(c: Self::Init, a: &Self::Attrs, tolerance: f64) -> Vec<ShapePiece> {
         let point = |t: f64| Self::at(t, c, a);
         let tangent = |t: f64| Self::tangent(t, c, a);
-        hermite_shape(point, tangent, &[0.0, 1.0], tolerance, sampled_deviation(point))
+        // `capped` (the piece cap stopped the refinement) has no channel to the
+        // export yet (#104); the error is spread evenly over the curve (#100).
+        hermite_shape(point, tangent, &[0.0, 1.0], tolerance, sampled_deviation(point)).pieces
     }
 
     fn curvature(t: f64, _c: Self::Init, a: &Self::Attrs) -> f64 {
@@ -445,7 +555,7 @@ impl Geometry for Function {
         let ib = a.table.interval_of((t1 * l).clamp(0.0, l)) + 1;
         let (wa, wb) = (a.table.x[ia].min(xa), a.table.x[ib].max(xb));
         PieceBound {
-            length: a.arc_length(xa, xb) + PIECE_LENGTH_MARGIN * l,
+            length: a.arc_length(xa, xb) * (1.0 + PIECE_LENGTH_MARGIN),
             curvature: a.curvature_bound(wa, wb),
         }
     }

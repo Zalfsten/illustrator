@@ -85,6 +85,26 @@ fn long_sine_stays_within_the_interval_budget() {
     assert!(a.table_intervals() < 16_000, "{} intervals", a.table_intervals());
 }
 
+/// A wildly oscillating graph is rejected within a bounded time: the
+/// quadrature used to recurse forever below its rounding noise (review of
+/// PR #102: `sin(100*x)` on [0, 1000] ran for minutes).
+#[test]
+fn oscillating_graph_is_rejected_quickly() {
+    let start = std::time::Instant::now();
+    let r = FunctionAttrs::new("sin(100*x)", (0.0, 1000.0), (1.0, 1.0));
+    assert_eq!(r, Err(FunctionAttrsError::TooComplex));
+    assert!(start.elapsed().as_secs() < 30, "took {:?}", start.elapsed());
+}
+
+/// A NaN curve parameter evaluates at the range start instead of panicking.
+#[test]
+fn nan_parameter_does_not_panic() {
+    let a = sine();
+    let c = (Point2::new(0.0, 0.0), HeadingAngle::new(0.0));
+    assert_eq!(Function::at(f64::NAN, c, &a), Function::at(0.0, c, &a));
+    assert!(Function::curvature(f64::NAN, c, &a).is_finite());
+}
+
 #[test]
 fn default_attrs_are_the_unit_diagonal() {
     let a = FunctionAttrs::default();
@@ -397,6 +417,36 @@ fn mesh_of_a_steep_curve_stays_under_the_cap_and_within_tolerance() {
         let q = Function::at(k as f64 / 5000.0, c, &attrs);
         let d = edges.iter().map(|e| seg_dist(q, e.a, e.b)).fold(f64::INFINITY, f64::min);
         assert!(d <= tol * (1.0 + 1e-9), "sample {k}: {d} from the polyline");
+    }
+}
+
+/// Sharp peaks and interval overestimation (review of PR #102): the Mesh's
+/// grid adapts, so neither inflates the demand to the cap, and every edge is
+/// checked. Before, the bell curve kept 1024 unchecked edges 0.215 off the
+/// graph, and the rational one fell back to equal unchecked edges.
+#[test]
+fn mesh_of_peaked_curves_stays_under_the_cap_and_within_tolerance() {
+    use crate::mesh::{Mesh, MeshFilter, MAX_MESH_EDGES};
+    let tol = 1e-3;
+    for source in ["1/((x-1)^2 + 0.01)", "1/(x*x - 2*x + 1.01)", "1/((x-1)^2 + 0.0001)"] {
+        let attrs = FunctionAttrs::new(source, (0.0, 2.0), (1.0, 1.0)).unwrap();
+        let mut doc = Document::new();
+        let id = add(&mut doc, attrs.clone(), (0.0, 0.0), 0.0);
+        let mesh = Mesh::from_document(&doc, doc.committed_vector(), MeshFilter::RESULT_ONLY, tol);
+        let edges: Vec<_> = mesh.edges.iter().filter(|e| e.geometry == id).collect();
+        assert!(edges.len() < MAX_MESH_EDGES / 4, "{source}: {} edges", edges.len());
+        // Every edge against the exact graph between its end points (heading
+        // 0, scales 1: an edge's x range is the graph's x range).
+        for e in &edges {
+            let d = e.b - e.a;
+            for k in 1..32 {
+                let x = e.a.x + (e.b.x - e.a.x) * k as f64 / 32.0;
+                let q = Point2::new(x, attrs.expression().eval(x).unwrap().value);
+                let s = ((q - e.a).dot(d) / d.dot(d)).clamp(0.0, 1.0);
+                let dist = (e.a + d * s - q).length();
+                assert!(dist <= tol * (1.0 + 1e-9), "{source}: {dist} off the edge at x = {x}");
+            }
+        }
     }
 }
 

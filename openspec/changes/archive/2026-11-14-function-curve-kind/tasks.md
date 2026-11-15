@@ -84,3 +84,12 @@ Implementation: impls/rust (see design.md). Run tests from `impls/rust`, e.g. `c
 
 - Archive the change after review; sync the `geometry-ir`, `sketch-commands` and `sketch-file` deltas.
 - Check off #81 in #98 and #74. Changes E (#82), F (#83) and G (#84) become unblocked.
+
+## Review follow-ups (PR #102)
+
+- [x] R.1 Rebased onto main (#100 and #101 merged); `Function::shape` takes `.pieces` of the new `HermiteShape`. Reporting `capped` to the export is #104.
+- [x] R.2 Mesh: `place_samples` uses an adaptive grid (cells halved while they need more than one edge and halving lowers their demand, or while their bound is unbounded); `piece_bound` margins and quadrature are relative to the piece. A bell curve `1/((x-1)^2 + 0.01)` went from 1024 unchecked edges 0.215 off the graph to 95 edges within the tolerance. Tests `mesh_of_peaked_curves_stays_under_the_cap_and_within_tolerance`, `sharp_bend_in_a_long_cell_does_not_inflate_the_demand`.
+- [x] R.3 Arc table: quadrature stops at its rounding noise (`sin(100*x)` on [0, 1000] ran for minutes), a budget of 15 million speed evaluations, incremental rounds (passed intervals are not re-checked) and a projected early rejection. Test `oscillating_graph_is_rejected_quickly`.
+- [x] R.4 A NaN curve parameter evaluates at the range start instead of panicking; test `nan_parameter_does_not_panic`.
+- [x] R.5 geometry-ir: attribute changes do not themselves move O and θ; the solve after a geometry-changing `set` may.
+- [x] R.6 Parse errors report character positions; `FunctionAttrs::default()` is built once and cloned.

@@ -1508,7 +1508,7 @@ fn invalid_expressions_name_position_and_sub_range() {
         .apply(cmd(r#"{"op": "create", "kind": "function", "origin": [0, 0], "heading": 0, "expression": "2x", "range": [0, 1]}"#))
         .unwrap_err();
     let CommandError::InvalidExpression { message } = &e else { panic!("{e:?}") };
-    assert!(message.contains("bytes 1..2"), "{message}");
+    assert!(message.contains("characters 1..2"), "{message}");
     assert!(e.to_string().starts_with("invalid expression"), "{e}");
     let e = s
         .apply(cmd(r#"{"op": "create", "kind": "function", "origin": [0, 0], "heading": 0, "expression": "1/x", "range": [-1, 1]}"#))
@@ -1634,4 +1634,16 @@ fn function_curves_survive_declarative_export() {
         panic!()
     };
     assert_eq!((a.source(), a.range(), a.scale()), ("x^2 - 1", (-1.0, 2.0), (2.0, 0.5)));
+}
+
+
+/// Parse positions are reported in characters, not bytes (review of PR #102).
+#[test]
+fn function_parse_error_position_counts_characters() {
+    let mut s = Session::new(Document::new());
+    let e = s
+        .apply(cmd(r#"{"op": "create", "kind": "function", "origin": [0, 0], "heading": 0, "expression": "x + ä", "range": [0, 1]}"#))
+        .unwrap_err();
+    let CommandError::InvalidExpression { message } = &e else { panic!("{e:?}") };
+    assert!(message.contains("characters 4..5"), "{message}");
 }
