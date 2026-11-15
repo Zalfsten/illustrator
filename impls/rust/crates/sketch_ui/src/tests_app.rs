@@ -195,7 +195,7 @@ fn styled_segment(len: f64, role: GeometryRole, look: StyleProps) -> (Document, 
 fn paint_of(doc: &Document, id: GeometryId, viewport: &Viewport) -> CurvePaint {
     let tolerance = viewport.px_to_world(MESH_TOLERANCE_PX);
     let mesh = Mesh::from_document(doc, doc.vector(), MeshFilter::INCLUDE_CONSTRUCTION, tolerance);
-    let lines = polylines(&mesh);
+    let lines = mesh_polylines(&mesh);
     let (_, line) = lines.iter().find(|(g, _)| *g == id).unwrap();
     curve_paint(doc, id, line, viewport, 1.0)
 }
@@ -279,7 +279,7 @@ fn construction_ignores_its_style() {
 #[test]
 fn polylines_group_edges_per_geometry() {
     let app = App::with_sample();
-    let lines = polylines(&app.mesh());
+    let lines = mesh_polylines(&app.mesh());
     let mut ids: Vec<GeometryId> = lines.iter().map(|(g, _)| *g).collect();
     let n = ids.len();
     ids.dedup();
@@ -532,4 +532,142 @@ fn print_size_zoom_reads_one_hundred_percent() {
     let s = crate::viewport::print_scale(app.session.settings());
     assert!((app.view.percent(s) - 100.0).abs() < 1e-9);
     assert_eq!(crate::navigation::zoom_label(app.view.percent(s)), "Zoom 100 %");
+}
+
+// --- Selection (ui-model) ---
+
+/// `far` (40,20)–(60,30) opened, the view laid out on an 800×600 canvas.
+fn far_on_canvas() -> App {
+    let (mut app, _) = open_far_away();
+    app.update_view(canvas_800());
+    app
+}
+
+fn screen(app: &App, x: f64, y: f64) -> Pos2 {
+    app.viewport.to_screen(Point2::new(x, y))
+}
+
+fn selected(app: &App) -> String {
+    app.ui.selection().describe(app.doc())
+}
+
+#[test]
+fn open_clears_the_selection() {
+    let fake = FakeFiles::new(true);
+    let mut app = App::with_files(fake.clone());
+    let first = app.doc().geometries().values().next().unwrap().id();
+    let name = app.geometry_name(first).to_owned();
+    app.ui.selection_mut().select_name(app.session.document(), &name, ui_model::PickMode::Replace);
+    assert!(!app.ui.selection().is_empty());
+    app.file_command(FileCommand::Open);
+    fake.open_file("far.sketch.json", FAR_AWAY);
+    app.poll_files();
+    assert!(app.ui.selection().is_empty());
+}
+
+#[test]
+fn mode_switch_drops_a_selected_construction_segment() {
+    let mut app = far_on_canvas();
+    app.set_presentation(PresentationMode::IncludeConstruction);
+    apply_json(
+        &mut app,
+        r#"{"op": "create", "kind": "segment", "name": "aux", "role": "construction", "start": [40, 25], "end": [45, 25]}"#,
+    );
+    app.rebuild_logical_points();
+    for name in ["aux", "far"] {
+        app.ui.selection_mut().select_name(app.session.document(), name, ui_model::PickMode::Toggle);
+    }
+    app.set_presentation(PresentationMode::ResultOnly);
+    assert_eq!(selected(&app), "far");
+}
+
+#[test]
+fn click_selects_and_shift_click_toggles() {
+    let mut app = far_on_canvas();
+    app.select_click(screen(&app, 50.0, 25.0), false);
+    assert_eq!(selected(&app), "far");
+    app.select_click(screen(&app, 60.0, 30.0), true);
+    assert_eq!(selected(&app), "far, far.end");
+    app.select_click(screen(&app, 0.0, 0.0), false);
+    assert!(app.ui.selection().is_empty(), "a click on empty space clears");
+}
+
+#[test]
+fn dragging_a_point_keeps_the_selection() {
+    let mut app = far_on_canvas();
+    app.select_click(screen(&app, 50.0, 25.0), false);
+    app.select_drag_start(screen(&app, 60.0, 30.0));
+    assert!(app.session.is_dragging() && app.rubber.is_none());
+    let to = screen(&app, 62.0, 33.0);
+    app.session.drag_to(app.viewport.to_world(to)).unwrap();
+    app.select_drag_stop(Some(to), false);
+    assert!(!app.session.is_dragging());
+    let doc = app.doc();
+    let Ok(constraint_runtime::Address::Point(e)) = doc.resolve_address("far.end") else { panic!() };
+    assert!((e.evaluate(doc, doc.vector()) - Point2::new(62.0, 33.0)).length() < 1e-3);
+    assert_eq!(selected(&app), "far");
+}
+
+#[test]
+fn box_from_empty_space_selects_what_is_inside() {
+    let mut app = far_on_canvas();
+    apply_json(
+        &mut app,
+        r#"{"op": "create", "kind": "segment", "name": "near", "start": [41, 28], "end": [44, 28]}"#,
+    );
+    app.rebuild_logical_points();
+    app.select_drag_start(screen(&app, 39.0, 26.0));
+    assert!(app.rubber.is_some() && !app.session.is_dragging());
+    app.select_drag_stop(Some(screen(&app, 46.0, 29.0)), false);
+    assert_eq!(selected(&app), "near");
+    app.select_drag_start(screen(&app, 39.0, 15.0));
+    app.select_drag_stop(Some(screen(&app, 61.0, 31.0)), true);
+    assert_eq!(selected(&app), "near, far");
+}
+
+/// The box start stays on the drawing when the view zooms during the box
+/// drag (review of PR #108).
+#[test]
+fn box_start_stays_on_the_drawing_when_zooming_during_the_drag() {
+    let mut app = far_on_canvas();
+    apply_json(
+        &mut app,
+        r#"{"op": "create", "kind": "segment", "name": "near", "start": [41, 28], "end": [44, 28]}"#,
+    );
+    app.rebuild_logical_points();
+    app.select_drag_start(screen(&app, 39.0, 26.0));
+    let anchor = screen(&app, 60.0, 30.0);
+    app.apply_intent(crate::navigation::NavIntent::Zoom { factor: 2.0 }, anchor);
+    app.select_drag_stop(Some(screen(&app, 46.0, 29.0)), false);
+    assert_eq!(selected(&app), "near");
+}
+
+#[test]
+fn delete_two_segments_is_one_undo_step() {
+    let mut app = far_on_canvas();
+    apply_json(
+        &mut app,
+        r#"{"op": "create", "kind": "segment", "name": "near", "start": [41, 28], "end": [44, 28]}"#,
+    );
+    app.rebuild_logical_points();
+    app.select_click(screen(&app, 50.0, 25.0), false);
+    app.select_click(screen(&app, 42.5, 28.0), true);
+    app.intent(ui_model::Intent::Delete);
+    assert_eq!(app.status, "Deleted far, near");
+    assert!(app.ui.selection().is_empty());
+    assert!(app.doc().lookup("far").is_none() && app.doc().lookup("near").is_none());
+    app.session.undo().unwrap();
+    assert!(app.doc().lookup("far").is_some() && app.doc().lookup("near").is_some());
+}
+
+#[test]
+fn delete_with_a_point_deletes_its_curve() {
+    let mut app = far_on_canvas();
+    app.intent(ui_model::Intent::Delete);
+    assert_eq!(app.status, "Nothing selected to delete");
+    app.select_click(screen(&app, 60.0, 30.0), false);
+    assert_eq!(selected(&app), "far.end");
+    app.intent(ui_model::Intent::Delete);
+    assert_eq!(app.status, "Deleted far");
+    assert!(app.doc().lookup("far").is_none());
 }

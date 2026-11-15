@@ -8,6 +8,7 @@ license = "GPL-3.0-or-later"
 [dependencies]
 constraint_runtime = { path = "../constraint_runtime" }
 sketch_session = { path = "../sketch_session" }
+ui_model = { path = "../ui_model" }
 label_layout = { path = "../label_layout" }
 sketch_export = { path = "../sketch_export" }
 eframe = { version = "0.29", default-features = true }

@@ -272,6 +272,9 @@ context: |
   commit or restore (CommandError incl. Unsatisfiable, InvalidExpression
   for function curves with parse position or unproven sub-range, Busy while
   dragging). drag_begin/to/end/cancel; a completed drag is one undo step.
+  apply_group(Vec<Command>): commands in order, one snapshot, one undo
+  step on success; the first failure restores the drawing and returns
+  GroupError { index, error } (Busy while dragging, empty group no step).
   Contradictions are held per component: a conflicted (inconsistent)
   component is frozen, so a constraint touching it or a drag_begin in it
   fails with CommandError::Frozen; a constraint on consistent components
@@ -311,6 +314,20 @@ context: |
   JSON Schemas, checked in under sketch_session/schema/ (tests/schema.rs,
   UPDATE_SCHEMA=1). Session::declarative_commands exports a drawing.
   constraint_runtime stays serde-free.
+  ui_model (wasm-capable, no GUI toolkit; constraint_runtime +
+  sketch_session): the ui-model spec. selection.rs: Selection of Entry
+  (Geometry / Constraint id, Point(PointExpr) compared by congruence class),
+  insertion order, pick / toggle / add, reconcile(doc) drops missing objects
+  (ids survive renames and undo), select_name for name / point address,
+  describe ("seg1, seg2.end"). pick.rs: Scene { mesh, points } (built by the
+  front end under its presentation filter; doc passed separately),
+  nearest_point / nearest_endpoint / nearest_curve, pick (point before
+  curve), mesh_polylines, box_select (every Mesh vertex inside; labels never).
+  model.rs: UiModel { selection } + Intent (Pick / Box / Clear / Delete,
+  world positions and tolerances) -> Effect; Delete = Session::apply_group of
+  constraint deletes, then geometry deletes (a point adds the shown curves
+  with an endpoint in its congruence class);
+  hide_invisible(doc, filter) on a presentation-mode change.
   expression (wasm-capable, no dependencies, geometry-free): the
   expression-language spec. lexer.rs / parser.rs (hand-written precedence
   climbing; MATLAB subset, ParseError with byte span, nesting limit 128,
@@ -404,6 +421,14 @@ context: |
   View menu; F fits only without modifiers), Event::Zoom pinch,
   middle-button drag pans; point drags start only with the primary button,
   and a view change during a drag re-targets it to the pointer.
+  Selection (ui_model): App owns UiModel; the Select tool sends intents
+  (click Pick, Shift/Ctrl/Cmd toggles; primary drag from empty space draws
+  the rubber band and sends Box, Add with a modifier; a drag from a point
+  still drags it; Esc Clear, Delete / Backspace Delete, both without
+  keyboard focus); hit tests build a Scene on demand; rebuild_logical_points
+  reconciles the selection, replaced clears it, set_presentation calls
+  hide_invisible; selected curves get a halo under their stroke, selected
+  points a ring, the status row lists "Selected: …".
   Prefer sibling files once a module has unit tests: src/<module>.rs for
   production code and src/tests_<module>.rs for that module's unit tests,
   declared with `#[cfg(test)] #[path = "tests_<module>.rs"] mod tests_<module>;`

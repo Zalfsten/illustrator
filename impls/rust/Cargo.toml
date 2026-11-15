@@ -9,6 +9,7 @@ members = [
     "crates/label_typst",
     "crates/label_worker",
     "crates/label_web",
+    "crates/ui_model",
     "crates/sketch_ui",
 ]
 default-members = [
@@ -18,5 +19,6 @@ default-members = [
     "crates/label_layout",
     "crates/sketch_export",
     "crates/label_typst",
+    "crates/ui_model",
     "crates/sketch_ui",
 ]

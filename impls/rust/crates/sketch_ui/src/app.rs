@@ -16,6 +16,8 @@ use sketch_session::{
     Command, ConstraintSpec, FixParams, GeometrySpec, PointPair, SegmentParams, Session, VecPair,
 };
 
+use ui_model::{mesh_polylines, BoxMode, Effect as UiEffect, Entry, Intent, PickMode, Scene, UiModel};
+
 use crate::export::{ExportJob, JobStep, WAITING};
 use crate::files::{Answer, Effect, FileCommand, FileState, Step};
 use crate::labels::{label_paint, FallbackReason, LabelCache, PaintItem};
@@ -66,6 +68,11 @@ const VIEW_MARGIN: f32 = 40.0;
 /// a quarter pixel of their polyline at every view scale.
 const MESH_TOLERANCE_PX: f64 = 0.25;
 
+/// Pick radius of the Select tool and of point drags, in screen pixels.
+const PICK_RADIUS_PX: f64 = 12.0;
+/// Selection highlight (halo under selected curves, ring around points).
+const SELECTION: Color32 = Color32::from_rgb(255, 150, 30);
+
 /// An export in progress: waiting for labels, or its bytes waiting for the host.
 enum Exporting {
     Job(Box<ExportJob>),
@@ -82,6 +89,12 @@ enum MenuItem {
 /// Owns the command session; central panel is the Canvas.
 pub struct App {
     session: Session,
+    /// Selection shared by every view (ui-model).
+    ui: UiModel,
+    /// World position where a selection box drag began (Select tool); in
+    /// world units, so it stays on the drawing when the view zooms or pans
+    /// during the drag.
+    rubber: Option<Point2>,
     tool: Tool,
     presentation: PresentationMode,
     pick_points: Vec<PointExpr>,
@@ -231,6 +244,8 @@ impl App {
 
         Self {
             session,
+            ui: UiModel::default(),
+            rubber: None,
             tool: Tool::Select,
             presentation,
             pick_points: Vec::new(),
@@ -339,6 +354,8 @@ impl App {
 
     /// After New or Open: drop what belonged to the old drawing, fit the view.
     fn replaced(&mut self) {
+        self.ui.clear();
+        self.rubber = None;
         self.pick_points.clear();
         self.pick_geoms.clear();
         self.segment_clicks.clear();
@@ -437,7 +454,7 @@ impl App {
         }
         // `F` fits, unless a text field has the keyboard (labels, styles); not
         // with modifiers, so Ctrl+F (browser find) and the like stay theirs.
-        if !ctx.wants_keyboard_input() && ctx.input(|i| i.modifiers.is_none() && i.key_pressed(egui::Key::F)) {
+        if canvas_has_keyboard(ctx, response) && ctx.input(|i| i.modifiers.is_none() && i.key_pressed(egui::Key::F)) {
             self.fit_drawing();
         }
         self.view != before
@@ -555,8 +572,134 @@ impl App {
         expr.evaluate(self.doc(), self.doc().vector())
     }
 
+    /// After any change of the drawing or the presentation mode: rebuild the
+    /// grabbable points and drop selected objects that no longer exist.
     fn rebuild_logical_points(&mut self) {
         self.logical_points = self.doc().logical_points(self.presentation.mesh_filter());
+        self.ui.reconcile(self.session.document());
+    }
+
+    /// Switch the presentation mode; selected objects it hides leave the
+    /// selection (system-architecture: Hiding objects deselects them).
+    fn set_presentation(&mut self, mode: PresentationMode) {
+        self.presentation = mode;
+        self.rebuild_logical_points();
+        self.ui.hide_invisible(self.session.document(), mode.mesh_filter());
+    }
+
+    /// Apply a UI-model intent against what the Canvas shows.
+    fn intent(&mut self, intent: Intent) {
+        let mesh = self.mesh();
+        let scene = Scene {
+            mesh: &mesh,
+            points: &self.logical_points,
+        };
+        match self.ui.apply(intent, &mut self.session, &scene) {
+            Ok(UiEffect::Deleted(names)) => {
+                self.last_error = None;
+                self.status = format!("Deleted {}", names.join(", "));
+                self.files.refresh(&self.session, self.platform.files());
+                self.rebuild_logical_points();
+            }
+            Ok(UiEffect::Nothing) if intent == Intent::Delete => {
+                self.status = "Nothing selected to delete".into();
+            }
+            Ok(UiEffect::Selection | UiEffect::Nothing) => {}
+            Err(e) => {
+                self.last_error = Some(e.to_string());
+                self.status = format!("Rejected — drawing unchanged. {e}");
+            }
+        }
+    }
+
+    /// Select tool click at `screen`; `toggle` with Shift / Ctrl / Cmd.
+    fn select_click(&mut self, screen: Pos2, toggle: bool) {
+        let mode = if toggle { PickMode::Toggle } else { PickMode::Replace };
+        self.intent(Intent::Pick {
+            at: self.viewport.to_world(screen),
+            tolerance: self.viewport.px_to_world(PICK_RADIUS_PX),
+            mode,
+        });
+    }
+
+    /// Select tool primary drag began at `press`: a point drags, empty space
+    /// starts the selection box, a curve does nothing.
+    fn select_drag_start(&mut self, press: Pos2) {
+        if let Some(expr) = self.hit_point(press, PICK_RADIUS_PX) {
+            let point = self.address(&expr);
+            if let Err(e) = self.session.drag_begin(&point) {
+                self.last_error = Some(e.to_string());
+            }
+        } else if self.hit_edge(press, PICK_RADIUS_PX).is_none() {
+            self.rubber = Some(self.viewport.to_world(press));
+        }
+    }
+
+    /// Select tool primary drag ended at `pos`: the box selects (adding with
+    /// `add`), a point drag commits.
+    fn select_drag_stop(&mut self, pos: Option<Pos2>, add: bool) {
+        if let Some(start) = self.rubber.take() {
+            if let Some(end) = pos {
+                let mode = if add { BoxMode::Add } else { BoxMode::Replace };
+                self.intent(Intent::Box {
+                    a: start,
+                    b: self.viewport.to_world(end),
+                    mode,
+                });
+            }
+            return;
+        }
+        if !self.session.is_dragging() {
+            return;
+        }
+        if let Some(pos) = pos {
+            let world = self.viewport.to_world(pos);
+            let r = self.session.drag_end(world);
+            self.report_drag(r);
+            self.files.refresh(&self.session, self.platform.files());
+        } else {
+            self.session.drag_cancel();
+        }
+        self.ui.reconcile(self.session.document());
+    }
+
+    /// Esc clears the selection (and drops a box in progress), Delete /
+    /// Backspace deletes it; not while a text field has the keyboard.
+    fn selection_keys(&mut self, ctx: &egui::Context, canvas: &egui::Response) {
+        if !canvas_has_keyboard(ctx, canvas) {
+            return;
+        }
+        let (esc, del) = ctx.input(|i| {
+            (
+                i.key_pressed(egui::Key::Escape),
+                i.key_pressed(egui::Key::Delete) || i.key_pressed(egui::Key::Backspace),
+            )
+        });
+        if esc {
+            self.rubber = None;
+            self.intent(Intent::Clear);
+        }
+        if del {
+            self.intent(Intent::Delete);
+        }
+    }
+
+    /// Halo under selected curves and rings around selected points.
+    fn paint_selection(&self, painter: &egui::Painter, mesh: &Mesh) {
+        let doc = self.doc();
+        let selected = |id: GeometryId| self.ui.selection().entries().contains(&Entry::Geometry(id));
+        for (id, polyline) in mesh_polylines(mesh) {
+            if selected(id) {
+                let pts: Vec<Pos2> = polyline.iter().map(|p| self.viewport.to_screen(*p)).collect();
+                painter.add(egui::Shape::line(pts, Stroke::new(6.0_f32, SELECTION.gamma_multiply(0.6))));
+            }
+        }
+        for e in self.ui.selection().entries() {
+            if let Entry::Point(p) = e {
+                let at = self.viewport.to_screen(p.evaluate(doc, doc.vector()));
+                painter.circle_stroke(at, 9.0, Stroke::new(2.5_f32, SELECTION));
+            }
+        }
     }
 
     /// Apply `cmd`; status `Added <name> <detail>` or the command error.
@@ -618,32 +761,28 @@ impl App {
             .unwrap_or_else(|| "?".into())
     }
 
+    /// `f` on what the Canvas shows, at the world image of `screen` with a
+    /// world tolerance of `radius_px` screen pixels.
+    fn hit<T>(&self, screen: Pos2, radius_px: f64, f: impl FnOnce(&Document, &Scene, Point2, f64) -> T) -> T {
+        let mesh = self.mesh();
+        let scene = Scene {
+            mesh: &mesh,
+            points: &self.logical_points,
+        };
+        let at = self.viewport.to_world(screen);
+        f(self.doc(), &scene, at, self.viewport.px_to_world(radius_px))
+    }
+
     fn hit_point(&self, screen: Pos2, radius_px: f64) -> Option<PointExpr> {
-        let query = self.viewport.to_world(screen);
-        let radius = self.viewport.px_to_world(radius_px);
-        let mut best = None;
-        let mut best_d = radius;
-        for lp in &self.logical_points {
-            let p = self.eval_point(&lp.representative);
-            let d = (p.x - query.x).hypot(p.y - query.y);
-            if d < best_d {
-                best_d = d;
-                best = Some(lp.representative);
-            }
-        }
-        best
+        self.hit(screen, radius_px, ui_model::nearest_point)
     }
 
     fn hit_end(&self, screen: Pos2, radius_px: f64) -> Option<PointExpr> {
-        let query = self.viewport.to_world(screen);
-        let radius = self.viewport.px_to_world(radius_px);
-        self.mesh().hit_endpoint(query, radius)
+        self.hit(screen, radius_px, |_, scene, at, tol| ui_model::nearest_endpoint(scene, at, tol))
     }
 
     fn hit_edge(&self, screen: Pos2, radius_px: f64) -> Option<GeometryId> {
-        let query = self.viewport.to_world(screen);
-        let radius = self.viewport.px_to_world(radius_px);
-        self.mesh().hit_geometry(query, radius)
+        self.hit(screen, radius_px, |_, scene, at, tol| ui_model::nearest_curve(scene, at, tol))
     }
 
     fn handle_click(&mut self, screen: Pos2) {
@@ -746,6 +885,13 @@ impl App {
     }
 }
 
+/// Canvas shortcuts apply: no widget has the keyboard focus, or the Canvas
+/// has it (clicking it focuses it). `Context::wants_keyboard_input` is not
+/// enough: in egui it is true for any focused widget, the Canvas included.
+fn canvas_has_keyboard(ctx: &egui::Context, canvas: &egui::Response) -> bool {
+    ctx.memory(|m| m.focused()).is_none_or(|id| id == canvas.id)
+}
+
 /// Constraint command with an automatic name.
 fn constrain(constraint: ConstraintSpec) -> Command {
     Command::Constrain {
@@ -814,19 +960,6 @@ fn curve_paint(
         width: width.max(min_width),
         color: color32(style.color),
     }
-}
-
-/// The Mesh as one polyline per geometry (its edges are consecutive and in
-/// curve order).
-fn polylines(mesh: &Mesh) -> Vec<(GeometryId, Vec<Point2>)> {
-    let mut out: Vec<(GeometryId, Vec<Point2>)> = Vec::new();
-    for e in &mesh.edges {
-        match out.last_mut() {
-            Some((id, line)) if *id == e.geometry => line.push(e.b),
-            _ => out.push((e.geometry, vec![e.a, e.b])),
-        }
-    }
-    out
 }
 
 /// Construction segment of fixed length `len` starting at `origin` (axis +x).
@@ -1019,7 +1152,8 @@ impl eframe::App for App {
                     "Include construction",
                 );
                 if self.presentation != prev {
-                    self.rebuild_logical_points();
+                    let mode = std::mem::replace(&mut self.presentation, prev);
+                    self.set_presentation(mode);
                 }
             });
             ui.horizontal(|ui| {
@@ -1032,6 +1166,10 @@ impl eframe::App for App {
             ui.horizontal(|ui| {
                 ui.label(zoom_label(self.view.percent(print_scale(self.session.settings()))));
                 ui.separator();
+                if !self.ui.selection().is_empty() {
+                    ui.label(format!("Selected: {}", self.ui.selection().describe(self.session.document())));
+                    ui.separator();
+                }
                 ui.label(&self.status);
             });
             if let Some((s, color)) = &self.label_status {
@@ -1054,8 +1192,13 @@ impl eframe::App for App {
             self.update_view(canvas);
             let view_changed = idle && self.navigate(ctx, &response);
 
+            if idle {
+                self.selection_keys(ctx, &response);
+            }
             let one_px = 1.0 / ctx.pixels_per_point();
-            for (id, polyline) in polylines(&self.mesh()) {
+            let mesh = self.mesh();
+            self.paint_selection(&painter, &mesh);
+            for (id, polyline) in mesh_polylines(&mesh) {
                 let paint = curve_paint(self.doc(), id, &polyline, &self.viewport, one_px);
                 let stroke = Stroke::new(paint.width, paint.color);
                 for piece in paint.pieces {
@@ -1108,19 +1251,16 @@ impl eframe::App for App {
             }
 
             if self.tool == Tool::Select {
-                // Only the primary button drags points; the middle button pans.
+                let modifiers = ctx.input(|i| i.modifiers);
+                let extend = modifiers.shift || modifiers.command || modifiers.ctrl;
+                // Only the primary button drags points or boxes; the middle button pans.
                 if response.drag_started_by(PointerButton::Primary) {
                     // egui reports drag start only after the pointer moved past the
                     // click threshold; hit-test where the button went down, not where
                     // the pointer is now (coarse browser events can be > 12 px away).
                     let press = ui.input(|i| i.pointer.press_origin());
                     if let Some(pos) = press.or_else(|| response.interact_pointer_pos()) {
-                        if let Some(expr) = self.hit_point(pos, 12.0) {
-                            let point = self.address(&expr);
-                            if let Err(e) = self.session.drag_begin(&point) {
-                                self.last_error = Some(e.to_string());
-                            }
-                        }
+                        self.select_drag_start(pos);
                     }
                 }
                 // Pointer motion, or a zoom / pan under a still pointer: the
@@ -1137,14 +1277,20 @@ impl eframe::App for App {
                         }
                     }
                 }
-                if response.drag_stopped_by(PointerButton::Primary) && self.session.is_dragging() {
+                if let (Some(start), Some(now)) = (self.rubber, response.interact_pointer_pos()) {
+                    let rect = Rect::from_two_pos(self.viewport.to_screen(start), now);
+                    painter.rect(
+                        rect,
+                        0.0,
+                        SELECTION.gamma_multiply(0.08),
+                        Stroke::new(1.0_f32, SELECTION),
+                    );
+                }
+                if response.drag_stopped_by(PointerButton::Primary) {
+                    self.select_drag_stop(response.interact_pointer_pos(), extend);
+                } else if response.clicked() {
                     if let Some(pos) = response.interact_pointer_pos() {
-                        let world = self.viewport.to_world(pos);
-                        let r = self.session.drag_end(world);
-                        self.report_drag(r);
-                        self.files.refresh(&self.session, self.platform.files());
-                    } else {
-                        self.session.drag_cancel();
+                        self.select_click(pos, extend);
                     }
                 }
             } else if response.clicked() {

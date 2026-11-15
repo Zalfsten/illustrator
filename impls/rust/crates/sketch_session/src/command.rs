@@ -290,6 +290,22 @@ impl fmt::Display for ExportError {
 
 impl std::error::Error for ExportError {}
 
+/// Why a command group failed: the command at `index` failed with `error`.
+/// The drawing is unchanged after any error.
+#[derive(Clone, Debug, PartialEq)]
+pub struct GroupError {
+    pub index: usize,
+    pub error: CommandError,
+}
+
+impl fmt::Display for GroupError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "command {}: {}", self.index + 1, self.error)
+    }
+}
+
+impl std::error::Error for GroupError {}
+
 /// Why undo or redo did nothing.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum HistoryError {
