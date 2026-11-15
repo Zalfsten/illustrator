@@ -20,7 +20,7 @@ use constraint_runtime::{
 
 use crate::catalog::{ConstraintSpec, GeometrySpec};
 use crate::command::{
-    Adjusted, Command, CommandError, Conflict, DeclCommand, ExportError, HistoryError, LoadReport,
+    Adjusted, Command, CommandError, Conflict, DeclCommand, ExportError, GroupError, HistoryError, LoadReport,
     Outcome,
 };
 
@@ -171,6 +171,35 @@ impl Session {
                 Err(e)
             }
         }
+    }
+
+    /// Apply `cmds` in order as one history step: each command sees the
+    /// results of the ones before. On the first failure the drawing is
+    /// restored and no step is created. An empty group creates no step.
+    pub fn apply_group(&mut self, cmds: Vec<Command>) -> Result<Vec<Outcome>, GroupError> {
+        if self.is_dragging() {
+            return Err(GroupError {
+                index: 0,
+                error: CommandError::Busy,
+            });
+        }
+        if cmds.is_empty() {
+            return Ok(Vec::new());
+        }
+        let snapshot = self.doc.clone();
+        let mut outcomes = Vec::with_capacity(cmds.len());
+        for (index, cmd) in cmds.into_iter().enumerate() {
+            match self.execute(cmd, Mode::Interactive) {
+                Ok(outcome) => outcomes.push(outcome),
+                Err(error) => {
+                    self.doc = snapshot;
+                    return Err(GroupError { index, error });
+                }
+            }
+        }
+        self.undo.push(snapshot);
+        self.redo.clear();
+        Ok(outcomes)
     }
 
     pub fn can_undo(&self) -> bool {

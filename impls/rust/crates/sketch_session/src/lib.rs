@@ -16,7 +16,7 @@ pub mod wire;
 
 pub use catalog::{AttrSpec, ConstraintSpec, GeometrySpec};
 pub use command::{
-    Adjusted, Command, CommandError, Conflict, DeclCommand, ExportError, Family, HistoryError,
+    Adjusted, Command, CommandError, Conflict, DeclCommand, ExportError, Family, GroupError, HistoryError,
     LoadReport, Outcome,
 };
 pub use file::{CommandLoadError, LoadError, SaveError, FORMAT, VERSION};

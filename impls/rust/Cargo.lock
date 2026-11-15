@@ -5425,6 +5425,7 @@ dependencies = [
  "serde_json",
  "sketch_export",
  "sketch_session",
+ "ui_model",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
@@ -6332,6 +6333,14 @@ dependencies = [
  "memoffset",
  "tempfile",
  "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "ui_model"
+version = "0.1.0"
+dependencies = [
+ "constraint_runtime",
+ "sketch_session",
 ]
 
 [[package]]

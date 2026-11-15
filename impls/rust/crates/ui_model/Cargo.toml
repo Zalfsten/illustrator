@@ -1,0 +1,11 @@
+[package]
+name = "ui_model"
+version = "0.1.0"
+edition = "2021"
+description = "Toolkit- and device-independent interaction model: selection, picking, intents"
+license = "GPL-3.0-or-later"
+
+# No GUI toolkit here (ui-model spec: front ends drive the model through intents).
+[dependencies]
+constraint_runtime = { path = "../constraint_runtime" }
+sketch_session = { path = "../sketch_session" }

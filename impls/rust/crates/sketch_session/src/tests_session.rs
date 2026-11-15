@@ -1469,3 +1469,69 @@ fn style_after_set_style() {
     assert!(text.ends_with(r##""style":"axis","color":"#c00000"}"##), "{text}");
     assert!(!text.contains("width") && !text.contains("dash") && !text.contains("arrow"), "{text}");
 }
+
+fn delete(name: &str) -> Command {
+    Command::Delete { name: name.into() }
+}
+
+#[test]
+fn group_undoes_in_one_step() {
+    let mut s = two_segments();
+    let out = s.apply_group(vec![delete("seg1"), delete("seg2")]).unwrap();
+    assert_eq!(out.len(), 2);
+    assert!(s.document().geometries().is_empty());
+    s.undo().unwrap();
+    assert!(s.document().lookup("seg1").is_some() && s.document().lookup("seg2").is_some());
+    s.undo().unwrap();
+    assert!(s.document().lookup("seg2").is_none(), "the group was one step");
+}
+
+#[test]
+fn a_failing_command_rolls_back_the_group() {
+    let mut s = two_segments();
+    let before = content(&s);
+    let e = s.apply_group(vec![delete("seg1"), delete("nope")]).unwrap_err();
+    assert_eq!(e.index, 1);
+    assert_eq!(e.error, CommandError::UnknownName("nope".into()));
+    assert_eq!(content(&s), before);
+    s.undo().unwrap();
+    s.undo().unwrap();
+    assert!(!s.can_undo(), "no step from the failed group");
+}
+
+#[test]
+fn later_commands_see_earlier_results() {
+    let mut s = Session::new(Document::new());
+    let create = Command::Create {
+        name: Some("a".into()),
+        role: GeometryRole::Result,
+        look: Default::default(),
+        geometry: GeometrySpec::Segment(SegmentParams {
+            start: Point2::new(0.0, 0.0),
+            end: Point2::new(1.0, 0.0),
+        }),
+    };
+    let rename = Command::Rename {
+        name: "a".into(),
+        new_name: "b".into(),
+    };
+    s.apply_group(vec![create, rename]).unwrap();
+    assert!(s.document().lookup("b").is_some());
+    assert!(s.document().lookup("a").is_none());
+}
+
+#[test]
+fn empty_group_creates_no_step() {
+    let mut s = Session::new(Document::new());
+    assert_eq!(s.apply_group(Vec::new()).unwrap().len(), 0);
+    assert!(!s.can_undo());
+}
+
+#[test]
+fn group_during_a_drag_is_busy() {
+    let mut s = two_segments();
+    s.drag_begin("seg1.end").unwrap();
+    let e = s.apply_group(vec![delete("seg2")]).unwrap_err();
+    assert_eq!(e.error, CommandError::Busy);
+    assert!(s.document().lookup("seg2").is_some());
+}
