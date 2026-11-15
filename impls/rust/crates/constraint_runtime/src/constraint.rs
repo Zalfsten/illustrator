@@ -8,6 +8,7 @@ use std::fmt::Debug;
 
 use crate::document::Document;
 use crate::expr::Expr;
+use crate::geom::CurveParam;
 use crate::geometry::{Formula, GeometryId};
 use crate::matrix::DenseMatrix;
 use crate::vector::Vector;
@@ -87,6 +88,12 @@ pub trait ConstraintKind: Clone + Debug + 'static {
 
     /// Geometry instances this constraint depends on (incidence / reverse index).
     fn referenced_geometries(&self) -> Vec<GeometryId>;
+
+    /// Curve parameters of the operands, with their geometries (kinds without
+    /// on-curve, tangent or normal operands keep the empty default).
+    fn curve_params(&self) -> Vec<(GeometryId, CurveParam)> {
+        Vec::new()
+    }
 
     /// True if this constraint references geometry `id` (orphan drop on remove).
     fn references_geometry(&self, id: GeometryId) -> bool {

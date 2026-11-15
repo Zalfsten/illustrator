@@ -3,7 +3,9 @@
 //! Grammar: `<name>.<suffix>` with suffix `start`, `end`, `center`, `origin`, `at(t)`
 //! (points); `direction`, `tangent(t)`, `normal(t)` (free vectors); `length`,
 //! `radius` (lengths). `t` is a normalized curve parameter in \([0, 1]\); no
-//! whitespace. Resolution goes through the capability-based factories on
+//! whitespace. On geometries with the abscissa capability, `at(x=<x>)`,
+//! `tangent(x=<x>)` and `normal(x=<x>)` address the function variable `x`
+//! (any finite value where `f` is defined with a finite slope). Resolution goes through the capability-based factories on
 //! [`Document`], so a missing capability is an error, not a panic.
 
 use crate::document::Document;
@@ -35,6 +37,9 @@ pub enum AddressError {
         name: String,
         capability: &'static str,
     },
+    /// An abscissa that is not finite, or where `f` is not defined or its
+    /// slope is not finite.
+    InvalidAbscissa { name: String, x: f64 },
 }
 
 impl std::fmt::Display for AddressError {
@@ -47,19 +52,36 @@ impl std::fmt::Display for AddressError {
             AddressError::MissingCapability { name, capability } => {
                 write!(f, "{name} has no {capability} capability")
             }
+            AddressError::InvalidAbscissa { name, x } => {
+                write!(f, "{name} is not defined or its slope is not finite at x = {x}")
+            }
         }
     }
 }
 
 impl std::error::Error for AddressError {}
 
-/// `ident` or `ident(arg)`; `None` if malformed.
-fn parse_suffix(suffix: &str) -> Option<(&str, Option<f64>)> {
+/// Argument of `at(…)`, `tangent(…)`, `normal(…)`.
+#[derive(Clone, Copy)]
+enum Arg {
+    /// No keyword: a normalized curve parameter.
+    Normalized(f64),
+    /// `x=<x>`: an abscissa.
+    Abscissa(f64),
+}
+
+/// `ident`, `ident(t)` or `ident(x=<x>)`; `None` if malformed.
+fn parse_suffix(suffix: &str) -> Option<(&str, Option<Arg>)> {
     match suffix.split_once('(') {
         None => Some((suffix, None)),
         Some((ident, rest)) => {
             let arg = rest.strip_suffix(')')?;
-            Some((ident, Some(arg.parse().ok()?)))
+            let arg = match arg.strip_prefix("x=") {
+                Some(x) => Arg::Abscissa(x.parse().ok()?),
+                None if arg.contains('=') => return None,
+                None => Arg::Normalized(arg.parse().ok()?),
+            };
+            Some((ident, Some(arg)))
         }
     }
 }
@@ -88,15 +110,32 @@ impl Document {
             None => return Err(AddressError::UnknownName(name.into())),
         };
 
+        let param = |arg: Arg| -> Result<CurveParam, AddressError> {
+            match arg {
+                Arg::Normalized(t) => normalized(t),
+                Arg::Abscissa(x) => {
+                    if !self.caps(id).is_some_and(|c| c.abscissa) {
+                        return Err(AddressError::MissingCapability {
+                            name: name.into(),
+                            capability: "abscissa",
+                        });
+                    }
+                    if !self.abscissa_valid(id, x) {
+                        return Err(AddressError::InvalidAbscissa { name: name.into(), x });
+                    }
+                    Ok(CurveParam::Abscissa(x))
+                }
+            }
+        };
         let (expr, capability) = match (ident, arg) {
             ("start", None) => (self.start_expr(id).map(Point), "endpoints"),
             ("end", None) => (self.end_expr(id).map(Point), "endpoints"),
             ("center", None) => (self.center_expr(id).map(Point), "circular"),
             ("origin", None) => (self.origin_expr(id).map(Point), "anchor"),
-            ("at", Some(t)) => (self.on_curve_expr(id, normalized(t)?).map(Point), "curve"),
+            ("at", Some(a)) => (self.on_curve_expr(id, param(a)?).map(Point), "curve"),
             ("direction", None) => (self.direction_expr(id).map(Vector), "line"),
-            ("tangent", Some(t)) => (self.tangent_expr(id, normalized(t)?).map(Vector), "curve"),
-            ("normal", Some(t)) => (self.normal_expr(id, normalized(t)?).map(Vector), "curve"),
+            ("tangent", Some(a)) => (self.tangent_expr(id, param(a)?).map(Vector), "curve"),
+            ("normal", Some(a)) => (self.normal_expr(id, param(a)?).map(Vector), "curve"),
             ("length", None) => (self.length_expr(id).map(Length), "curve"),
             ("radius", None) => (self.radius_expr(id).map(Length), "circular"),
             _ => return Err(AddressError::Malformed),
@@ -107,7 +146,7 @@ impl Document {
         })
     }
 
-    /// Address of `e` (`seg1.start`, `seg1.at(0.5)`), or `None` if it has none
+    /// Address of `e` (`seg1.start`, `seg1.at(0.5)`, `fn1.at(x=1)`), or `None` if it has none
     /// (e.g. a `Uniform` curve parameter) or its geometry is unnamed.
     pub fn point_address(&self, e: &PointExpr) -> Option<String> {
         let suffix = match e.formula {
@@ -118,6 +157,9 @@ impl Document {
             PointFormula::OnCurve {
                 param: CurveParam::Normalized(t),
             } => format!("at({t})"),
+            PointFormula::OnCurve {
+                param: CurveParam::Abscissa(x),
+            } => format!("at(x={x})"),
             PointFormula::OnCurve { .. } => return None,
         };
         self.qualified(e.geometry, &suffix)
@@ -133,6 +175,12 @@ impl Document {
             VecFormula::NormalAt {
                 param: CurveParam::Normalized(t),
             } => format!("normal({t})"),
+            VecFormula::TangentAt {
+                param: CurveParam::Abscissa(x),
+            } => format!("tangent(x={x})"),
+            VecFormula::NormalAt {
+                param: CurveParam::Abscissa(x),
+            } => format!("normal(x={x})"),
             VecFormula::TangentAt { .. } | VecFormula::NormalAt { .. } => return None,
         };
         self.qualified(e.geometry, &suffix)

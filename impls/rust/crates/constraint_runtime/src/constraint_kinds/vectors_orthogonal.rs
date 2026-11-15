@@ -35,6 +35,10 @@ impl ConstraintKind for VectorsOrthogonal {
         jb.contract_into(j, ja.cols(), ja.value, 1.0);
     }
 
+    fn curve_params(&self) -> Vec<(GeometryId, crate::geom::CurveParam)> {
+        [self.a.curve_param(), self.b.curve_param()].into_iter().flatten().collect()
+    }
+
     fn referenced_geometries(&self) -> Vec<GeometryId> {
         unique_geometry_ids([self.a.referenced_geometry(), self.b.referenced_geometry()])
     }

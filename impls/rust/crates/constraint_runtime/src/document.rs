@@ -292,22 +292,64 @@ impl Document {
             .map(|_| Expr::new(id, formula))
     }
 
+    /// Whether `param` may be used on geometry `id`: always for `Normalized`
+    /// / `Uniform` (the curve capability is checked by the factory), and for
+    /// `Abscissa(x)` only with the abscissa capability at a valid `x`
+    /// (geometry-ir: Abscissa parameters need the abscissa capability).
+    fn curve_param_ok(&self, id: GeometryId, param: CurveParam) -> bool {
+        match param {
+            CurveParam::Normalized(_) | CurveParam::Uniform(_) => true,
+            CurveParam::Abscissa(x) => self.abscissa_valid(id, x),
+        }
+    }
+
+    /// Whether `x` is a valid abscissa on `id`: the geometry has the abscissa
+    /// capability, `f` is defined at `x` and `f(x)`, `f′(x)` are finite.
+    pub fn abscissa_valid(&self, id: GeometryId, x: f64) -> bool {
+        if !self.caps(id).is_some_and(|c| c.abscissa) {
+            return false;
+        }
+        match self.geometry(id).map(|g| g.attrs()) {
+            Some(KindAttrs::Function(a)) => a.abscissa_valid(x),
+            _ => false,
+        }
+    }
+
+    /// Constraints with an abscissa on geometry `id` that is invalid under its
+    /// current attributes (sketch-commands: Expression changes keep abscissa
+    /// addresses valid), in id order.
+    pub fn invalid_abscissa_users(&self, id: GeometryId) -> Vec<ConstraintId> {
+        self.constraints
+            .iter()
+            .filter(|(_, c)| {
+                c.body().curve_params().into_iter().any(|(g, param)| {
+                    g == id && matches!(param, CurveParam::Abscissa(x) if !self.abscissa_valid(id, x))
+                })
+            })
+            .map(|(cid, _)| cid)
+            .collect()
+    }
+
     /// [`CurveExprs::on_curve_expr`](crate::geometry::CurveExprs::on_curve_expr) by id;
-    /// `None` without the curve capability.
+    /// `None` without the curve capability, or for an abscissa without the
+    /// abscissa capability or at an invalid `x`.
     pub fn on_curve_expr(&self, id: GeometryId, param: CurveParam) -> Option<PointExpr> {
         self.capability_expr(id, |c| c.curve, PointFormula::OnCurve { param })
+            .filter(|_| self.curve_param_ok(id, param))
     }
 
     /// [`CurveExprs::tangent_expr`](crate::geometry::CurveExprs::tangent_expr) by id;
     /// `None` without the curve capability.
     pub fn tangent_expr(&self, id: GeometryId, param: CurveParam) -> Option<VecExpr> {
         self.capability_expr(id, |c| c.curve, VecFormula::TangentAt { param })
+            .filter(|_| self.curve_param_ok(id, param))
     }
 
     /// [`CurveExprs::normal_expr`](crate::geometry::CurveExprs::normal_expr) by id;
     /// `None` without the curve capability.
     pub fn normal_expr(&self, id: GeometryId, param: CurveParam) -> Option<VecExpr> {
         self.capability_expr(id, |c| c.curve, VecFormula::NormalAt { param })
+            .filter(|_| self.curve_param_ok(id, param))
     }
 
     /// [`CurveExprs::length_expr`](crate::geometry::CurveExprs::length_expr) by id;

@@ -416,3 +416,142 @@ fn equal_length_with_a_function_curve_solves() {
     let len = Segment::length_expr(s).evaluate(&doc, p).value();
     assert!((len - SINE_LENGTH).abs() < 1e-6, "segment length {len}");
 }
+
+// --- Abscissa parameter (geometry-ir) ---------------------------------------
+
+#[test]
+fn point_and_tangent_at_an_abscissa() {
+    let mut doc = Document::new();
+    let id = add(&mut doc, sine(), (0.0, 0.0), 0.0);
+    let p = doc.committed_vector();
+    let at = Function::on_curve_expr(id, CurveParam::Abscissa(1.0)).evaluate(&doc, p);
+    assert!(close(at, Point2::new(1.0, 1f64.sin()), 1e-15), "{at:?}");
+    let v = Function::tangent_expr(id, CurveParam::Abscissa(1.0)).evaluate(&doc, p);
+    assert!((v - Vec2::new(1.0, 1f64.cos())).length() < 1e-15, "{v:?}");
+    let n = Function::normal_expr(id, CurveParam::Abscissa(1.0)).evaluate(&doc, p);
+    assert_eq!(n, v.left_normal());
+    // Same direction as the normalized tangent at the same point, other length.
+    let a = sine();
+    let t = a.arc_length(0.0, 1.0) / a.length();
+    let w = Function::tangent_expr(id, CurveParam::Normalized(t)).evaluate(&doc, p);
+    assert!(v.cross(w).abs() < 1e-8 * v.length() * w.length() && v.dot(w) > 0.0, "{v:?} vs {w:?}");
+    assert!((v.length() - w.length()).abs() > 1.0, "lengths differ: {} vs {}", v.length(), w.length());
+}
+
+#[test]
+fn abscissa_ignores_the_range_and_continues_beyond_it() {
+    let mut doc = Document::new();
+    let id = add(&mut doc, sine(), (0.0, 0.0), 0.0);
+    let e = Function::on_curve_expr(id, CurveParam::Abscissa(1.0));
+    let before = e.evaluate(&doc, doc.committed_vector());
+    let short = FunctionAttrs::new("sin(x)", (0.0, PI), (1.0, 1.0)).unwrap();
+    assert!(doc.set_geometry_attrs(id, KindAttrs::Function(short)));
+    assert_eq!(e.evaluate(&doc, doc.committed_vector()), before);
+    let beyond = Function::on_curve_expr(id, CurveParam::Abscissa(8.0)).evaluate(&doc, doc.committed_vector());
+    assert!(close(beyond, Point2::new(8.0, 8f64.sin()), 1e-15), "{beyond:?}");
+}
+
+#[test]
+fn abscissa_jacobians_match_finite_differences() {
+    use crate::matrix::DenseMatrix;
+    let mut doc = Document::new();
+    let id = add(&mut doc, FunctionAttrs::new("x*sin(x)", (-1.0, 2.0), (1.5, 0.7)).unwrap(), (0.4, -0.2), 0.8);
+    let p = doc.clone_vector();
+    let pt = Function::on_curve_expr(id, CurveParam::Abscissa(3.5));
+    let idx = pt.param_indices(&doc);
+    let mut buf = vec![0.0; 2 * idx.len()];
+    pt.accumulate_jacobian(&doc, &p, &mut DenseMatrix::packed(&mut buf, 2, idx.len()), 1.0);
+    check_fd(&doc, &p, &idx, 2, &buf, |q| {
+        let v = pt.evaluate(&doc, q);
+        vec![v.x, v.y]
+    });
+    for e in [
+        Function::tangent_expr(id, CurveParam::Abscissa(-0.3)),
+        Function::normal_expr(id, CurveParam::Abscissa(-0.3)),
+    ] {
+        let idx = e.param_indices(&doc);
+        let mut buf = vec![0.0; 2];
+        e.accumulate_jacobian(&doc, &p, &mut DenseMatrix::packed(&mut buf, 2, 1), 1.0);
+        check_fd(&doc, &p, &idx, 2, &buf, |q| {
+            let v = e.evaluate(&doc, q);
+            vec![v.x, v.y]
+        });
+    }
+}
+
+#[test]
+fn abscissa_validity() {
+    let root = FunctionAttrs::new("sqrt(x)", (1.0, 4.0), (1.0, 1.0)).unwrap();
+    assert!(!root.abscissa_valid(0.0), "vertical tangent");
+    assert!(root.abscissa_valid(0.25) && root.abscissa_valid(9.0));
+    let log = FunctionAttrs::new("log(x)", (1.0, 2.0), (1.0, 1.0)).unwrap();
+    assert!(!log.abscissa_valid(-1.0), "undefined");
+    let exp = FunctionAttrs::new("exp(x)", (0.0, 1.0), (1.0, 1.0)).unwrap();
+    assert!(!exp.abscissa_valid(1000.0), "overflow");
+    assert!(!sine().abscissa_valid(f64::INFINITY) && !sine().abscissa_valid(f64::NAN));
+}
+
+#[test]
+fn document_factories_gate_abscissa_parameters() {
+    use crate::geometry_kinds::{Arc, Label, Segment};
+    use crate::geom::{Length, TurnAngle};
+    let mut doc = Document::new();
+    let seg = doc.add_geometry::<Segment>(GeometryRole::Result, (Point2::new(0.0, 0.0), Point2::new(1.0, 0.0)));
+    let arc = doc.add_geometry::<Arc>(
+        GeometryRole::Result,
+        (Point2::new(0.0, 0.0), Length::new(1.0), HeadingAngle::new(0.0), TurnAngle::new(1.0)),
+    );
+    let lbl = doc.add_geometry::<Label>(GeometryRole::Result, (Point2::new(0.0, 0.0), HeadingAngle::new(0.0)));
+    let root = add(&mut doc, FunctionAttrs::new("sqrt(x)", (1.0, 4.0), (1.0, 1.0)).unwrap(), (0.0, 0.0), 0.0);
+    let log = add(&mut doc, FunctionAttrs::new("log(x)", (1.0, 2.0), (1.0, 1.0)).unwrap(), (0.0, 0.0), 0.0);
+    let ab = CurveParam::Abscissa(0.5);
+    for id in [seg, arc, lbl] {
+        assert!(doc.on_curve_expr(id, ab).is_none() && doc.tangent_expr(id, ab).is_none() && doc.normal_expr(id, ab).is_none());
+        assert!(!doc.abscissa_valid(id, 0.5));
+    }
+    assert!(doc.on_curve_expr(seg, CurveParam::Normalized(0.5)).is_some(), "normalized still works");
+    assert!(doc.on_curve_expr(root, CurveParam::Abscissa(0.0)).is_none(), "vertical tangent");
+    assert!(doc.tangent_expr(log, CurveParam::Abscissa(-1.0)).is_none(), "undefined");
+    assert!(doc.on_curve_expr(root, CurveParam::Abscissa(9.0)).is_some());
+    assert!(doc.normal_expr(log, CurveParam::Abscissa(0.5)).is_some());
+}
+
+#[test]
+fn constraints_report_their_operands_curve_params() {
+    use crate::constraint::ConstraintKind;
+    use crate::constraint_kinds::{Congruence, EqualLength, FixPoint, VectorsOrthogonal, VectorsParallel};
+    use crate::geometry_kinds::Segment;
+    let mut doc = Document::new();
+    let f = add(&mut doc, sine(), (0.0, 0.0), 0.0);
+    let s = doc.add_geometry::<Segment>(GeometryRole::Result, (Point2::new(0.0, 0.0), Point2::new(1.0, 0.0)));
+    let ab = CurveParam::Abscissa(1.0);
+    let nt = CurveParam::Normalized(0.5);
+    let join = Congruence { a: Function::on_curve_expr(f, ab), b: Segment::end_expr(s) };
+    assert_eq!(join.curve_params(), vec![(f, ab)]);
+    let fix = FixPoint { point: Segment::on_curve_expr(s, nt), target: Point2::new(0.0, 0.0) };
+    assert_eq!(fix.curve_params(), vec![(s, nt)]);
+    let par = VectorsParallel { a: Function::tangent_expr(f, ab), b: Segment::direction_expr(s) };
+    assert_eq!(par.curve_params(), vec![(f, ab)]);
+    let perp = VectorsOrthogonal { a: Function::normal_expr(f, ab), b: Segment::tangent_expr(s, nt) };
+    assert_eq!(perp.curve_params(), vec![(f, ab), (s, nt)]);
+    let eq = EqualLength { a: Function::length_expr(f), b: Segment::length_expr(s) };
+    assert!(eq.curve_params().is_empty());
+}
+
+#[test]
+fn invalid_abscissa_users_lists_exactly_the_affected_constraints() {
+    use crate::constraint_kinds::{Congruence, VectorsParallel};
+    use crate::geometry_kinds::Segment;
+    let mut doc = Document::new();
+    let f = add(&mut doc, sine(), (0.0, 0.0), 0.0);
+    let s = doc.add_geometry::<Segment>(GeometryRole::Result, (Point2::new(-1.0, 0.0), Point2::new(0.0, 0.0)));
+    let at_minus_one = doc.add_constraint(Congruence { a: Function::on_curve_expr(f, CurveParam::Abscissa(-1.0)), b: Segment::end_expr(s) });
+    let _at_one = doc.add_constraint(VectorsParallel { a: Function::tangent_expr(f, CurveParam::Abscissa(1.0)), b: Segment::direction_expr(s) });
+    let _normalized = doc.add_constraint(Congruence { a: Function::on_curve_expr(f, CurveParam::Normalized(0.2)), b: Segment::start_expr(s) });
+    assert!(doc.invalid_abscissa_users(f).is_empty());
+    // log(x+1) is undefined at x = -1, defined at x = 1.
+    let log = FunctionAttrs::new("log(x+1)", (0.0, 2.0), (1.0, 1.0)).unwrap();
+    assert!(doc.set_geometry_attrs(f, KindAttrs::Function(log)));
+    assert_eq!(doc.invalid_abscissa_users(f), vec![at_minus_one]);
+    assert!(doc.invalid_abscissa_users(s).is_empty(), "other geometries are not affected");
+}

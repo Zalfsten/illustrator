@@ -13,9 +13,9 @@ use std::cell::RefCell;
 use std::ops::Range;
 use std::sync::Arc;
 
-use expression::{DomainCheckError, Dual2, Expression, Interval, Jet, Number, ParseError};
+use expression::{DomainCheckError, DomainError, Dual2, Expression, Interval, Jet, Number, ParseError};
 
-use crate::geom::{HeadingAngle, Length, Point2, Vec2};
+use crate::geom::{CurveParam, HeadingAngle, Length, Point2, Vec2};
 use crate::geometry::capabilities::geometry_caps;
 use crate::geometry::chart::chart_atoms;
 use crate::geometry::cubic::{hermite_shape, sampled_deviation};
@@ -37,7 +37,7 @@ chart_atoms! {
     }
 }
 
-geometry_caps!(Function: curve, endpoints, anchor, line);
+geometry_caps!(Function: curve, endpoints, anchor, line, abscissa);
 
 /// The variable of a function curve's expression.
 pub const FUNCTION_VARIABLE: &str = "x";
@@ -167,6 +167,28 @@ impl FunctionAttrs {
         integrate(&speed, xa, xb, QUADRATURE_REL_TOL * self.length().max(f64::MIN_POSITIVE))
     }
 
+    /// `f(x)` with derivatives at any `x`, also outside the range (the
+    /// continuation used by abscissa parameters).
+    pub fn abscissa_jet(&self, x: f64) -> Result<Jet, DomainError> {
+        try_jet(&self.expression, x)
+    }
+
+    /// Whether `x` is a valid abscissa: finite, `f` defined and `f(x)`, `f′(x)`
+    /// finite (geometry-ir: Abscissa requires a defined function with finite
+    /// slope).
+    pub fn abscissa_valid(&self, x: f64) -> bool {
+        x.is_finite() && self.abscissa_jet(x).is_ok_and(|j| j.value.is_finite() && j.d1.is_finite())
+    }
+
+    /// Local point and `dγ/dx` at a valid abscissa.
+    fn local_at_abscissa(&self, x: f64) -> (Vec2, Vec2) {
+        let j = self
+            .abscissa_jet(x)
+            .expect("abscissa expressions are checked when built and on every expression change");
+        let (su, sv) = self.scale;
+        (Vec2::new(su * x, sv * j.value), Vec2::new(su, sv * j.d1))
+    }
+
     /// `f(x)` with first and second derivative (`x` clamped to the range).
     fn jet(&self, x: f64) -> Jet {
         jet(&self.expression, x.clamp(self.range.0, self.range.1))
@@ -231,10 +253,12 @@ thread_local! {
     static SCRATCH: RefCell<Vec<Dual2<f64>>> = const { RefCell::new(Vec::new()) };
 }
 
+fn try_jet(e: &Expression, x: f64) -> Result<Jet, DomainError> {
+    SCRATCH.with(|s| e.eval_in(x, &mut s.borrow_mut()))
+}
+
 fn jet(e: &Expression, x: f64) -> Jet {
-    SCRATCH
-        .with(|s| e.eval_in(x, &mut s.borrow_mut()))
-        .expect("the domain check proved f, f′ and f″ finite on the range")
+    try_jet(e, x).expect("the domain check proved f, f′ and f″ finite on the range")
 }
 
 fn speed(e: &Expression, (su, sv): (f64, f64), x: f64) -> f64 {
@@ -400,6 +424,9 @@ impl Function {
     /// Rotated local point of `f` (for points and their θ column).
     fn rotated_point(f: PointFormula, th: HeadingAngle, a: &FunctionAttrs) -> Vec2 {
         let local = match f {
+            PointFormula::OnCurve {
+                param: CurveParam::Abscissa(x),
+            } => a.local_at_abscissa(x).0,
             PointFormula::OnCurve { param } => a.local_at(param.chart_t()).1,
             PointFormula::Start => a.local_point(a.range.0),
             PointFormula::End => a.local_point(a.range.1),
@@ -475,6 +502,12 @@ impl Geometry for Function {
 
     fn vec(f: VecFormula, (o, th): Self::Init, a: &Self::Attrs) -> Vec2 {
         match f {
+            VecFormula::TangentAt {
+                param: CurveParam::Abscissa(x),
+            } => rotate(th, a.local_at_abscissa(x).1),
+            VecFormula::NormalAt {
+                param: CurveParam::Abscissa(x),
+            } => rotate(th, a.local_at_abscissa(x).1).left_normal(),
             VecFormula::TangentAt { param } => Self::tangent(param.chart_t(), (o, th), a),
             VecFormula::NormalAt { param } => Self::tangent(param.chart_t(), (o, th), a).left_normal(),
             VecFormula::Direction => rotate(th, Vec2::new(1.0, 0.0)),

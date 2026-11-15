@@ -117,3 +117,10 @@ fn curve_kinds_bound_their_pieces() {
         });
     }
 }
+
+#[test]
+fn only_function_curves_report_abscissa() {
+    for kind in ALL_KINDS {
+        assert_eq!(kind.caps().abscissa, kind == GeometryKind::Function, "{kind:?}");
+    }
+}

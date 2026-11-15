@@ -38,6 +38,9 @@ pub struct Caps {
     pub circular: bool,
     /// [`AnchorExprs`]: origin.
     pub anchor: bool,
+    /// Curve expressions at [`CurveParam::Abscissa`](crate::geom::CurveParam)
+    /// (function curves); no factory trait of its own.
+    pub abscissa: bool,
 }
 
 impl Caps {
@@ -47,6 +50,7 @@ impl Caps {
         line: false,
         circular: false,
         anchor: false,
+        abscissa: false,
     };
     pub const CURVE: Self = Self::NONE.with_curve();
 
@@ -78,6 +82,13 @@ impl Caps {
     pub const fn with_anchor(self) -> Self {
         Self {
             anchor: true,
+            ..self
+        }
+    }
+
+    pub const fn with_abscissa(self) -> Self {
+        Self {
+            abscissa: true,
             ..self
         }
     }
@@ -120,12 +131,14 @@ macro_rules! geometry_caps {
     (@impl $ty:ty; line) => { impl $crate::geometry::LineExprs for $ty {} };
     (@impl $ty:ty; circular) => { impl $crate::geometry::CircularExprs for $ty {} };
     (@impl $ty:ty; anchor) => { impl $crate::geometry::AnchorExprs for $ty {} };
+    (@impl $ty:ty; abscissa) => {};
 
     (@with $caps:ident; curve) => { $caps.with_curve() };
     (@with $caps:ident; endpoints) => { $caps.with_endpoints() };
     (@with $caps:ident; line) => { $caps.with_line() };
     (@with $caps:ident; circular) => { $caps.with_circular() };
     (@with $caps:ident; anchor) => { $caps.with_anchor() };
+    (@with $caps:ident; abscissa) => { $caps.with_abscissa() };
 }
 pub(crate) use geometry_caps;
 
