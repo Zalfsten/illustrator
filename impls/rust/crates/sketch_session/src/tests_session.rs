@@ -1636,6 +1636,52 @@ fn function_curves_survive_declarative_export() {
     assert_eq!((a.source(), a.range(), a.scale()), ("x^2 - 1", (-1.0, 2.0), (2.0, 0.5)));
 }
 
+// --- Abscissa addresses and expression changes (sketch-commands) ---
+
+fn sine_joined_at_minus_one() -> Session {
+    let mut s = Session::new(Document::new());
+    s.apply(cmd(SINE)).unwrap();
+    s.apply(segment((-2.0, 0.5), (-1.0, -0.8))).unwrap();
+    s.apply(join("fn1.at(x=-1)", "seg1.end")).unwrap();
+    s
+}
+
+fn source_of_fn1(s: &Session) -> String {
+    let KindAttrs::Function(a) = s.document().geometries().values().next().unwrap().attrs().clone() else {
+        panic!("function attributes expected")
+    };
+    a.source().to_owned()
+}
+
+#[test]
+fn expression_change_that_invalidates_an_abscissa_is_rejected() {
+    let mut s = sine_joined_at_minus_one();
+    let before = content(&s);
+    let e = s
+        .apply(cmd(r#"{"op": "set", "kind": "function", "name": "fn1", "expression": "log(x+1)"}"#))
+        .unwrap_err();
+    let CommandError::InvalidExpression { message } = &e else { panic!("{e:?}") };
+    assert!(message.contains("join1"), "{message}");
+    assert_eq!(content(&s), before);
+    assert_eq!(source_of_fn1(&s), "sin(x)");
+}
+
+#[test]
+fn expression_change_that_keeps_the_abscissa_valid_succeeds() {
+    let mut s = sine_joined_at_minus_one();
+    s.apply(cmd(r#"{"op": "set", "kind": "function", "name": "fn1", "expression": "log(x+2)"}"#)).unwrap();
+    assert_eq!(source_of_fn1(&s), "log(x+2)");
+    let (a, b) = (point_at(&s, "fn1.at(x=-1)"), point_at(&s, "seg1.end"));
+    assert!((a - b).length() < constraint_runtime::SOLVE_TOL, "{a:?} vs {b:?}");
+}
+
+#[test]
+fn range_change_is_never_rejected_for_an_abscissa() {
+    let mut s = sine_joined_at_minus_one();
+    s.apply(cmd(r#"{"op": "set", "kind": "function", "name": "fn1", "range": [2, 3]}"#)).unwrap();
+    let (a, b) = (point_at(&s, "fn1.at(x=-1)"), point_at(&s, "seg1.end"));
+    assert!((a - b).length() < constraint_runtime::SOLVE_TOL);
+}
 
 /// Parse positions are reported in characters, not bytes (review of PR #102).
 #[test]

@@ -6,7 +6,7 @@
 //! [`crate::geometry::EndpointExprs::start_expr`]).
 
 use crate::document::Document;
-use crate::geom::Vec2;
+use crate::geom::{CurveParam, Vec2};
 use crate::geometry::{
     Formula, GeometryId, HeadingFormula, LengthFormula, PointFormula, TurnFormula, VecFormula,
 };
@@ -37,6 +37,26 @@ pub type LengthExpr = Expr<LengthFormula>;
 pub type HeadingAngleExpr = Expr<HeadingFormula>;
 /// Turn-angle expression → [`crate::geom::TurnAngle`].
 pub type TurnAngleExpr = Expr<TurnFormula>;
+
+impl PointExpr {
+    /// The curve parameter of an on-curve point, with its geometry.
+    pub fn curve_param(&self) -> Option<(GeometryId, CurveParam)> {
+        match self.formula {
+            PointFormula::OnCurve { param } => Some((self.geometry, param)),
+            _ => None,
+        }
+    }
+}
+
+impl VecExpr {
+    /// The curve parameter of a tangent or normal, with its geometry.
+    pub fn curve_param(&self) -> Option<(GeometryId, CurveParam)> {
+        match self.formula {
+            VecFormula::TangentAt { param } | VecFormula::NormalAt { param } => Some((self.geometry, param)),
+            VecFormula::Direction => None,
+        }
+    }
+}
 
 impl<F: Formula> Expr<F> {
     pub(crate) fn new(geometry: GeometryId, formula: F) -> Self {
