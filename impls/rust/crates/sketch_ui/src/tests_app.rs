@@ -456,3 +456,80 @@ fn sample_scene_exports_as_pdf() {
     app.poll_files();
     assert_eq!(app.status, "Exported figure.pdf");
 }
+
+// --- View navigation (system-architecture) ---
+
+fn canvas_800() -> Rect {
+    Rect::from_min_max(Pos2::new(0.0, 0.0), Pos2::new(800.0, 600.0))
+}
+
+#[test]
+fn edits_do_not_move_the_view() {
+    let (mut app, _) = open_far_away();
+    app.update_view(canvas_800());
+    let view = app.view;
+    app.run(
+        Command::Create {
+            name: None,
+            role: GeometryRole::Result,
+            look: Default::default(),
+            geometry: GeometrySpec::Segment(SegmentParams {
+                start: Point2::new(0.0, 0.0),
+                end: Point2::new(1.0, 0.0),
+            }),
+        },
+        String::new(),
+    );
+    app.update_view(canvas_800());
+    assert_eq!(app.view, view);
+}
+
+#[test]
+fn fit_after_zooming_away_shows_the_drawing_again() {
+    let (mut app, _) = open_far_away();
+    let c = canvas_800();
+    app.update_view(c);
+    let bounds = crate::viewport::zoom_bounds(app.session.settings());
+    app.view.zoom(c, Pos2::new(10.0, 10.0), 50.0, bounds);
+    app.update_view(c);
+    assert!(!c.contains(app.viewport.to_screen(Point2::new(60.0, 30.0))), "zoomed away");
+    app.fit_drawing();
+    app.update_view(c);
+    for p in [Point2::new(40.0, 20.0), Point2::new(60.0, 30.0), Point2::new(50.0, 35.0)] {
+        assert!(c.contains(app.viewport.to_screen(p)), "{p:?} off screen after fit");
+    }
+}
+
+#[test]
+fn zoom_during_a_drag_keeps_the_drag() {
+    let (mut app, _) = open_far_away();
+    let c = canvas_800();
+    app.update_view(c);
+    let end = app.address(&app.logical_points[0].representative);
+    let undo_before = app.session.can_undo();
+    app.session.drag_begin(&end).unwrap();
+    // Zoom around another point while dragging; the drag goes on.
+    app.apply_intent(NavIntent::Zoom { factor: 2.0 }, Pos2::new(100.0, 100.0));
+    assert!(app.session.is_dragging(), "navigation does not end the drag");
+    let pointer = Pos2::new(420.0, 310.0);
+    let world = app.view.viewport(c).to_world(pointer);
+    app.session.drag_to(world).unwrap();
+    app.session.drag_end(world).unwrap();
+    let doc = app.doc();
+    let Ok(constraint_runtime::Address::Point(e)) = doc.resolve_address(&end) else { panic!() };
+    let at = e.evaluate(doc, doc.vector());
+    assert!((at - world).length() < 1e-6, "{at:?} vs pointer world {world:?}");
+    assert!(app.session.can_undo() && !undo_before, "exactly one new history step");
+    app.session.undo().unwrap();
+    assert!(!app.session.can_undo());
+}
+
+#[test]
+fn print_size_zoom_reads_one_hundred_percent() {
+    let (mut app, _) = open_far_away();
+    app.update_view(canvas_800());
+    app.zoom_to_print_size();
+    let s = crate::viewport::print_scale(app.session.settings());
+    assert!((app.view.percent(s) - 100.0).abs() < 1e-9);
+    assert_eq!(crate::navigation::zoom_label(app.view.percent(s)), "Zoom 100 %");
+}

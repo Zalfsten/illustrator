@@ -370,6 +370,15 @@ context: |
   question, one host request at a time, events through an mpsc channel
   polled at frame start, never during a drag); the App refreshes it after
   every history step and fits world_box to the drawing on New / Open.
+  viewport.rs: Viewport (world ↔ screen) plus ViewState { center, scale }
+  kept across frames (zoom around an anchor with bounds 1 % … 100 000 % of
+  print_scale = scale_mm · 96 / 25.4, pan, fit, percent); the App fits on
+  start / New / Open / F via pending_fit at the next paint (update_view),
+  so a resize keeps center and scale. navigation.rs: wheel_intent (Ctrl/Cmd
+  zooms, Shift pans horizontally, WheelMode Automatic: line/page units zoom,
+  point units pan; session setting in the View menu), Event::Zoom pinch,
+  middle-button drag pans; point drags start only with the primary button,
+  and a view change during a drag re-targets it to the pointer.
   Prefer sibling files once a module has unit tests: src/<module>.rs for
   production code and src/tests_<module>.rs for that module's unit tests,
   declared with `#[cfg(test)] #[path = "tests_<module>.rs"] mod tests_<module>;`

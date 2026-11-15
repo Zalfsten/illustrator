@@ -9,7 +9,7 @@ use constraint_runtime::{
     Mesh, MeshFilter, Point2, PointExpr, Rgb, Segment, SolveError, TurnAngle, Vec2,
     VectorsOrthogonal, VectorsParallel,
 };
-use eframe::egui::{self, epaint, Color32, Pos2, Rect, Sense, Stroke};
+use eframe::egui::{self, epaint, Color32, Event, PointerButton, Pos2, Rect, Sense, Stroke};
 use label_layout::TypesetterState;
 use sketch_export::Format;
 use sketch_session::{
@@ -21,7 +21,8 @@ use crate::files::{Answer, Effect, FileCommand, FileState, Step};
 use crate::labels::{label_paint, FallbackReason, LabelCache, PaintItem};
 use crate::platform::Platform;
 use crate::style_ui::{CurrentStyle, StylesWindow};
-use crate::viewport::{world_box, Viewport};
+use crate::navigation::{wheel_intent, zoom_label, NavIntent, WheelMode};
+use crate::viewport::{print_scale, world_box, zoom_bounds, ViewState, Viewport};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Tool {
@@ -96,10 +97,19 @@ pub struct App {
     labels: LabelCache,
     /// Typesetter state or first label failure of the last paint, with its colour.
     label_status: Option<(String, Color32)>,
-    /// Last fitted viewport (updated each paint from canvas rect).
+    /// World ↔ screen mapping of the last paint (from `view` and the canvas).
     viewport: Viewport,
-    /// World AABB the Viewport is fitted to; set on start, New and Open.
+    /// The view (center, scale) kept across frames (system-architecture: The
+    /// view keeps its state across frames).
+    view: ViewState,
+    /// A fit to `world_box` is due at the next paint (start, New, Open, Fit).
+    pending_fit: bool,
+    /// Canvas rect of the last paint (anchor fallback for menu zooms).
+    canvas: Rect,
+    /// World AABB the next fit uses; set on start, New, Open and Fit.
     world_box: (Point2, Point2),
+    /// What the wheel / two-finger scroll does (session setting).
+    wheel_mode: WheelMode,
     /// The drawing's file and unsaved state, and the file command in progress.
     files: FileState,
     /// Closing the window was confirmed (no unsaved changes, or answered).
@@ -234,7 +244,14 @@ impl App {
             labels: LabelCache::new(),
             label_status: None,
             viewport: Viewport::new(1.0, Pos2::ZERO),
+            view: ViewState {
+                center: Point2::new(0.0, 0.0),
+                scale: 1.0,
+            },
+            pending_fit: true,
+            canvas: Rect::from_min_size(Pos2::ZERO, egui::vec2(800.0, 600.0)),
             world_box: (WORLD_MIN, WORLD_MAX),
+            wheel_mode: WheelMode::default(),
             files,
             close_confirmed: false,
             current: CurrentStyle::default(),
@@ -327,7 +344,102 @@ impl App {
         self.segment_clicks.clear();
         self.labels = LabelCache::new();
         self.rebuild_logical_points();
+        self.fit_drawing();
+    }
+
+    /// Fit the view to the drawing at the next paint (system-architecture:
+    /// The view can be fitted on demand); the default box when it is empty.
+    fn fit_drawing(&mut self) {
         self.world_box = self.drawing_box().unwrap_or((WORLD_MIN, WORLD_MAX));
+        self.pending_fit = true;
+    }
+
+    /// Bring the view up to date for `canvas`: a pending fit, the zoom bounds
+    /// of the current document scale, and the Viewport for this paint.
+    fn update_view(&mut self, canvas: Rect) {
+        self.canvas = canvas;
+        let bounds = zoom_bounds(self.session.settings());
+        if self.pending_fit {
+            let (min, max) = self.world_box;
+            self.view = ViewState::fit(canvas, min, max, VIEW_MARGIN, bounds);
+            self.pending_fit = false;
+        }
+        self.view.clamp(bounds);
+        self.viewport = self.view.viewport(canvas);
+    }
+
+    /// Apply one navigation intent around `anchor` and refresh the Viewport.
+    fn apply_intent(&mut self, intent: NavIntent, anchor: Pos2) {
+        match intent {
+            NavIntent::Zoom { factor } => {
+                let bounds = zoom_bounds(self.session.settings());
+                self.view.zoom(self.canvas, anchor, factor, bounds);
+            }
+            NavIntent::Pan(delta) => self.view.pan(delta),
+        }
+        self.viewport = self.view.viewport(self.canvas);
+    }
+
+    /// The View menu: fit, print size, and the wheel / scroll setting.
+    fn view_menu(&mut self, ui: &mut egui::Ui) {
+        ui.menu_button("View", |ui| {
+            if ui.button("Fit drawing (F)").clicked() {
+                self.fit_drawing();
+                ui.close_menu();
+            }
+            if ui.button("Print size (100 %)").clicked() {
+                self.zoom_to_print_size();
+                ui.close_menu();
+            }
+            ui.separator();
+            ui.label("Wheel / scroll:");
+            for (mode, text) in [
+                (WheelMode::Automatic, "Automatic (wheel zooms, touchpad pans)"),
+                (WheelMode::Zoom, "Zoom"),
+                (WheelMode::Pan, "Pan"),
+            ] {
+                ui.radio_value(&mut self.wheel_mode, mode, text);
+            }
+        });
+    }
+
+    /// Zoom around the Canvas center to physical print size.
+    fn zoom_to_print_size(&mut self) {
+        let target = print_scale(self.session.settings());
+        let factor = target / self.view.scale;
+        self.apply_intent(NavIntent::Zoom { factor }, self.canvas.center());
+    }
+
+    /// Wheel, pinch and middle-button drag over the Canvas; `true` if the
+    /// view changed this frame.
+    fn navigate(&mut self, ctx: &egui::Context, response: &egui::Response) -> bool {
+        let before = self.view;
+        let anchor = response.hover_pos().unwrap_or(self.canvas.center());
+        if response.hovered() || response.dragged() {
+            let events = ctx.input(|i| i.events.clone());
+            for event in events {
+                let intent = match event {
+                    Event::MouseWheel { unit, delta, modifiers } => {
+                        wheel_intent(unit, delta, modifiers, self.wheel_mode)
+                    }
+                    Event::Zoom(factor) => Some(NavIntent::Zoom {
+                        factor: f64::from(factor),
+                    }),
+                    _ => None,
+                };
+                if let Some(intent) = intent {
+                    self.apply_intent(intent, anchor);
+                }
+            }
+        }
+        if response.dragged_by(PointerButton::Middle) {
+            self.apply_intent(NavIntent::Pan(response.drag_delta()), anchor);
+        }
+        // `F` fits, unless a text field has the keyboard (labels, styles).
+        if !ctx.wants_keyboard_input() && ctx.input(|i| i.key_pressed(egui::Key::F)) {
+            self.fit_drawing();
+        }
+        self.view != before
     }
 
     /// Box around the visible geometry and the origins of visible labels.
@@ -864,6 +976,7 @@ impl eframe::App for App {
                     Some(MenuItem::Export(format)) => self.start_export(format),
                     None => {}
                 }
+                self.view_menu(ui);
                 ui.separator();
                 ui.label("Tool:");
                 ui.selectable_value(&mut self.tool, Tool::Select, "Select/Drag");
@@ -915,7 +1028,11 @@ impl eframe::App for App {
                     self.styles_window.open = !self.styles_window.open;
                 }
             });
-            ui.label(&self.status);
+            ui.horizontal(|ui| {
+                ui.label(zoom_label(self.view.percent(print_scale(self.session.settings()))));
+                ui.separator();
+                ui.label(&self.status);
+            });
             if let Some((s, color)) = &self.label_status {
                 ui.colored_label(*color, s);
             }
@@ -933,8 +1050,8 @@ impl eframe::App for App {
             };
             let (response, painter) = ui.allocate_painter(ui.available_size(), sense);
             let canvas: Rect = response.rect;
-            let (min, max) = self.world_box;
-            self.viewport = Viewport::fit(canvas, min, max, VIEW_MARGIN);
+            self.update_view(canvas);
+            let view_changed = idle && self.navigate(ctx, &response);
 
             let one_px = 1.0 / ctx.pixels_per_point();
             for (id, polyline) in polylines(&self.mesh()) {
@@ -990,7 +1107,8 @@ impl eframe::App for App {
             }
 
             if self.tool == Tool::Select {
-                if response.drag_started() {
+                // Only the primary button drags points; the middle button pans.
+                if response.drag_started_by(PointerButton::Primary) {
                     // egui reports drag start only after the pointer moved past the
                     // click threshold; hit-test where the button went down, not where
                     // the pointer is now (coarse browser events can be > 12 px away).
@@ -1004,8 +1122,11 @@ impl eframe::App for App {
                         }
                     }
                 }
-                if response.dragged() && self.session.is_dragging() {
-                    if let Some(pos) = response.interact_pointer_pos() {
+                // Pointer motion, or a zoom / pan under a still pointer: the
+                // dragged point follows the pointer's world image in the new view.
+                let retarget = response.dragged_by(PointerButton::Primary) || view_changed;
+                if retarget && self.session.is_dragging() {
+                    if let Some(pos) = response.interact_pointer_pos().or_else(|| ctx.pointer_latest_pos()) {
                         let world = self.viewport.to_world(pos);
                         if let Err(e) = self.session.drag_to(world) {
                             self.last_error = Some(e.to_string());
@@ -1015,7 +1136,7 @@ impl eframe::App for App {
                         }
                     }
                 }
-                if response.drag_stopped() && self.session.is_dragging() {
+                if response.drag_stopped_by(PointerButton::Primary) && self.session.is_dragging() {
                     if let Some(pos) = response.interact_pointer_pos() {
                         let world = self.viewport.to_world(pos);
                         let r = self.session.drag_end(world);
