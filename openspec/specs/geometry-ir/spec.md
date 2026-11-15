@@ -99,7 +99,7 @@ The normalized chart SHALL be the canonical parameterization of the curve's defi
 
 ### Requirement: Curve parameter kinds Normalized and Uniform
 
-The system SHALL address a location on a curve using a curve parameter that is either `Normalized` (\(t \in [0,1]\) in the canonical chart) or `Uniform` (\(u \in [0,1]\) such that equal increments of \(u\) correspond to equal arc length along the curve, i.e. arc-length fraction). A physical arc-length domain \(s \in [0, L]\) SHALL NOT be required in this capability. For a line segment, `Normalized` and `Uniform` SHALL yield the same point for the same numeric argument.
+The system SHALL address a location on a curve using a curve parameter: `Normalized` (\(t \in [0,1]\) in the canonical chart), `Uniform` (\(u \in [0,1]\), the arc-length fraction: equal increments of \(u\) give equal arc length) or, on a curve with the abscissa capability, `Abscissa` (see *Abscissa curve parameter*). A physical arc-length domain \(s \in [0, L]\) SHALL NOT be required. For a line segment, `Normalized` and `Uniform` SHALL yield the same point for the same numeric argument.
 
 #### Scenario: Uniform mid-parameter is arc-length midpoint on a segment
 
@@ -745,7 +745,7 @@ Curves whose carrier is a circle SHALL be able to expose a circular capability. 
 
 ### Requirement: Capabilities are queryable by geometry identity
 
-For a geometry identity resolvable in Document, the system SHALL report which capabilities its kind has: curve, endpoints, line, circular, anchor. The capability set of a kind SHALL be fixed for that kind and SHALL be declared together with the kind's capability factories, so the reported set cannot diverge from the factories the kind provides. Querying an identity that is not resolvable SHALL report that the geometry does not exist.
+For a geometry identity resolvable in Document, the system SHALL report which capabilities its kind has: curve, endpoints, line, circular, anchor, abscissa. The capability set of a kind SHALL be fixed for that kind and SHALL be declared together with the kind's capability factories, so the reported set cannot diverge from the factories the kind provides. Querying an identity that is not resolvable SHALL report that the geometry does not exist.
 
 #### Scenario: Segment reports its capabilities
 
@@ -879,7 +879,7 @@ For a function curve with total length \(L\), the point at normalized \(t\) SHAL
 
 ### Requirement: Function curve capabilities
 
-A function curve SHALL expose the curve capability, the endpoints capability (start at \(x_0\), end at \(x_1\)), the anchor capability with origin \(O\), and the line capability with direction \(R(\theta)\,(1, 0)\), the unit vector of the frame's x axis. It SHALL NOT expose the circular capability.
+A function curve SHALL expose the curve capability, the endpoints capability (start at \(x_0\), end at \(x_1\)), the anchor capability with origin \(O\), the line capability with direction \(R(\theta)\,(1, 0)\), the unit vector of the frame's x axis, and the abscissa capability. It SHALL NOT expose the circular capability.
 
 #### Scenario: Origin and direction
 
@@ -919,6 +919,57 @@ Changing a function curve's attributes SHALL keep \(O\) and \(\theta\) as they a
 - **WHEN** the range of the sine curve with origin (0, 0) and heading 0 is changed from \([0, \pi]\) to \([0, 2\pi]\) on a curve without constraints
 - **THEN** its origin and heading are unchanged
 - **AND** its end point moves from \((\pi, 0)\) to \((2\pi, 0)\)
+
+### Requirement: Abscissa curve parameter
+
+On a function curve, the curve parameter `Abscissa(x)` SHALL address the point \(O + R(\theta)\,(s_u\,x,\; s_v\,f(x))\). The tangent at `Abscissa(x)` SHALL be the derivative with respect to \(x\), \(R(\theta)\,(s_u,\; s_v\,f'(x))\); the normal SHALL be that tangent turned a quarter to the left. Expressions with an abscissa parameter SHALL be point and free-vector expressions like any other, evaluated from the State.
+
+#### Scenario: Point and tangent at x = 1
+
+- **WHEN** the sine curve over \([0, 2\pi]\) with scales 1, origin (0, 0) and heading 0 is addressed at `Abscissa(1)`
+- **THEN** the point is \((1, \sin 1)\) and the tangent is \((1, \cos 1)\)
+
+#### Scenario: Same direction as the normalized tangent
+
+- **WHEN** the tangent at `Abscissa(1)` and the tangent at the normalized parameter of the same point are evaluated
+- **THEN** they point in the same direction and their lengths differ
+
+#### Scenario: Abscissa stays at its x when the range changes
+
+- **WHEN** the range of that curve changes from \([0, 2\pi]\) to \([0, \pi]\)
+- **THEN** the point at `Abscissa(1)` is still \((1, \sin 1)\)
+
+### Requirement: Abscissa parameters need the abscissa capability
+
+An expression with an `Abscissa` parameter SHALL be buildable only for a geometry that has the abscissa capability. For any other geometry, building it SHALL fail with a missing capability.
+
+#### Scenario: No abscissa on a segment
+
+- **WHEN** an on-curve expression with `Abscissa(0.5)` is requested for a segment
+- **THEN** none can be built because the segment has no abscissa capability
+
+### Requirement: Abscissa continues beyond the range
+
+An abscissa outside the function curve's range \([x_0, x_1]\) SHALL address the point of the graph's continuation at that \(x\), with the same formulas. A change of the range SHALL NOT change the point or tangent at an abscissa.
+
+#### Scenario: Point beyond the drawn range
+
+- **WHEN** the sine curve over \([0, 2\pi]\) with scales 1, origin (0, 0) and heading 0 is addressed at `Abscissa(8)`
+- **THEN** the point is \((8, \sin 8)\)
+
+### Requirement: Abscissa requires a defined function with finite slope
+
+An abscissa SHALL be valid only where \(f\) is defined and \(f'\) is finite. Building an expression at an invalid abscissa SHALL fail; at a point with a vertical tangent the normalized parameter has to be used instead.
+
+#### Scenario: Vertical tangent
+
+- **WHEN** an expression at `Abscissa(0)` is requested on a curve with \(f\) = `sqrt(x)` on \([1, 4]\)
+- **THEN** none can be built because the slope at \(x = 0\) is not finite
+
+#### Scenario: Undefined function
+
+- **WHEN** an expression at `Abscissa(-1)` is requested on a curve with \(f\) = `log(x)` on \([1, 2]\)
+- **THEN** none can be built because \(f\) is not defined at \(x = -1\)
 
 ### Requirement: Curves describe their exact shape
 
