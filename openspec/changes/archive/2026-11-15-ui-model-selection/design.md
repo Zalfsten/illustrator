@@ -109,7 +109,7 @@ pub enum Effect { Selection, Deleted(Vec<String>), Nothing }
   - On success it pushes one undo step and clears redo. On the first failure it restores the snapshot and returns `GroupError { index, error }`.
   - It returns `CommandError::Busy` while dragging, as index 0.
   - An empty group succeeds without a step.
-- **Delete intent:** it builds `Delete` commands for the selected constraints first, then for the geometries. Every name still exists at its turn: deleting a constraint never removes a geometry, and a geometry's cascade only removes constraints that are already gone. A point entry adds the geometries of every member of its `point_class` (found through `point_address`, whose name part is the geometry's name), deduplicated. (First drafted as "points are skipped"; changed after the manual check at the user's request.)
+- **Delete intent:** it builds `Delete` commands for the selected constraints first, then for the geometries. Every name still exists at its turn: deleting a constraint never removes a geometry, and a geometry's cascade only removes constraints that are already gone. A point entry adds the geometries of the members of its `point_class` that are the start or end point of their geometry (`doc.start_expr` / `end_expr`), found through `PointExpr::referenced_geometry` and only if the scene's Mesh shows them, deduplicated. Curves through the point, arc centers, label origins and curves hidden by the presentation mode stay (review of PR #108). (First drafted as "points are skipped"; changed after the manual check at the user's request.)
   - The effect is `Deleted(all deleted names)`, and the selection is reconciled (it ends up empty).
   - With nothing deletable selected, the effect is `Nothing` and no step results.
 

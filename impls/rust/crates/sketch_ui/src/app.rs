@@ -91,8 +91,10 @@ pub struct App {
     session: Session,
     /// Selection shared by every view (ui-model).
     ui: UiModel,
-    /// Screen position where a selection box drag began (Select tool).
-    rubber: Option<Pos2>,
+    /// World position where a selection box drag began (Select tool); in
+    /// world units, so it stays on the drawing when the view zooms or pans
+    /// during the drag.
+    rubber: Option<Point2>,
     tool: Tool,
     presentation: PresentationMode,
     pick_points: Vec<PointExpr>,
@@ -629,7 +631,7 @@ impl App {
                 self.last_error = Some(e.to_string());
             }
         } else if self.hit_edge(press, PICK_RADIUS_PX).is_none() {
-            self.rubber = Some(press);
+            self.rubber = Some(self.viewport.to_world(press));
         }
     }
 
@@ -640,7 +642,7 @@ impl App {
             if let Some(end) = pos {
                 let mode = if add { BoxMode::Add } else { BoxMode::Replace };
                 self.intent(Intent::Box {
-                    a: self.viewport.to_world(start),
+                    a: start,
                     b: self.viewport.to_world(end),
                     mode,
                 });
@@ -1276,7 +1278,7 @@ impl eframe::App for App {
                     }
                 }
                 if let (Some(start), Some(now)) = (self.rubber, response.interact_pointer_pos()) {
-                    let rect = Rect::from_two_pos(start, now);
+                    let rect = Rect::from_two_pos(self.viewport.to_screen(start), now);
                     painter.rect(
                         rect,
                         0.0,

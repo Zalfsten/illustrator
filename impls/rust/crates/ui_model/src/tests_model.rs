@@ -164,3 +164,39 @@ fn hidden_objects_stay_selectable_by_name() {
     assert!(ui.selection_mut().select_name(s.document(), "aux", PickMode::Replace));
     assert_eq!(selected(&ui, &s), "aux");
 }
+
+/// Only curves with an *endpoint* in the class that the Canvas shows: not a
+/// curve through the point, not a hidden construction curve (review of PR #108).
+#[test]
+fn a_point_deletes_only_shown_curves_ending_at_it() {
+    let mut s = session(vec![
+        segment("seg1", (0.0, 0.0), (1.0, 0.0)),
+        segment("seg2", (0.5, -1.0), (1.5, 1.0)),
+        join("j1", "seg1.end", "seg2.at(0.5)"),
+        segment_as("aux", GeometryRole::Construction, (1.0, 0.0), (3.0, 3.0)),
+        join("j2", "seg1.end", "aux.start"),
+    ]);
+    let mut ui = UiModel::default();
+    ui.selection_mut().select_name(s.document(), "seg1.end", PickMode::Replace);
+    let sh = shown(s.document(), MeshFilter { include_construction: false });
+    let Ok(Effect::Deleted(mut gone)) = ui.apply(Intent::Delete, &mut s, &sh.scene()) else {
+        panic!("deleted expected")
+    };
+    gone.sort();
+    assert_eq!(gone, ["j1", "j2", "seg1"]);
+    assert!(s.document().lookup("seg2").is_some() && s.document().lookup("aux").is_some());
+}
+
+/// With construction shown, the construction curve ending at the point goes too.
+#[test]
+fn a_point_deletes_shown_construction_curves_ending_at_it() {
+    let mut s = session(vec![
+        segment("seg1", (0.0, 0.0), (1.0, 0.0)),
+        segment_as("aux", GeometryRole::Construction, (1.0, 0.0), (3.0, 3.0)),
+        join("j1", "seg1.end", "aux.start"),
+    ]);
+    let mut ui = UiModel::default();
+    ui.selection_mut().select_name(s.document(), "aux.start", PickMode::Replace);
+    assert!(matches!(run(&mut ui, &mut s, Intent::Delete), Effect::Deleted(_)));
+    assert!(s.document().lookup("seg1").is_none() && s.document().lookup("aux").is_none());
+}

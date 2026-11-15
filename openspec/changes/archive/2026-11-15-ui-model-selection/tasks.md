@@ -65,6 +65,15 @@ Implementation: impls/rust (see design.md), on top of `issue-67-viewport-navigat
   - Checked natively and in Firefox. The check found that Delete / Backspace (and `F` from #67) were ignored after a click on the Canvas, because egui's `wants_keyboard_input()` is true for any focused widget; fixed with `canvas_has_keyboard`.
   - At the user's request, a selected point now deletes the curves at it (spec, design and tests updated).
 
+## Review follow-ups (PR #108)
+
+- [x] R.1 A selected point deletes only curves with their start or end point in its class, and only curves the scene shows; spec scenario and tests added.
+- [x] R.2 Merged #106 with its review fixes; the `F` shortcut keeps both rules (Canvas keyboard focus, no modifiers).
+- [x] R.3 `Entry::exists` and the delete use `PointExpr::referenced_geometry` instead of the address text.
+- [x] R.4 `box_select` runs in one pass over the Mesh edges.
+- [x] R.5 The selection box keeps its start in world coordinates, so it stays on the drawing while the view zooms or pans.
+- [x] R.6 `crates/ui_model` is listed once in `default-members`.
+
 ## Workflow follow-up
 
 - Archive the change after review; sync the `ui-model`, `sketch-commands` and `system-architecture` deltas.

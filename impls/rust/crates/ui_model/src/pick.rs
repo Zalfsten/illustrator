@@ -2,6 +2,8 @@
 //! world position, box selection). Pure functions of the [`Scene`]; positions
 //! and tolerances are world units chosen by the front end.
 
+use std::collections::HashSet;
+
 use constraint_runtime::{Document, GeometryId, LogicalPoint, Mesh, Point2, PointExpr};
 
 use crate::selection::Entry;
@@ -66,25 +68,24 @@ pub fn mesh_polylines(mesh: &Mesh) -> Vec<(GeometryId, Vec<Point2>)> {
 
 /// Geometries whose whole polyline lies inside the box with opposite corners
 /// `a` and `b`, in Mesh order. Geometries without Mesh edges (labels) never.
+/// One pass over the edges.
 pub fn box_select(scene: &Scene, a: Point2, b: Point2) -> Vec<GeometryId> {
     let (x0, x1) = (a.x.min(b.x), a.x.max(b.x));
     let (y0, y1) = (a.y.min(b.y), a.y.max(b.y));
     let inside = |p: &Point2| (x0..=x1).contains(&p.x) && (y0..=y1).contains(&p.y);
-    let mut out: Vec<GeometryId> = Vec::new();
+    let mut order: Vec<GeometryId> = Vec::new();
+    let mut outside: HashSet<GeometryId> = HashSet::new();
+    let mut seen: HashSet<GeometryId> = HashSet::new();
     for e in &scene.mesh.edges {
-        if !out.contains(&e.geometry) {
-            out.push(e.geometry);
+        if seen.insert(e.geometry) {
+            order.push(e.geometry);
+        }
+        if !(inside(&e.a) && inside(&e.b)) {
+            outside.insert(e.geometry);
         }
     }
-    out.retain(|id| {
-        scene
-            .mesh
-            .edges
-            .iter()
-            .filter(|e| e.geometry == *id)
-            .all(|e| inside(&e.a) && inside(&e.b))
-    });
-    out
+    order.retain(|id| !outside.contains(id));
+    order
 }
 
 #[cfg(test)]

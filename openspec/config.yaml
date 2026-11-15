@@ -302,8 +302,8 @@ context: |
   curve), mesh_polylines, box_select (every Mesh vertex inside; labels never).
   model.rs: UiModel { selection } + Intent (Pick / Box / Clear / Delete,
   world positions and tolerances) -> Effect; Delete = Session::apply_group of
-  constraint deletes, then geometry deletes (a point adds the curves of
-  its congruence class);
+  constraint deletes, then geometry deletes (a point adds the shown curves
+  with an endpoint in its congruence class);
   hide_invisible(doc, filter) on a presentation-mode change.
   expression (wasm-capable, no dependencies, geometry-free): the
   expression-language spec. lexer.rs / parser.rs (hand-written precedence

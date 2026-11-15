@@ -92,7 +92,7 @@ A box intent SHALL carry two opposite world corners and a mode (replace or add).
 
 ### Requirement: Delete the selection
 
-A delete intent SHALL delete every selected geometry (with the constraints that reference it) and every selected constraint, as one step in the session's history. A selected point SHALL delete every curve whose endpoint lies in its congruence class. With an empty selection, it SHALL change nothing and create no step.
+A delete intent SHALL delete every selected geometry (with the constraints that reference it) and every selected constraint, as one step in the session's history. A selected point SHALL delete every curve shown on the Canvas whose start or end point lies in its congruence class; curves that only pass through the point, and hidden curves, SHALL remain. With an empty selection, it SHALL change nothing and create no step.
 
 #### Scenario: One undo step
 
@@ -105,6 +105,12 @@ A delete intent SHALL delete every selected geometry (with the constraints that 
 - **WHEN** `seg1.end` and `seg2.start` are joined, `seg3` is not, and only the point `seg1.end` is selected and deleted
 - **THEN** `seg1`, `seg2` and their join are deleted in one history step
 - **AND** `seg3` remains
+
+#### Scenario: Curves through the point and hidden curves remain
+
+- **WHEN** `seg1.end` is joined to `seg2.at(0.5)` and to the start of a hidden construction segment `aux`, and only that point is selected and deleted
+- **THEN** `seg1` and both joins are deleted
+- **AND** `seg2` and `aux` remain
 
 #### Scenario: Empty selection deletes nothing
 
