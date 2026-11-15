@@ -194,6 +194,15 @@ pub enum TurnFormula {
 }
 
 /// Curve chart expression factories (position / frame / length along the chart).
+///
+/// These typed factories do not check the curve parameter: a
+/// [`CurveParam::Abscissa`] is only valid on a kind with the abscissa
+/// capability and at a valid `x`, and evaluating any other one panics. Code
+/// that does not know this statically uses the identity-based factories
+/// ([`Document::on_curve_expr`](crate::document::Document::on_curve_expr) and
+/// siblings), which return `None` instead, and
+/// [`Document::add_constraint`](crate::document::Document::add_constraint)
+/// debug-asserts it.
 pub trait CurveExprs: Geometry {
     fn on_curve_expr(id: GeometryId, param: CurveParam) -> PointExpr {
         PointExpr::new(id, PointFormula::OnCurve { param })

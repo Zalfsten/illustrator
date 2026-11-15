@@ -605,3 +605,37 @@ fn invalid_abscissa_users_lists_exactly_the_affected_constraints() {
     assert_eq!(doc.invalid_abscissa_users(f), vec![at_minus_one]);
     assert!(doc.invalid_abscissa_users(s).is_empty(), "other geometries are not affected");
 }
+
+/// Validity is "evaluates without a domain error" (expression-language): f″
+/// and the open domains count too, not only f and f′ (review of PR #103).
+#[test]
+fn abscissa_validity_follows_the_domain_errors_of_evaluation() {
+    for (src, x) in [("x*abs(x)", 0.0), ("x^1.5", 0.0)] {
+        let a = FunctionAttrs::new(src, (1.0, 2.0), (1.0, 1.0)).unwrap();
+        assert!(!a.abscissa_valid(x), "{src} at {x}");
+        assert!(a.abscissa_valid(1.5), "{src} at 1.5");
+    }
+}
+
+/// Typed factories are unchecked; `add_constraint` catches an invalid
+/// abscissa in debug builds instead of a later panic in the solver.
+#[test]
+#[cfg(debug_assertions)]
+#[should_panic(expected = "invalid curve parameter")]
+fn add_constraint_rejects_an_invalid_abscissa_in_debug_builds() {
+    use crate::constraint_kinds::FixPoint;
+    let mut doc = Document::new();
+    let f = add(&mut doc, FunctionAttrs::new("log(x)", (1.0, 2.0), (1.0, 1.0)).unwrap(), (0.0, 0.0), 0.0);
+    doc.add_constraint(FixPoint { point: Function::on_curve_expr(f, CurveParam::Abscissa(-1.0)), target: Point2::new(0.0, 0.0) });
+}
+
+#[test]
+#[cfg(debug_assertions)]
+#[should_panic(expected = "invalid curve parameter")]
+fn add_constraint_rejects_an_abscissa_on_a_segment_in_debug_builds() {
+    use crate::constraint_kinds::FixPoint;
+    use crate::geometry_kinds::Segment;
+    let mut doc = Document::new();
+    let s = doc.add_geometry::<Segment>(GeometryRole::Result, (Point2::new(0.0, 0.0), Point2::new(1.0, 0.0)));
+    doc.add_constraint(FixPoint { point: Segment::on_curve_expr(s, CurveParam::Abscissa(0.5)), target: Point2::new(0.0, 0.0) });
+}

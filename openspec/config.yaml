@@ -143,7 +143,8 @@ context: |
       LineExprs (direction), CircularExprs (center, radius |R|) and
       AnchorExprs (origin), and abscissa (no trait: gates the curve
       factories for CurveParam::Abscissa; Document::abscissa_valid checks
-      capability, f defined and f′ finite at x); every capability is opt-in, curve included
+      capability and that f evaluates at x without a domain error; the typed
+      CurveExprs factories are unchecked, add_constraint debug-asserts); every capability is opt-in, curve included
       (geometry_caps!(Segment: curve, endpoints, line)), and a kind
       declares them once with geometry_caps! (trait impls + runtime Caps);
       dynamic ids use Document::caps and Option-returning id-based

@@ -202,11 +202,11 @@ impl FunctionAttrs {
         try_jet(&self.expression, x)
     }
 
-    /// Whether `x` is a valid abscissa: finite, `f` defined and `f(x)`, `f′(x)`
-    /// finite (geometry-ir: Abscissa requires a defined function with finite
-    /// slope).
+    /// Whether `x` is a valid abscissa: finite, and `f` evaluates there without
+    /// a domain error, so `f(x)`, `f′(x)` and `f″(x)` are finite
+    /// (geometry-ir: Abscissa requires a defined function with finite slope).
     pub fn abscissa_valid(&self, x: f64) -> bool {
-        x.is_finite() && self.abscissa_jet(x).is_ok_and(|j| j.value.is_finite() && j.d1.is_finite())
+        x.is_finite() && self.abscissa_jet(x).is_ok()
     }
 
     /// Local point and `dγ/dx` at a valid abscissa.

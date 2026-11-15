@@ -56,6 +56,13 @@ Implementation: impls/rust (see design.md). Run tests from `impls/rust`. New uni
 - [x] 5.2 Update `openspec/config.yaml`: address grammar, capability list, `CurveParam::Abscissa`, `curve_params` / `invalid_abscissa_users`. Verify that `openspec validate abscissa-addressing --strict` passes.
 - [x] 5.3 Run `cargo test --workspace`, `cargo clippy --workspace --all-targets -- -D warnings` and `scripts/check-wasm.sh` from `impls/rust`. Verify that all three succeed.
 
+## Review follow-ups (PR #103)
+
+- [x] R.1 `Document::add_constraint` debug-asserts that every operand's curve parameter is usable on its geometry; the `CurveExprs` docs and design decision 3 say the typed factories are unchecked; the geometry-ir requirement covers building by geometry identity.
+- [x] R.2 `ConstraintKind::curve_params` has no default, so new kinds cannot bypass the edit rule; `EqualLength` returns an empty list.
+- [x] R.3 Abscissa validity is worded as "evaluates without a domain error" (f, f′, f″ finite), as implemented; the redundant finiteness checks are gone.
+- [x] R.4 Wrapped the module doc of `address.rs`.
+
 ## Workflow follow-up
 
 - Archive the change after review; sync the `geometry-ir`, `object-naming` and `sketch-commands` deltas.

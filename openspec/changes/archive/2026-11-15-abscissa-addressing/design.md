@@ -50,7 +50,7 @@ See proposal.md for motivation and the spec deltas (`geometry-ir`, `object-namin
 - `Caps.abscissa` and the keyword `abscissa` in `geometry_caps!`; `Function` declares it.
   - It brings no factory trait of its own: it gates the existing curve factories for the `Abscissa` parameter.
 - `Document::on_curve_expr / tangent_expr / normal_expr` with `CurveParam::Abscissa(x)` return `None` unless the geometry has the abscissa capability **and** the abscissa is valid there. `Document::abscissa_valid(id, x)` answers the latter.
-- The static per-kind factories (`Function::on_curve_expr(id, param)`) stay unchecked, as for every capability today. They are for code that already knows the kind.
+- The static per-kind factories (`Function::on_curve_expr(id, param)`) stay unchecked. They are for code that already knows the kind. Unlike the other capabilities, misuse is not a compile error, because every curve kind implements `CurveExprs`: evaluating an abscissa on another kind, or at an invalid `x`, panics. `Document::add_constraint` therefore debug-asserts the operands' curve parameters (review of PR #103).
 
 *Alternative:* a separate `AbscissaExprs` factory trait. Rejected: it would duplicate three factories, and the parameter value already tells which form is meant.
 

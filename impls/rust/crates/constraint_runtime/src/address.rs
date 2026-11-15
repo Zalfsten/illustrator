@@ -5,8 +5,9 @@
 //! `radius` (lengths). `t` is a normalized curve parameter in \([0, 1]\); no
 //! whitespace. On geometries with the abscissa capability, `at(x=<x>)`,
 //! `tangent(x=<x>)` and `normal(x=<x>)` address the function variable `x`
-//! (any finite value where `f` is defined with a finite slope). Resolution goes through the capability-based factories on
-//! [`Document`], so a missing capability is an error, not a panic.
+//! (any finite value where `f` evaluates without a domain error).
+//! Resolution goes through the capability-based factories on [`Document`],
+//! so a missing capability is an error, not a panic.
 
 use crate::document::Document;
 use crate::expr::{LengthExpr, PointExpr, VecExpr};

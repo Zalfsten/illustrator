@@ -502,8 +502,19 @@ impl Document {
         true
     }
 
+    /// Add constraint `c` and give it the next automatic name of its kind.
+    ///
+    /// Every curve parameter of the operands must be usable on its geometry
+    /// (an abscissa only with the abscissa capability, at a valid `x`), as the
+    /// identity-based factories guarantee; checked in debug builds, because
+    /// evaluating an invalid one panics.
     pub fn add_constraint(&mut self, c: impl Into<ConstraintInst>) -> ConstraintId {
         let body = c.into();
+        debug_assert!(
+            body.curve_params().into_iter().all(|(g, param)| self.curve_param_ok(g, param)),
+            "constraint with an invalid curve parameter: {:?}",
+            body.curve_params()
+        );
         let geos = body.referenced_geometries();
         let id = self.constraints.next_id();
         if let Some(g) = body.as_congruence() {

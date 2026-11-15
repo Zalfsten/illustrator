@@ -81,7 +81,7 @@ On a function curve, the curve parameter `Abscissa(x)` SHALL address the point \
 
 ### Requirement: Abscissa parameters need the abscissa capability
 
-An expression with an `Abscissa` parameter SHALL be buildable only for a geometry that has the abscissa capability. For any other geometry, building it SHALL fail with a missing capability.
+An expression with an `Abscissa` parameter SHALL be buildable by geometry identity only for a geometry that has the abscissa capability. For any other geometry, building it SHALL fail with a missing capability.
 
 #### Scenario: No abscissa on a segment
 
@@ -99,7 +99,7 @@ An abscissa outside the function curve's range \([x_0, x_1]\) SHALL address the 
 
 ### Requirement: Abscissa requires a defined function with finite slope
 
-An abscissa SHALL be valid only where \(f\) is defined and \(f'\) is finite. Building an expression at an invalid abscissa SHALL fail; at a point with a vertical tangent the normalized parameter has to be used instead.
+An abscissa SHALL be valid only where evaluating \(f\) reports no domain error (expression-language), so \(f\), \(f'\) and \(f''\) are finite there. Building an expression at an invalid abscissa SHALL fail; at a point with a vertical tangent the normalized parameter has to be used instead.
 
 #### Scenario: Vertical tangent
 
