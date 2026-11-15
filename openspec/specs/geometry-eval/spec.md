@@ -79,7 +79,7 @@ Expressions SHALL be able to report that formula-local DOF count \(n\) without r
 
 ### Requirement: Analytical derivatives are written into the contribution matrix
 
-The production path SHALL write those analytical derivatives into the contribution Jacobian matrix buffer (formula-local columns), not via finite-difference. Writes MAY apply a contribution scale (for example \(+1\) / \(-1\) when a residual is a difference of two expressions). Finite-difference approximation SHALL NOT be used as a fallback or as the production Jacobian path.
+The production path SHALL write the analytical derivatives of point, vector and scalar expressions into the contribution Jacobian matrix buffer (formula-local columns), not via finite-difference. Writes MAY apply a contribution scale (for example \(+1\) / \(-1\) when a residual is a difference of two expressions). Finite-difference approximation SHALL NOT be used as a fallback or as the production Jacobian path.
 
 #### Scenario: Congruence block from two point Jacobians
 

@@ -201,7 +201,7 @@ Operations that involve more than one geometry (for example intersection of two 
 
 ### Requirement: Intersection semantics may come later
 
-Full evaluation semantics for intersection and new tangency/incidence constraints MAY be specified in later changes; this capability requires only that such constructions are not modeled as mandatory first-class point geometry entities. Such constructions SHALL NOT be modeled as mandatory first-class point geometry entities.
+Full evaluation semantics for intersection and new tangency/incidence constraints MAY be specified in later changes. Such constructions SHALL NOT be modeled as mandatory first-class point geometry entities.
 
 #### Scenario: No intersection point kind
 
@@ -413,7 +413,7 @@ Each document geometry SHALL combine **shared metadata** (stable identity, resul
 
 ### Requirement: Expressions hide kinds from constraints
 
-Opaque point and vector expressions SHALL evaluate those formulas without requiring constraint, assembly, or Interact code to match on geometry kind or on private formula kinds.
+Opaque point and vector expressions SHALL evaluate the kind-owned chart formulas without requiring constraint, assembly, or Interact code to match on geometry kind or on private formula kinds.
 
 #### Scenario: Dragging an arc end
 
@@ -466,7 +466,7 @@ Each geometry kind SHALL define how its initial continuous parameters are packed
 
 ### Requirement: Kind formulas read their own block
 
-Kind chart formulas that evaluate points, free vectors, scalars, exact shape or curvature SHALL read State entries inside that recorded block window; they SHALL NOT rely on a separate authoritative global-index layout owned outside Document.
+Kind chart formulas that evaluate points, free vectors, scalars, exact shape or curvature SHALL read State entries inside the State block window recorded in the geometry's shared metadata; they SHALL NOT rely on a separate authoritative global-index layout owned outside Document.
 
 #### Scenario: Segment after an arc
 
@@ -475,7 +475,7 @@ Kind chart formulas that evaluate points, free vectors, scalars, exact shape or 
 
 ### Requirement: Kind formulas may read their own attributes
 
-Besides that block, a kind formula MAY read the non-parameter attributes of the same geometry (for example a label's text attributes); it SHALL NOT read another geometry's attributes.
+Besides its geometry's State block window, a kind formula MAY read the non-parameter attributes of the same geometry (for example a label's text attributes); it SHALL NOT read another geometry's attributes.
 
 #### Scenario: Two labels, own attributes
 
@@ -638,7 +638,7 @@ For evaluate/solve and constraint assembly, derived locations, frame vectors, an
 
 ### Requirement: No kind-specific sampling on the solve path
 
-Implementations SHALL NOT require callers on the production evaluate/solve path to invoke geometry-kind-specific imperative sampling APIs that take State directly in place of those expressions.
+Implementations SHALL NOT require callers on the production evaluate/solve path to invoke geometry-kind-specific imperative sampling APIs that take State directly in place of the opaque point, vector and scalar expressions.
 
 #### Scenario: Residuals read curves through expressions
 
@@ -709,7 +709,7 @@ Curves whose carrier is a straight line SHALL be able to expose a line capabilit
 
 ### Requirement: Curves without a straight carrier have no direction
 
-Curves without a straight carrier (for example circular arcs) SHALL NOT expose it, so a direction expression cannot be built for them. The direction expression SHALL provide analytical derivatives like other vector expressions.
+Curves without a straight carrier (for example circular arcs) SHALL NOT expose the line capability, so a direction expression cannot be built for them. The direction expression SHALL provide analytical derivatives like other vector expressions.
 
 #### Scenario: No direction for an arc
 
@@ -912,7 +912,7 @@ Creating a function curve, or changing its expression or range, SHALL succeed on
 
 ### Requirement: Function curve attributes move only the local curve
 
-Changing a function curve's attributes SHALL keep \(O\) and \(\theta\) as they are and SHALL change the curve's points accordingly. A solve SHALL change only \(O\) and \(\theta\) of a function curve, never its attributes.
+Changing a function curve's attributes SHALL NOT itself change \(O\) and \(\theta\); it SHALL change the curve's points accordingly. A solve, including the one that follows a geometry-changing `set` (sketch-commands), SHALL change only \(O\) and \(\theta\) of a function curve, never its attributes.
 
 #### Scenario: Longer range, same origin
 
@@ -1012,7 +1012,7 @@ The pieces of a curve's shape SHALL run from the curve's normalized position t =
 
 ### Requirement: Shapes without closed-form pieces stay within the tolerance
 
-A curve whose shape is not a segment's or a circular arc's SHALL describe it with cubic Bézier pieces. Every point of the shape SHALL lie within the requested tolerance of the curve, and every point of the curve within the tolerance of the shape. Each piece SHALL start and end exactly on the curve, and the shape's total length SHALL differ from the curve's length expression by at most the tolerance.
+A curve whose shape is not a segment's or a circular arc's SHALL describe it with cubic Bézier pieces, each starting and ending exactly on the curve. Pieces SHALL be refined until a deviation check finds each within the requested tolerance of the curve, both ways; the check MAY estimate from samples. The shape's total length SHOULD differ from the curve's length expression by at most the tolerance.
 
 #### Scenario: Pieces stay within the tolerance
 
@@ -1029,6 +1029,12 @@ A curve whose shape is not a segment's or a circular arc's SHALL describe it wit
 
 - **WHEN** the shape of a curve without closed-form pieces is queried with tolerance δ
 - **THEN** the total length of its pieces differs from the curve's length expression by at most δ
+
+#### Scenario: A piece cap spreads the remaining error
+
+- **WHEN** a curve needs more pieces than the cap to reach the tolerance
+- **THEN** the pieces with the largest deviation were refined first, so no part of the curve keeps a coarse initial piece
+- **AND** the caller is told that the cap stopped the refinement
 
 ### Requirement: Curves report their curvature
 

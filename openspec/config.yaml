@@ -132,8 +132,9 @@ context: |
       at the ends, derivatives, curvature, axis extrema, de Casteljau
       split / sub, adaptive Gauss–Legendre arc length and its Newton
       inverse) and hermite_shape(point, tangent, knots, tolerance,
-      deviation): Hermite pieces γ ± γ′h/3, 4 per knot interval, halved
-      depth first, MAX_SHAPE_PIECES 4096; deviation is pluggable,
+      deviation) -> HermiteShape { pieces, capped }: Hermite pieces
+      γ ± γ′h/3, 4 per knot interval, the largest deviation halved first,
+      MAX_SHAPE_PIECES 4096; deviation is pluggable,
       sampled_deviation (7 matched samples × 2) is an estimate, a provable
       bound is #99
     - capabilities.rs: kind-agnostic formula tags (PointFormula,
@@ -191,7 +192,8 @@ context: |
     length + curvature upper bounds per parameter piece);
     UNIFORM_CURVE kinds (segment, arc) in closed form (osculating-circle
     count, φmax capped at π, equal edges, minimal); other curves: demand
-    grid (64 cells) → equal shares, per-edge Green-function deviation bound
+    on an adaptive grid (64 cells, halved while a cell needs more than one
+    edge and halving lowers its demand) → equal shares, per-edge Green-function deviation bound
     over 4 sub-pieces + turning ≤ π/2, failing edges halved locally; cap
     MAX_MESH_EDGES (1024) per curve; endpoint hits use geometric
     start/end expressions only, and only for kinds with the endpoints

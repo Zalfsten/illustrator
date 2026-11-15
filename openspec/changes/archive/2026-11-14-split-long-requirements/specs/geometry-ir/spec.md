@@ -406,7 +406,7 @@ The system SHALL NOT require a separate segment-direction vector-expression fact
 
 ### Requirement: Intersection semantics may come later
 
-Full evaluation semantics for intersection and new tangency/incidence constraints MAY be specified in later changes; this capability requires only that such constructions are not modeled as mandatory first-class point geometry entities. Such constructions SHALL NOT be modeled as mandatory first-class point geometry entities.
+Full evaluation semantics for intersection and new tangency/incidence constraints MAY be specified in later changes. Such constructions SHALL NOT be modeled as mandatory first-class point geometry entities.
 
 #### Scenario: No intersection point kind
 
@@ -497,7 +497,7 @@ For a circular arc of constant radius, `Normalized` and `Uniform` curve paramete
 
 ### Requirement: Expressions hide kinds from constraints
 
-Opaque point and vector expressions SHALL evaluate those formulas without requiring constraint, assembly, or Interact code to match on geometry kind or on private formula kinds.
+Opaque point and vector expressions SHALL evaluate the kind-owned chart formulas without requiring constraint, assembly, or Interact code to match on geometry kind or on private formula kinds.
 
 #### Scenario: Dragging an arc end
 
@@ -516,7 +516,7 @@ Extending the admitted kind set SHALL extend the kind sum and the expression for
 
 ### Requirement: Kind formulas read their own block
 
-Kind chart formulas that evaluate points, free vectors, scalars, exact shape or curvature SHALL read State entries inside that recorded block window; they SHALL NOT rely on a separate authoritative global-index layout owned outside Document.
+Kind chart formulas that evaluate points, free vectors, scalars, exact shape or curvature SHALL read State entries inside the State block window recorded in the geometry's shared metadata; they SHALL NOT rely on a separate authoritative global-index layout owned outside Document.
 
 #### Scenario: Segment after an arc
 
@@ -525,7 +525,7 @@ Kind chart formulas that evaluate points, free vectors, scalars, exact shape or 
 
 ### Requirement: Kind formulas may read their own attributes
 
-Besides that block, a kind formula MAY read the non-parameter attributes of the same geometry (for example a label's text attributes); it SHALL NOT read another geometry's attributes.
+Besides its geometry's State block window, a kind formula MAY read the non-parameter attributes of the same geometry (for example a label's text attributes); it SHALL NOT read another geometry's attributes.
 
 #### Scenario: Two labels, own attributes
 
@@ -598,7 +598,7 @@ Intrinsically periodic closed curves SHALL expose the same length factory (full 
 
 ### Requirement: No kind-specific sampling on the solve path
 
-Implementations SHALL NOT require callers on the production evaluate/solve path to invoke geometry-kind-specific imperative sampling APIs that take State directly in place of those expressions.
+Implementations SHALL NOT require callers on the production evaluate/solve path to invoke geometry-kind-specific imperative sampling APIs that take State directly in place of the opaque point, vector and scalar expressions.
 
 #### Scenario: Residuals read curves through expressions
 
@@ -627,7 +627,7 @@ Constraints and expressions that name geometries SHALL use that identity. Removi
 
 ### Requirement: Curves without a straight carrier have no direction
 
-Curves without a straight carrier (for example circular arcs) SHALL NOT expose it, so a direction expression cannot be built for them. The direction expression SHALL provide analytical derivatives like other vector expressions.
+Curves without a straight carrier (for example circular arcs) SHALL NOT expose the line capability, so a direction expression cannot be built for them. The direction expression SHALL provide analytical derivatives like other vector expressions.
 
 #### Scenario: No direction for an arc
 

@@ -57,9 +57,13 @@ fn build(source: &str, [x0, x1]: [f64; 2], [su, sv]: [f64; 2]) -> Result<Functio
             field: "scale",
             reason: "not greater than zero",
         },
-        FunctionAttrsError::Parse(p) => CommandError::InvalidExpression {
-            message: format!("{p} at bytes {}..{} of `{source}`", p.span.start, p.span.end),
-        },
+        FunctionAttrsError::Parse(p) => {
+            // Character positions for people; the parser's span is in bytes.
+            let chars = |byte: usize| source[..byte].chars().count();
+            CommandError::InvalidExpression {
+                message: format!("{p} at characters {}..{} of `{source}`", chars(p.span.start), chars(p.span.end)),
+            }
+        }
         FunctionAttrsError::Domain(DomainCheckError::TooComplex { range: (a, b) }) => {
             CommandError::InvalidExpression {
                 message: format!("the domain check exceeded its budget in [{a}, {b}]; try to simplify it"),
