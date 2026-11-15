@@ -149,3 +149,18 @@ fn one_hundred_percent_is_print_size() {
     let (lo, hi) = zoom_bounds(&settings);
     assert!((lo / s - 0.01).abs() < 1e-12 && (hi / s - 1000.0).abs() < 1e-9);
 }
+
+/// Zoomed in far from the world origin the screen origin is millions of
+/// units away; kept in `f64`, the mapping stays exact and a sub-pixel pan
+/// moves the drawing smoothly (review of PR #106).
+#[test]
+fn mapping_stays_exact_far_from_the_origin_at_high_zoom() {
+    let c = canvas(800.0, 600.0);
+    let mut v = ViewState { center: Point2::new(1000.0, -1000.0), scale: 37_795.0 };
+    assert!(near(v.viewport(c).to_world(c.center()), v.center, 1e-9));
+    let p = Point2::new(1000.001, -1000.002);
+    let before = v.viewport(c).to_screen(p);
+    v.pan(egui::vec2(0.5, 0.25));
+    let after = v.viewport(c).to_screen(p);
+    assert!(((after.x - before.x) - 0.5).abs() < 1e-3 && ((after.y - before.y) - 0.25).abs() < 1e-3, "{before:?} → {after:?}");
+}

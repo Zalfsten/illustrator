@@ -435,8 +435,9 @@ impl App {
         if response.dragged_by(PointerButton::Middle) {
             self.apply_intent(NavIntent::Pan(response.drag_delta()), anchor);
         }
-        // `F` fits, unless a text field has the keyboard (labels, styles).
-        if !ctx.wants_keyboard_input() && ctx.input(|i| i.key_pressed(egui::Key::F)) {
+        // `F` fits, unless a text field has the keyboard (labels, styles); not
+        // with modifiers, so Ctrl+F (browser find) and the like stay theirs.
+        if !ctx.wants_keyboard_input() && ctx.input(|i| i.modifiers.is_none() && i.key_pressed(egui::Key::F)) {
             self.fit_drawing();
         }
         self.view != before
