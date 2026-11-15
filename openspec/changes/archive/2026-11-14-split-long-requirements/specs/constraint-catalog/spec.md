@@ -41,18 +41,18 @@ The system SHALL provide a VectorsOrthogonal relationship between two **opaque f
 
 ### Requirement: Direct partners need not follow Congruence chains
 
-Transitive closure of Congruence (longer identification chains) is NOT required by this catalog; Interact MAY use the direct-partner set when applying soft mouse targets to a congruence class. The direct-partner enumeration SHALL remain correct without following chains.
+Transitive closure of Congruence (longer identification chains) is NOT required by this catalog; Interact MAY use the direct-partner set when applying soft mouse targets to a congruence class. The direct-partner set of a point expression SHALL contain every point expression related to it by a single Congruence; point expressions reachable only through a chain of Congruences are not required to be in it.
 
 #### Scenario: Chain partner is not a direct partner
 
 - **WHEN** Congruence relates \(A\) to \(B\) and \(B\) to \(C\)
 - **AND** direct partners of \(A\) are requested
 - **THEN** \(B\) appears in that partner set
-- **AND** the set is correct whether or not it also lists \(C\)
+- **AND** \(C\), related to \(A\) only through \(B\), is not required to appear in it
 
 ### Requirement: Lines are constrained through their direction expressions
 
-This applies to VectorsParallel and VectorsOrthogonal. For parallel or perpendicular **lines**, tools SHALL supply the direction expressions of the line capability (see geometry-ir); tangent expressions at a stated curve parameter remain valid inputs and then constrain the curves only at that location (pointwise). The residual SHALL NOT hard-wire segment identity outside those expressions.
+For parallel or perpendicular **lines** (VectorsParallel, VectorsOrthogonal), tools SHALL supply the direction expressions of the line capability (see geometry-ir); tangent expressions at a stated curve parameter remain valid inputs and then constrain the curves only at that location (pointwise). The residual of VectorsParallel or VectorsOrthogonal SHALL NOT hard-wire segment identity outside those expressions.
 
 #### Scenario: Parallel lines use direction expressions
 

@@ -39,7 +39,7 @@ An export SHALL write a cubic Bézier shape piece as one cubic Bézier path piec
 
 ### Requirement: Export asks for shapes within 1 µm on paper
 
-An export SHALL query each curve's shape (geometry-ir) at a tolerance of at most 1 µm on paper at the export's physical size. A curve without closed-form pieces is then written within 1 µm of the exact curve; segments and circular arcs are written as specified for their pieces.
+An export SHALL query each curve's shape (geometry-ir) at a tolerance of at most 1 µm on paper at the export's physical size. A curve without closed-form pieces is then written within 1 µm of the exact curve, as far as its shape's deviation check finds; segments and circular arcs are written as specified for their pieces.
 
 #### Scenario: Tolerance follows the document scale
 

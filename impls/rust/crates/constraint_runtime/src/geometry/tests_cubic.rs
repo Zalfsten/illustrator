@@ -188,7 +188,7 @@ fn hermite_circle_stays_within_the_tolerance() {
         let (g, dg) = circle(r, turns);
         for rel in [1e-3, 1e-6, 1e-9] {
             let delta = rel * r;
-            let shape = hermite_shape(&g, &dg, &[0.0, 1.0], delta, sampled_deviation(&g));
+            let shape = hermite_shape(&g, &dg, &[0.0, 1.0], delta, sampled_deviation(&g)).pieces;
             assert!(shape.iter().all(|s| matches!(s, ShapePiece::Cubic { .. })));
             let iv = intervals(&shape, &g);
             let worst = max_two_sided(&shape, &iv, &g, |q, _| ((q - p(0.0, 0.0)).length() - r).abs());
@@ -219,7 +219,7 @@ fn hermite_sine_graph_stays_within_the_tolerance() {
         (g(t) - q).length()
     };
     for delta in [1e-3, 1e-6, 1e-9] {
-        let shape = hermite_shape(g, dg, &[0.0, 1.0], delta, sampled_deviation(g));
+        let shape = hermite_shape(g, dg, &[0.0, 1.0], delta, sampled_deviation(g)).pieces;
         let iv = intervals(&shape, g);
         let worst = max_two_sided(&shape, &iv, g, to_graph);
         assert!(worst <= delta, "δ {delta}: deviation {worst}");
@@ -230,7 +230,7 @@ fn hermite_sine_graph_stays_within_the_tolerance() {
 fn hermite_ends_and_joints_lie_on_the_curve() {
     let (g, dg) = circle(1.0, 0.75);
     let knots = [0.0, 0.3, 1.0];
-    let shape = hermite_shape(&g, &dg, &knots, 1e-6, sampled_deviation(&g));
+    let shape = hermite_shape(&g, &dg, &knots, 1e-6, sampled_deviation(&g)).pieces;
     assert_eq!(shape[0].start_point(), g(0.0));
     assert_eq!(shape.last().unwrap().end_point(), g(1.0));
     for w in shape.windows(2) {
@@ -247,7 +247,7 @@ fn hermite_uses_the_given_deviation() {
         calls.set(calls.get() + 1);
         0.0
     };
-    let shape = hermite_shape(&g, &dg, &[0.0, 0.5, 1.0], 1e-9, zero);
+    let shape = hermite_shape(&g, &dg, &[0.0, 0.5, 1.0], 1e-9, zero).pieces;
     assert_eq!(shape.len(), 8, "4 initial pieces per knot interval, none halved");
     assert_eq!(calls.get(), 8);
 }
@@ -255,7 +255,7 @@ fn hermite_uses_the_given_deviation() {
 #[test]
 fn hermite_stops_at_the_piece_cap() {
     let (g, dg) = circle(1.0, 1.0);
-    let shape = hermite_shape(&g, &dg, &[0.0, 1.0], 1.0, |_, _, _| f64::INFINITY);
+    let shape = hermite_shape(&g, &dg, &[0.0, 1.0], 1.0, |_, _, _| f64::INFINITY).pieces;
     assert_eq!(shape.len(), MAX_SHAPE_PIECES);
 }
 
@@ -264,7 +264,56 @@ fn hermite_is_deterministic() {
     let w = 4.0 * PI;
     let g = move |t: f64| p(w * t, (w * t).sin());
     let dg = move |t: f64| Vec2::new(w, w * (w * t).cos());
-    let a = hermite_shape(g, dg, &[0.0, 1.0], 1e-7, sampled_deviation(g));
-    let b = hermite_shape(g, dg, &[0.0, 1.0], 1e-7, sampled_deviation(g));
+    let a = hermite_shape(g, dg, &[0.0, 1.0], 1e-7, sampled_deviation(g)).pieces;
+    let b = hermite_shape(g, dg, &[0.0, 1.0], 1e-7, sampled_deviation(g)).pieces;
     assert_eq!(a, b);
+}
+
+/// At the cap the error is spread over the curve: a sine with 400 periods
+/// needs more than 4096 pieces at δ = 1e-6; depth-first halving left the
+/// second half as coarse pieces 61 units off a graph of amplitude 1.
+#[test]
+fn hermite_spreads_the_error_at_the_cap() {
+    let k = 400.0;
+    let g = move |t: f64| p(100.0 * t, (2.0 * PI * k * t).sin());
+    let dg = move |t: f64| Vec2::new(100.0, 2.0 * PI * k * (2.0 * PI * k * t).cos());
+    let shape = hermite_shape(g, dg, &[0.0, 1.0], 1e-6, sampled_deviation(g));
+    assert!(shape.capped);
+    assert_eq!(shape.pieces.len(), MAX_SHAPE_PIECES);
+    let (mut halves, mut worst) = ([0usize; 2], [0.0f64; 2]);
+    for piece in &shape.pieces {
+        let b = cubic_of(piece);
+        let half = usize::from(0.5 * (b[0].x + b[3].x) >= 50.0);
+        halves[half] += 1;
+        for j in 1..16 {
+            let q = point(&b, j as f64 / 16.0);
+            // Vertical distance to the graph at the same x (≥ the distance).
+            let d = (q.y - (2.0 * PI * k * q.x / 100.0).sin()).abs();
+            worst[half] = worst[half].max(d);
+        }
+    }
+    assert!(halves.iter().all(|&n| n > 1800), "pieces per half: {halves:?}");
+    assert!(worst.iter().all(|&d| d < 1e-2), "deviation per half: {worst:?}");
+}
+
+#[test]
+fn hermite_reports_whether_the_cap_stopped_it() {
+    let (g, dg) = circle(1.0, 1.0);
+    assert!(!hermite_shape(&g, &dg, &[0.0, 1.0], 1e-6, sampled_deviation(&g)).capped);
+    assert!(hermite_shape(&g, &dg, &[0.0, 1.0], 1.0, |_, _, _| f64::INFINITY).capped);
+}
+
+/// A nearly linear derivative (tiny quadratic term) still gives its root
+/// accurately: the textbook formula lost about five digits here.
+#[test]
+fn axis_extremum_with_a_tiny_quadratic_term() {
+    // x(u) with x′/3 = qa u² + qb u + qc, qa = 1e-11, qb = 2, qc = −1: root near 0.5.
+    let (qa, qb, qc) = (1e-11, 2.0, -1.0);
+    // Control x-coordinates from qc = b − a, qb = 2(a − 2b + c), qa = −a + 3b − 3c + d.
+    let (a, b_) = (0.0, qc);
+    let c = qb / 2.0 - a + 2.0 * b_;
+    let d = qa + a - 3.0 * b_ + 3.0 * c;
+    let bez = [p(a, 0.0), p(b_, 0.0), p(c, 1.0), p(d, 1.0)];
+    let u = axis_extrema(&bez).into_iter().find(|u| (u - 0.5).abs() < 0.1).expect("root near 0.5");
+    assert!(derivative(&bez, u).x.abs() < 1e-14, "x′({u}) = {}", derivative(&bez, u).x);
 }

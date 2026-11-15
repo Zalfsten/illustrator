@@ -98,7 +98,7 @@ pub fn hermite_shape(
   - Ends and joints lie exactly on the curve, and the tangent is continuous across joints. This satisfies the spec's "piece ends lie on the curve".
 - **Knots:** the caller passes the knots, at least `[0, 1]`. #83 will pass branch points so pieces never straddle a corner.
   - Each knot interval starts as 4 equal pieces, so that a sampled estimate is not fooled by a single huge piece.
-- **Refinement:** depth-first halving of every piece whose `deviation` exceeds `tolerance`. A shared cap `MAX_SHAPE_PIECES = 4096` applies, after which the remaining pieces are accepted as they are (documented, like the mesh cap).
+- **Refinement:** by priority: the piece with the largest `deviation` above `tolerance` is halved next (a `BinaryHeap`; ties by position, so the result is deterministic), until no piece exceeds it or the cap `MAX_SHAPE_PIECES = 4096` is reached. The result `HermiteShape { pieces, capped }` tells the caller whether the cap stopped it. (The first version halved depth first with a shared budget: at the cap, a sine with 400 periods got 4094 pieces in its first half and kept two initial pieces 61 units off the graph in its second; by priority both halves get 2048 pieces within 3.7·10⁻⁴. Changed in review of PR #100.)
 - **Default check `sampled_deviation(point)`:** the largest distance `|γ(t0 + k·h/8) − B(k/8)|` for `k = 1…7`, times a safety factor 2.
   - The distance at matched parameters is at least the geometric distance at those samples, so it errs on the large side there.
   - Between samples it is an estimate. This is the user's choice for this change ("estimate now, proof later").
@@ -140,7 +140,7 @@ Stroked label outlines (`Part::Outline`) go through the same code, so their boun
 ## Risks / Trade-offs
 
 - **[The sampled estimate misses a deviation between samples]** → safety factor 2, 4 initial pieces per knot interval, tolerance set to half the spec value. The deviation can only hide in features narrower than 1/8 of a piece that also escape halving. The follow-up issue replaces the estimate with a bound.
-- **[The cap of 4096 pieces is reached]** → the remaining pieces may exceed the tolerance. This needs a curve with over 4000 features at 1 µm on paper, far beyond teaching figures. It is documented like `MAX_MESH_EDGES`.
+- **[The cap of 4096 pieces is reached]** → the remaining pieces may exceed the tolerance, but evenly: refinement by priority spreads the error over the curve, and `HermiteShape::capped` lets the kind or the export warn (#81 decides how). This needs a curve with over 4000 features at 1 µm on paper, far beyond teaching figures.
 - **[Signature change of `shape` / `curve_shape` touches every caller]** → there are only three callers (two kinds, `scene.rs`, `app.rs`). Tests that call `curve_shape` gain a tolerance argument.
 - **[Quadrature and inversion cost in `trim`]** → only at export time and only for the two pieces cut at arrow heads.
 - **[Tighter stroked-outline bounds change expected values in label export tests]** → expected values move toward the true bounds. Review any changed expected value for that direction.

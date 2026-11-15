@@ -92,9 +92,12 @@ pub fn axis_extrema(b: &CubicPoints) -> Vec<f64> {
         } else {
             let disc = qb * qb - 4.0 * qa * qc;
             if disc >= 0.0 {
-                let s = disc.sqrt();
-                out.push((-qb + s) / (2.0 * qa));
-                out.push((-qb - s) / (2.0 * qa));
+                // Stable form: no cancellation between −qb and ±√disc.
+                let q = -0.5 * (qb + qb.signum() * disc.sqrt());
+                out.push(q / qa);
+                if q != 0.0 {
+                    out.push(qc / q);
+                }
             }
         }
     }
@@ -146,14 +149,18 @@ fn adaptive_length(b: &CubicPoints, u0: f64, u1: f64, whole: f64, abs_tol: f64, 
 /// Arc length of `b` between parameters `u0 ≤ u1` (adaptive Gauss–Legendre,
 /// relative accuracy about 1e-13).
 pub fn arc_length(b: &CubicPoints, u0: f64, u1: f64) -> f64 {
+    // The tolerance refers to the whole curve's scale, so tiny sub-intervals
+    // do not demand more relative accuracy than the total needs.
+    arc_length_at_scale(b, u0, u1, gauss_length(b, 0.0, 1.0))
+}
+
+/// [`arc_length`] with the whole curve's length estimate `scale` given.
+fn arc_length_at_scale(b: &CubicPoints, u0: f64, u1: f64, scale: f64) -> f64 {
     if u1 <= u0 {
         return 0.0;
     }
     let whole = gauss_length(b, u0, u1);
-    // The tolerance refers to the whole curve's scale, so tiny sub-intervals
-    // do not demand more relative accuracy than the total needs.
-    let scale = gauss_length(b, 0.0, 1.0).max(whole);
-    adaptive_length(b, u0, u1, whole, LENGTH_REL_TOL * scale, 0)
+    adaptive_length(b, u0, u1, whole, LENGTH_REL_TOL * scale.max(whole), 0)
 }
 
 /// Parameter `u` at which the arc length from the start is `length`
@@ -167,10 +174,11 @@ pub fn param_at_length(b: &CubicPoints, length: f64) -> f64 {
         return 1.0;
     }
     let tol = LENGTH_REL_TOL * total;
+    let scale = gauss_length(b, 0.0, 1.0);
     let (mut lo, mut hi) = (0.0, 1.0);
     let mut u = length / total;
     for _ in 0..100 {
-        let f = arc_length(b, 0.0, u) - length;
+        let f = arc_length_at_scale(b, 0.0, u, scale) - length;
         if f.abs() <= tol {
             break;
         }
@@ -218,16 +226,55 @@ pub fn hermite_piece(
     }
 }
 
+/// Result of [`hermite_shape`].
+#[derive(Clone, Debug, PartialEq)]
+pub struct HermiteShape {
+    /// The pieces, in curve order.
+    pub pieces: Vec<ShapePiece>,
+    /// Whether [`MAX_SHAPE_PIECES`] stopped the refinement while some piece
+    /// still exceeded the tolerance; the remaining error is then spread over
+    /// the curve (largest first), not left in one part.
+    pub capped: bool,
+}
+
+/// A piece waiting for refinement, ordered by its deviation (ties: earlier
+/// pieces first, so the result is deterministic).
+struct Pending {
+    deviation: f64,
+    slot: usize,
+}
+
+impl PartialEq for Pending {
+    fn eq(&self, o: &Self) -> bool {
+        self.cmp(o) == std::cmp::Ordering::Equal
+    }
+}
+impl Eq for Pending {}
+impl PartialOrd for Pending {
+    fn partial_cmp(&self, o: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(o))
+    }
+}
+impl Ord for Pending {
+    fn cmp(&self, o: &Self) -> std::cmp::Ordering {
+        self.deviation.total_cmp(&o.deviation).then(o.slot.cmp(&self.slot))
+    }
+}
+
 /// Cubic pieces describing the curve `point` (`γ(t)`, `t ∈ [0, 1]`, with
 /// derivative `tangent`) within `tolerance` according to `deviation`
 /// (geometry-ir: Shapes without closed-form pieces stay within the
 /// tolerance).
 ///
 /// `knots` are ascending from 0 to 1 and always become joints (for example
-/// branch points). Each knot interval starts as 4 equal Hermite pieces; a
-/// piece whose `deviation(t0, t1, &piece)` exceeds `tolerance` is halved,
-/// depth first, until at most [`MAX_SHAPE_PIECES`] pieces exist. Joints and
-/// ends are exact curve points, and the tangent is continuous across joints.
+/// branch points). Each knot interval starts as 4 equal Hermite pieces; the
+/// piece with the largest `deviation(t0, t1, &piece)` above `tolerance` is
+/// halved next, until no piece exceeds it or [`MAX_SHAPE_PIECES`] pieces
+/// exist ([`HermiteShape::capped`]). Refining by priority keeps the error
+/// even when the cap is reached; depth-first halving spent the whole budget
+/// on the start of the curve and left its end as coarse initial pieces.
+/// Joints and ends are exact curve points, and the tangent is continuous
+/// across joints.
 ///
 /// `deviation` is pluggable: [`sampled_deviation`] is an estimate; a provable
 /// bound can replace it without changing callers (#99).
@@ -237,26 +284,30 @@ pub fn hermite_shape(
     knots: &[f64],
     tolerance: f64,
     deviation: impl Fn(f64, f64, &ShapePiece) -> f64,
-) -> Vec<ShapePiece> {
+) -> HermiteShape {
     debug_assert!(knots.len() >= 2 && knots[0] == 0.0 && knots[knots.len() - 1] == 1.0);
     debug_assert!(knots.windows(2).all(|w| w[0] < w[1]), "knots must ascend: {knots:?}");
     let n = INITIAL_PIECES_PER_INTERVAL;
-    let mut count = (knots.len() - 1) * n;
-    let mut out = Vec::with_capacity(count);
-    let refine = |t0: f64, t1: f64, count: &mut usize, out: &mut Vec<ShapePiece>| {
-        // Explicit stack (right half pushed first) keeps the pieces in order.
-        let mut stack = vec![(t0, t1)];
-        while let Some((a, b)) = stack.pop() {
-            let piece = hermite_piece(&point, &tangent, a, b);
-            let m = 0.5 * (a + b);
-            let splittable = *count < MAX_SHAPE_PIECES && m > a && m < b;
-            if splittable && deviation(a, b, &piece) > tolerance {
-                *count += 1;
-                stack.push((m, b));
-                stack.push((a, m));
-            } else {
-                out.push(piece);
+    // (t0, t1, piece) per slot; halving replaces a slot and appends one.
+    let mut slots: Vec<(f64, f64, ShapePiece)> = Vec::with_capacity((knots.len() - 1) * n);
+    let mut queue = std::collections::BinaryHeap::new();
+    type Slots = Vec<(f64, f64, ShapePiece)>;
+    let add = |a: f64, b: f64, slots: &mut Slots, queue: &mut std::collections::BinaryHeap<Pending>, slot: Option<usize>| {
+        let piece = hermite_piece(&point, &tangent, a, b);
+        let d = deviation(a, b, &piece);
+        let slot = match slot {
+            Some(i) => {
+                slots[i] = (a, b, piece);
+                i
             }
+            None => {
+                slots.push((a, b, piece));
+                slots.len() - 1
+            }
+        };
+        let m = 0.5 * (a + b);
+        if d > tolerance && m > a && m < b {
+            queue.push(Pending { deviation: d, slot });
         }
     };
     for w in knots.windows(2) {
@@ -264,10 +315,24 @@ pub fn hermite_shape(
         for i in 0..n {
             let a = if i == 0 { k0 } else { k0 + (k1 - k0) * i as f64 / n as f64 };
             let b = if i + 1 == n { k1 } else { k0 + (k1 - k0) * (i + 1) as f64 / n as f64 };
-            refine(a, b, &mut count, &mut out);
+            add(a, b, &mut slots, &mut queue, None);
         }
     }
-    out
+    while slots.len() < MAX_SHAPE_PIECES {
+        let Some(Pending { slot, .. }) = queue.pop() else {
+            break;
+        };
+        let (a, b, _) = slots[slot];
+        let m = 0.5 * (a + b);
+        add(a, m, &mut slots, &mut queue, Some(slot));
+        add(m, b, &mut slots, &mut queue, None);
+    }
+    let capped = !queue.is_empty();
+    slots.sort_by(|x, y| x.0.total_cmp(&y.0));
+    HermiteShape {
+        pieces: slots.into_iter().map(|(_, _, piece)| piece).collect(),
+        capped,
+    }
 }
 
 /// Deviation estimate for [`hermite_shape`]: the largest distance between

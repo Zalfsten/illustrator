@@ -79,3 +79,10 @@ Implementation: impls/rust, crates `constraint_runtime`, `sketch_export`, `sketc
 
 - Archive the change after review; sync the `geometry-ir` and `drawing-export` deltas into the main specs.
 - Mark #80 done and check it off in #98 and #74.
+
+## Review follow-ups (PR #100)
+
+- [x] R.1 `hermite_shape` refines by priority (largest deviation first) and returns `HermiteShape { pieces, capped }`; tests `hermite_spreads_the_error_at_the_cap`, `hermite_reports_whether_the_cap_stopped_it`.
+- [x] R.2 Spec: geometry-ir states that the deviation check may estimate, makes the length agreement a SHOULD and adds the cap scenario; drawing-export qualifies the 1 µm statement.
+- [x] R.3 `axis_extrema` uses the stable quadratic roots; test `axis_extremum_with_a_tiny_quadratic_term`.
+- [x] R.4 `param_at_length` computes the length scale once instead of per Newton step.
