@@ -152,14 +152,23 @@ context: |
     and with_kind! dispatch); per kind file:
     chart_atoms! layout +
     geometry_caps! (opt-in factory traits + Caps) + impl Geometry
-    (Jacobians via set_scaled) with NAME_PREFIX (seg, arc). Kinds
+    (Jacobians via set_scaled) with NAME_PREFIX (seg, arc, lbl, fn). Kinds
     today: Segment (2×Point2), Arc (center Point2, Length radius ≥ 0 in
     committed State via Geometry::canonical on add / commit / attribute
     change, HeadingAngle
     start, TurnAngle sweep), Label (prefix lbl; origin Point2 + heading
     HeadingAngle; caps anchor + line, no curve; LabelAttrs: source,
     Markup, HAlign, VAlign, offset in pt in the label frame, size or
-    inherited). Document also holds DocumentSettings (scale mm per world
+    inherited), Function (prefix fn; origin Point2 + heading
+    HeadingAngle; caps curve + endpoints + anchor + line; FunctionAttrs:
+    expression in x, range x0 < x1, scale su, sv > 0, plus an Arc<ArcTable>
+    built by FunctionAttrs::new: arc length s(x) at nodes by adaptive
+    Gauss–Legendre, Hermite inverse x(s) refined to 1e-11·L, cap 65 536
+    intervals; chart t = arc-length fraction, points exact on the graph,
+    f evaluated with a thread-local eval_in scratch (allocation-free);
+    Jacobians only in O, θ, length has no columns; piece_bound by interval
+    Dual2 over the enclosing table nodes; shape via hermite_shape;
+    constraint_runtime depends on the expression crate). Document also holds DocumentSettings (scale mm per world
     unit, font_size pt, preamble) and Styles.
   - style.rs: Rgb, Dash, Arrow, StyleProps (any subset), StylePatch
     (Option<Option<T>>: leave / set / remove), Style (resolved; BUILT_IN
@@ -179,7 +188,8 @@ context: |
     length + curvature upper bounds per parameter piece);
     UNIFORM_CURVE kinds (segment, arc) in closed form (osculating-circle
     count, φmax capped at π, equal edges, minimal); other curves: demand
-    grid (64 cells) → equal shares, per-edge Green-function deviation bound
+    on an adaptive grid (64 cells, halved while a cell needs more than one
+    edge and halving lowers its demand) → equal shares, per-edge Green-function deviation bound
     over 4 sub-pieces + turning ≤ π/2, failing edges halved locally; cap
     MAX_MESH_EDGES (1024) per curve; endpoint hits use geometric
     start/end expressions only, and only for kinds with the endpoints
@@ -251,18 +261,23 @@ context: |
   Document, InteractiveSolve, DragSession and undo/redo stacks of Document
   snapshots. Command enum addresses objects by name / address text;
   apply = snapshot, execute, structural solve for constraint commands,
-  commit or restore (CommandError incl. Unsatisfiable, Busy while
+  commit or restore (CommandError incl. Unsatisfiable, InvalidExpression
+  for function curves with parse position or unproven sub-range, Busy while
   dragging). drag_begin/to/end/cancel; a completed drag is one undo step.
   Contradictions are held per component: a conflicted (inconsistent)
   component is frozen, so a constraint touching it or a drag_begin in it
   fails with CommandError::Frozen; a constraint on consistent components
-  solves only the merged component (Unsatisfiable if it fails); a delete
+  solves only the merged component (Unsatisfiable if it fails); a `set`
+  whose kind has AttributeCommand::CHANGES_GEOMETRY (function curves)
+  checks frozen first and solves the component the same way, while label
+  `set` never solves; a delete
   inside a frozen component gives each surviving piece one solve.
   Session::new solves each inconsistent component once (rest stay
   frozen); Session::conflicts lists frozen components (names, residual).
-  file.rs: the native sketch file (FORMAT "illustrator-sketch", VERSION 3;
-  reads 1 to 3, migrate adds default settings for 1 and an empty `styles`
-  for 1 and 2, whose commands may carry no style fields):
+  file.rs: the native sketch file (FORMAT "illustrator-sketch", VERSION 4;
+  reads 1 to 4, migrate adds default settings for 1 and an empty `styles`
+  for 1 and 2, whose commands may carry no style fields; versions 1–3 may
+  not create function curves):
   Session::save writes settings, the style table (one style per line,
   `default` only when set) and the declarative list in a fixed layout (one
   command per line, byte-identical round trip); Session::load reads any JSON layout

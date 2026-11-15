@@ -24,9 +24,19 @@ use crate::vector::Vector;
 /// guaranteed (display-mesh: at least 256).
 pub const MAX_MESH_EDGES: usize = 1024;
 
-/// Equal cells of the normalized parameter whose edge demand places the
-/// initial vertices of a non-uniform curve.
+/// Equal cells of the normalized parameter the adaptive grid starts with
+/// (see [`adaptive_grid`]).
 const GRID_INTERVALS: usize = 64;
+
+/// Most cells the adaptive grid may reach.
+const MAX_GRID_CELLS: usize = 4096;
+
+/// A grid cell is halved when it needs more than this many edges …
+const SPLIT_MIN_DEMAND: f64 = 1.0;
+
+/// … and halving lowers its demand to at most this fraction (cells of
+/// constant curvature gain nothing and stay whole).
+const SPLIT_GAIN: f64 = 0.9;
 
 /// Sub-pieces whose bounds check one edge.
 const CHECK_PIECES: usize = 4;
@@ -201,9 +211,9 @@ fn on_curve(id: GeometryId, t: f64) -> PointExpr {
 /// vertices, from its piece bounds (`piece(t0, t1)`: length and curvature
 /// upper bounds of that piece).
 ///
-/// 1. **Placement:** the edge demand ([`edge_demand`]) of [`GRID_INTERVALS`]
-///    equal cells is integrated; the smallest edge count not below it is
-///    placed at equal shares of the cumulative demand.
+/// 1. **Placement:** the edge demand ([`edge_demand`]) of the cells of an
+///    [`adaptive_grid`] is integrated; the smallest edge count not below it
+///    is placed at equal shares of the cumulative demand.
 /// 2. **Check:** each edge passes when [`edge_within_tolerance`] proves it
 ///    stays within `tolerance`.
 /// 3. **Local refinement:** a failing edge is halved in `t` and both halves
@@ -215,13 +225,12 @@ fn on_curve(id: GeometryId, t: f64) -> PointExpr {
 /// check accepts for constant curvature, so such curves need no halving.
 fn place_samples(piece: impl Fn(f64, f64) -> PieceBound, tolerance: f64, cap: usize) -> Vec<f64> {
     let cap = cap.max(1);
-    let mut cumulative = Vec::with_capacity(GRID_INTERVALS + 1);
+    let (bounds, demands) = adaptive_grid(&piece, tolerance);
+    let mut cumulative = Vec::with_capacity(demands.len() + 1);
     cumulative.push(0.0);
-    for i in 0..GRID_INTERVALS {
-        let t0 = i as f64 / GRID_INTERVALS as f64;
-        let t1 = (i + 1) as f64 / GRID_INTERVALS as f64;
+    for d in demands {
         let last = *cumulative.last().expect("non-empty");
-        cumulative.push(last + edge_demand(piece(t0, t1), tolerance));
+        cumulative.push(last + d);
     }
     let total = *cumulative.last().expect("non-empty");
     if !total.is_finite() {
@@ -231,7 +240,7 @@ fn place_samples(piece: impl Fn(f64, f64) -> PieceBound, tolerance: f64, cap: us
         return (0..=cap).map(|j| j as f64 / cap as f64).collect();
     }
     let n = edge_count(total, cap);
-    let initial = equal_shares(&cumulative, n);
+    let initial = equal_shares(&bounds, &cumulative, n);
     let mut budget = cap - n;
     let mut ts = Vec::with_capacity(n + 1);
     ts.push(0.0);
@@ -239,6 +248,50 @@ fn place_samples(piece: impl Fn(f64, f64) -> PieceBound, tolerance: f64, cap: us
         refine(&piece, w[0], w[1], tolerance, &mut budget, &mut ts);
     }
     ts
+}
+
+/// Cell boundaries `0 = t_0 < … < t_m = 1` and the edge demand of each cell.
+///
+/// Starts from [`GRID_INTERVALS`] equal cells and halves a cell while it
+/// needs more than [`SPLIT_MIN_DEMAND`] edges and halving lowers its demand to
+/// at most [`SPLIT_GAIN`] of it, or while its demand is unbounded, up to
+/// [`MAX_GRID_CELLS`] cells. A piece bound is a supremum over the whole cell,
+/// so a sharp feature inside a long cell inflates that cell's demand (a
+/// narrow peak of `1/((x−1)² + 0.01)` asked for more than the cap, which then
+/// left every edge unchecked); halving brings the demand integral close to
+/// what the curve needs. Interval bounds that overestimate on wide cells
+/// (κ̄ = ∞) become finite on narrower ones.
+fn adaptive_grid(piece: &impl Fn(f64, f64) -> PieceBound, tolerance: f64) -> (Vec<f64>, Vec<f64>) {
+    let demand = |t0: f64, t1: f64| edge_demand(piece(t0, t1), tolerance);
+    let mut bounds = Vec::with_capacity(GRID_INTERVALS + 1);
+    let mut demands = Vec::with_capacity(GRID_INTERVALS);
+    bounds.push(0.0);
+    let mut cells = GRID_INTERVALS;
+    // Explicit stack, right half pushed first, keeps the cells in order.
+    let mut stack: Vec<(f64, f64, f64)> = (0..GRID_INTERVALS)
+        .rev()
+        .map(|i| {
+            let t0 = i as f64 / GRID_INTERVALS as f64;
+            let t1 = if i + 1 == GRID_INTERVALS { 1.0 } else { (i + 1) as f64 / GRID_INTERVALS as f64 };
+            (t0, t1, demand(t0, t1))
+        })
+        .collect();
+    while let Some((t0, t1, d)) = stack.pop() {
+        let mid = 0.5 * (t0 + t1);
+        let splittable = cells < MAX_GRID_CELLS && t1 - t0 >= 2.0 * MIN_EDGE_WIDTH && mid > t0 && mid < t1;
+        if splittable && (d > SPLIT_MIN_DEMAND || d.is_nan()) {
+            let (dl, dr) = (demand(t0, mid), demand(mid, t1));
+            if !d.is_finite() || dl + dr <= SPLIT_GAIN * d {
+                cells += 1;
+                stack.push((mid, t1, dr));
+                stack.push((t0, mid, dl));
+                continue;
+            }
+        }
+        bounds.push(t1);
+        demands.push(d);
+    }
+    (bounds, demands)
 }
 
 /// Pushes the vertices after `ta` up to and including `tb`, halving the edge
@@ -393,11 +446,10 @@ fn edge_count(total: f64, cap: usize) -> usize {
     ((total - 1e-9).ceil().max(1.0) as usize).min(cap)
 }
 
-/// `n` edges splitting the cumulative demand of the equal grid cells into
-/// equal shares (linear interpolation inside a cell).
-fn equal_shares(cumulative: &[f64], n: usize) -> Vec<f64> {
+/// `n` edges splitting the cumulative demand of the grid cells (boundaries
+/// `bounds`) into equal shares (linear interpolation inside a cell).
+fn equal_shares(bounds: &[f64], cumulative: &[f64], n: usize) -> Vec<f64> {
     let total = *cumulative.last().expect("non-empty");
-    let cells = (cumulative.len() - 1) as f64;
     let mut ts = Vec::with_capacity(n + 1);
     ts.push(0.0);
     let mut k = 0;
@@ -408,7 +460,7 @@ fn equal_shares(cumulative: &[f64], n: usize) -> Vec<f64> {
         }
         let (c0, c1) = (cumulative[k], cumulative[k + 1]);
         let s = if c1 > c0 { ((target - c0) / (c1 - c0)).clamp(0.0, 1.0) } else { 0.0 };
-        ts.push((k as f64 + s) / cells);
+        ts.push(bounds[k] + s * (bounds[k + 1] - bounds[k]));
     }
     ts.push(1.0);
     ts

@@ -1,7 +1,7 @@
 use super::*;
 use crate::command::{DeclCommand, ExportError, Family, HistoryError, LoadReport};
 use crate::kinds::{ArcParams, FixParams, LenPair, PointPair, SegmentParams, VecPair};
-use constraint_runtime::{Address, AddressError, GeometryRole, Point2, Vec2};
+use constraint_runtime::{Address, AddressError, GeometryRole, KindAttrs, Point2, Vec2};
 
 fn segment(start: (f64, f64), end: (f64, f64)) -> Command {
     Command::Create {
@@ -1468,4 +1468,182 @@ fn style_after_set_style() {
     let text = list[0].to_json().unwrap();
     assert!(text.ends_with(r##""style":"axis","color":"#c00000"}"##), "{text}");
     assert!(!text.contains("width") && !text.contains("dash") && !text.contains("arrow"), "{text}");
+}
+
+// --- Function curves (sketch-commands) ---
+
+const SINE: &str =
+    r#"{"op": "create", "kind": "function", "origin": [0, 0], "heading": 0, "expression": "sin(x)", "range": [0, 6.283185307179586]}"#;
+
+fn point_at(s: &Session, address: &str) -> Point2 {
+    point_in(s.document(), address).evaluate(s.document(), s.document().vector())
+}
+
+#[test]
+fn function_curve_in_interchange_form() {
+    let mut s = Session::new(Document::new());
+    let out = s.apply(cmd(SINE)).unwrap();
+    assert_eq!(out.created.as_deref(), Some("fn1"));
+    let end = point_at(&s, "fn1.end");
+    assert!((end - Point2::new(std::f64::consts::TAU, 0.0)).length() < 1e-12, "{end:?}");
+}
+
+#[test]
+fn reversed_range_and_zero_scale_are_invalid_values() {
+    let mut s = Session::new(Document::new());
+    for text in [
+        r#"{"op": "create", "kind": "function", "origin": [0, 0], "heading": 0, "expression": "x", "range": [1, 0]}"#,
+        r#"{"op": "create", "kind": "function", "origin": [0, 0], "heading": 0, "expression": "x", "range": [0, 1], "scale": [1, 0]}"#,
+    ] {
+        let e = s.apply(cmd(text)).unwrap_err();
+        assert!(matches!(e, CommandError::InvalidValue { .. }), "{text}: {e:?}");
+    }
+    assert_eq!(s.document().geometries().len(), 0);
+}
+
+#[test]
+fn invalid_expressions_name_position_and_sub_range() {
+    let mut s = Session::new(Document::new());
+    let e = s
+        .apply(cmd(r#"{"op": "create", "kind": "function", "origin": [0, 0], "heading": 0, "expression": "2x", "range": [0, 1]}"#))
+        .unwrap_err();
+    let CommandError::InvalidExpression { message } = &e else { panic!("{e:?}") };
+    assert!(message.contains("characters 1..2"), "{message}");
+    assert!(e.to_string().starts_with("invalid expression"), "{e}");
+    let e = s
+        .apply(cmd(r#"{"op": "create", "kind": "function", "origin": [0, 0], "heading": 0, "expression": "1/x", "range": [-1, 1]}"#))
+        .unwrap_err();
+    let CommandError::InvalidExpression { message } = &e else { panic!("{e:?}") };
+    // The reported sub-range of [-1, 1] contains 0.
+    let nums: Vec<f64> = message
+        .split(|c: char| !(c.is_ascii_digit() || c == '.' || c == '-' || c == 'e'))
+        .filter_map(|w| w.parse().ok())
+        .collect();
+    assert!(nums.windows(2).any(|w| w[0] <= 0.0 && 0.0 <= w[1] && w[0] >= -1.0 && w[1] <= 1.0), "{message}");
+}
+
+#[test]
+fn set_changes_the_expression_and_keeps_the_rest() {
+    let mut s = Session::new(Document::new());
+    s.apply(cmd(SINE)).unwrap();
+    let origin = point_at(&s, "fn1.origin");
+    s.apply(cmd(r#"{"op": "set", "kind": "function", "name": "fn1", "expression": "cos(x)"}"#)).unwrap();
+    let KindAttrs::Function(a) = s.document().geometries().values().next().unwrap().attrs().clone() else {
+        panic!("function attributes expected")
+    };
+    assert_eq!(a.source(), "cos(x)");
+    assert_eq!(a.range(), (0.0, std::f64::consts::TAU));
+    assert_eq!(point_at(&s, "fn1.origin"), origin);
+    assert!((point_at(&s, "fn1.start") - Point2::new(0.0, 1.0)).length() < 1e-12);
+}
+
+#[test]
+fn rejected_expression_keeps_the_curve() {
+    let mut s = Session::new(Document::new());
+    s.apply(cmd(r#"{"op": "create", "kind": "function", "origin": [0, 0], "heading": 0, "expression": "x^2", "range": [0, 1]}"#))
+        .unwrap();
+    let before = content(&s);
+    let e = s.apply(cmd(r#"{"op": "set", "kind": "function", "name": "fn1", "expression": "log(x)"}"#)).unwrap_err();
+    assert!(matches!(e, CommandError::InvalidExpression { .. }), "{e:?}");
+    assert_eq!(content(&s), before);
+    let KindAttrs::Function(a) = s.document().geometries().values().next().unwrap().attrs().clone() else {
+        panic!()
+    };
+    assert_eq!(a.source(), "x^2");
+}
+
+#[test]
+fn joined_end_follows_a_longer_range() {
+    let mut s = Session::new(Document::new());
+    s.apply(cmd(r#"{"op": "create", "kind": "function", "origin": [0, 0], "heading": 0, "expression": "sin(x)", "range": [0, 3.141592653589793]}"#))
+        .unwrap();
+    s.apply(segment((3.2, 0.0), (5.0, 1.0))).unwrap();
+    s.apply(join("fn1.end", "seg1.start")).unwrap();
+    s.apply(cmd(r#"{"op": "set", "kind": "function", "name": "fn1", "range": [0, 6.283185307179586]}"#)).unwrap();
+    let (a, b) = (point_at(&s, "fn1.end"), point_at(&s, "seg1.start"));
+    assert!((a - b).length() < constraint_runtime::SOLVE_TOL, "{a:?} vs {b:?}");
+    // Undo restores attributes and values.
+    s.undo().unwrap();
+    let KindAttrs::Function(a) = s.document().geometries().values().next().unwrap().attrs().clone() else {
+        panic!()
+    };
+    assert_eq!(a.range(), (0.0, std::f64::consts::PI));
+    assert!((point_at(&s, "fn1.end") - point_at(&s, "seg1.start")).length() < constraint_runtime::SOLVE_TOL);
+    assert!((point_at(&s, "fn1.end") - Point2::new(std::f64::consts::PI, 0.0)).length() < 0.1, "back near the short range's end");
+}
+
+#[test]
+fn unsatisfiable_range_change_restores_the_drawing() {
+    let mut s = Session::new(Document::new());
+    s.apply(cmd(r#"{"op": "create", "kind": "function", "origin": [0, 0], "heading": 0, "expression": "x", "range": [0, 1]}"#))
+        .unwrap();
+    // Fix both ends: a longer range cannot be met.
+    s.apply(fix("fn1.start", (0.0, 0.0), None)).unwrap();
+    s.apply(fix("fn1.end", (1.0, 1.0), None)).unwrap();
+    let before = content(&s);
+    let e = s.apply(cmd(r#"{"op": "set", "kind": "function", "name": "fn1", "range": [0, 2]}"#)).unwrap_err();
+    assert!(matches!(e, CommandError::Unsatisfiable { .. }), "{e:?}");
+    assert_eq!(content(&s), before);
+    let KindAttrs::Function(a) = s.document().geometries().values().next().unwrap().attrs().clone() else {
+        panic!()
+    };
+    assert_eq!(a.range(), (0.0, 1.0));
+}
+
+#[test]
+fn geometric_set_in_a_frozen_component_fails() {
+    use constraint_runtime::{Function, FunctionAttrs, HeadingAngle};
+    let mut doc = conflicted_document();
+    let f = doc.add_geometry_with::<Function>(
+        GeometryRole::Result,
+        (Point2::new(1.0, 1.0), HeadingAngle::new(0.0)),
+        KindAttrs::Function(FunctionAttrs::new("x", (0.0, 1.0), (1.0, 1.0)).unwrap()),
+    );
+    let _ = f;
+    let a = point_in(&doc, "seg2.end");
+    let b = point_in(&doc, "fn1.start");
+    doc.add_constraint(constraint_runtime::Congruence { a, b });
+    let mut s = Session::new(doc);
+    let before = content(&s);
+    let e = s.apply(cmd(r#"{"op": "set", "kind": "function", "name": "fn1", "range": [0, 2]}"#)).unwrap_err();
+    assert!(matches!(e, CommandError::Frozen { .. }), "{e:?}");
+    assert_eq!(content(&s), before);
+}
+
+#[test]
+fn function_curves_survive_declarative_export() {
+    let mut s = Session::new(Document::new());
+    s.apply(cmd(r#"{"op": "create", "kind": "function", "origin": [1, 2], "heading": 0.3, "expression": "x^2 - 1", "range": [-1, 2], "scale": [2, 0.5]}"#))
+        .unwrap();
+    s.apply(segment((0.0, 0.0), (1.0, 0.0))).unwrap();
+    s.apply(join("fn1.end", "seg1.start")).unwrap();
+    let list = s.declarative_commands().unwrap();
+    let text: Vec<String> = list.iter().map(|c| c.to_json().unwrap()).collect();
+    assert!(text[0].contains(r#""scale":[2.0,0.5]"#) || text[0].contains(r#""scale":[2,0.5]"#), "{}", text[0]);
+    let mut t = Session::new(Document::new());
+    for c in &list {
+        t.apply(c.clone().into()).unwrap();
+    }
+    assert_eq!(t.declarative_commands().unwrap().len(), list.len());
+    let (ca, cb) = (content(&s), content(&t));
+    assert_eq!(ca.0, cb.0);
+    for (x, y) in ca.1.iter().zip(&cb.1) {
+        assert!((x - y).abs() < constraint_runtime::SOLVE_TOL, "{x} vs {y}");
+    }
+    let KindAttrs::Function(a) = t.document().geometries().values().next().unwrap().attrs().clone() else {
+        panic!()
+    };
+    assert_eq!((a.source(), a.range(), a.scale()), ("x^2 - 1", (-1.0, 2.0), (2.0, 0.5)));
+}
+
+
+/// Parse positions are reported in characters, not bytes (review of PR #102).
+#[test]
+fn function_parse_error_position_counts_characters() {
+    let mut s = Session::new(Document::new());
+    let e = s
+        .apply(cmd(r#"{"op": "create", "kind": "function", "origin": [0, 0], "heading": 0, "expression": "x + ä", "range": [0, 1]}"#))
+        .unwrap_err();
+    let CommandError::InvalidExpression { message } = &e else { panic!("{e:?}") };
+    assert!(message.contains("characters 4..5"), "{message}");
 }

@@ -1116,6 +1116,7 @@ name = "constraint_runtime"
 version = "0.1.0"
 dependencies = [
  "criterion",
+ "expression",
  "faer",
 ]
 
@@ -5403,10 +5404,12 @@ name = "sketch_session"
 version = "0.1.0"
 dependencies = [
  "constraint_runtime",
+ "expression",
  "jsonschema",
  "schemars",
  "serde",
  "serde_json",
+ "sketch_export",
 ]
 
 [[package]]

@@ -75,7 +75,7 @@ fn unknown_kind_is_rejected() {
 
 #[test]
 fn kind_tags_are_independent_of_name_prefixes() {
-    assert_eq!(GeometrySpec::TAGS, ["segment", "arc", "label"]);
+    assert_eq!(GeometrySpec::TAGS, ["segment", "arc", "label", "function"]);
     assert_eq!(
         ConstraintSpec::TAGS,
         ["join", "parallel", "perpendicular", "fix", "equal_length"]
@@ -706,4 +706,21 @@ fn style_commands_are_outside_the_subset() {
         let e = DeclCommand::from_json(text).unwrap_err().to_string();
         assert!(e.contains("not in the declarative subset"), "{e}");
     }
+}
+
+#[test]
+fn function_create_and_set_round_trip() {
+    for text in [
+        r#"{"op": "create", "kind": "function", "name": "f", "origin": [1, 2], "heading": 0.5, "expression": "sin(x)/2", "range": [-1, 3], "scale": [2, 0.5], "dash": "dashed"}"#,
+        r#"{"op": "create", "kind": "function", "origin": [0, 0], "heading": 0, "expression": "x", "range": [0, 1]}"#,
+        r#"{"op": "set", "kind": "function", "name": "f", "expression": "cos(x)", "range": [0, 2]}"#,
+        r#"{"op": "set", "kind": "function", "name": "f", "scale": [1, 3]}"#,
+    ] {
+        let c = read(text);
+        let again = read(&c.to_json().unwrap());
+        assert_eq!(again, c, "{text}");
+    }
+    read_err(r#"{"op": "set", "kind": "function", "name": "f"}"#);
+    read_err(r#"{"op": "create", "kind": "function", "origin": [0, 0], "heading": 0, "range": [0, 1]}"#);
+    read_err(r#"{"op": "create", "kind": "function", "origin": [0, 0], "heading": 0, "expression": "x", "range": [0, 1], "color2": "x"}"#);
 }

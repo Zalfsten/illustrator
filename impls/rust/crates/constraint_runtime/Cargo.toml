@@ -13,4 +13,5 @@ name = "solve"
 harness = false
 
 [dependencies]
+expression = { path = "../expression" }
 faer = { version = "=0.24.4", default-features = false, features = ["std", "sparse-linalg"] }
