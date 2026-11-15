@@ -1,24 +1,28 @@
 //! Viewport: world (y-up) ↔ screen (y-down) mapping for the Canvas.
 
-use constraint_runtime::Point2;
-use eframe::egui::{Pos2, Rect};
+use constraint_runtime::{DocumentSettings, Point2};
+use eframe::egui::{Pos2, Rect, Vec2 as ScreenVec};
 
 /// Uniform scale + origin mapping world coordinates to Canvas pixels (y-flip).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Viewport {
     /// Screen units per world unit (uniform).
     pub scale: f64,
-    /// Screen position of world origin `(0, 0)`.
-    pub origin_screen: Pos2,
+    /// Screen position of world origin `(0, 0)`, in `f64`: zoomed in far from
+    /// the world origin it can be millions of screen units away, where `f32`
+    /// steps by whole pixels.
+    origin: (f64, f64),
 }
 
 impl Viewport {
     pub fn new(scale: f64, origin_screen: Pos2) -> Self {
+        Self::with_origin(scale, (f64::from(origin_screen.x), f64::from(origin_screen.y)))
+    }
+
+    /// [`Self::new`] with the origin's screen position in `f64`.
+    pub fn with_origin(scale: f64, origin: (f64, f64)) -> Self {
         assert!(scale > 0.0 && scale.is_finite());
-        Self {
-            scale,
-            origin_screen,
-        }
+        Self { scale, origin }
     }
 
     /// Fit `world` AABB into `canvas` with uniform scale and margin (logical points).
@@ -39,26 +43,112 @@ impl Viewport {
         // screen_cy = origin_y - scale * world_cy
         let origin_x = screen_cx - scale * world_cx;
         let origin_y = screen_cy + scale * world_cy;
-        Self::new(scale, Pos2::new(origin_x as f32, origin_y as f32))
+        Self::with_origin(scale, (origin_x, origin_y))
     }
 
     pub fn to_screen(self, p: Point2) -> Pos2 {
         Pos2::new(
-            (self.origin_screen.x as f64 + self.scale * p.x) as f32,
-            (self.origin_screen.y as f64 - self.scale * p.y) as f32,
+            (self.origin.0 + self.scale * p.x) as f32,
+            (self.origin.1 - self.scale * p.y) as f32,
         )
     }
 
     pub fn to_world(self, s: Pos2) -> Point2 {
         Point2::new(
-            (s.x as f64 - self.origin_screen.x as f64) / self.scale,
-            (self.origin_screen.y as f64 - s.y as f64) / self.scale,
+            (f64::from(s.x) - self.origin.0) / self.scale,
+            (self.origin.1 - f64::from(s.y)) / self.scale,
         )
     }
 
     /// Convert a length in screen pixels to world units.
     pub fn px_to_world(&self, px: f64) -> f64 {
         px / self.scale
+    }
+}
+
+/// Logical screen units per inch assumed for the print-size zoom (the
+/// browser does not report the physical DPI).
+pub const SCREEN_UNITS_PER_INCH: f64 = 96.0;
+/// Zoom bounds as fractions of the print-size scale: 1 % … 100 000 %.
+pub const ZOOM_MIN: f64 = 0.01;
+pub const ZOOM_MAX: f64 = 1000.0;
+
+/// Screen units per world unit at physical print size (system-architecture:
+/// Print-size zoom and zoom display).
+pub fn print_scale(settings: &DocumentSettings) -> f64 {
+    settings.scale * SCREEN_UNITS_PER_INCH / 25.4
+}
+
+/// Smallest and largest allowed scale for `settings` (system-architecture:
+/// Zoom is bounded).
+pub fn zoom_bounds(settings: &DocumentSettings) -> (f64, f64) {
+    let s = print_scale(settings);
+    (ZOOM_MIN * s, ZOOM_MAX * s)
+}
+
+/// The view as UI session state: the world location at the Canvas center and
+/// the scale (screen units per world unit). Toolkit types appear only at the
+/// edges (`Rect`, `Pos2`, `ScreenVec`), so the math is testable headless.
+///
+/// Storing the center (not the screen origin) makes a Canvas resize keep
+/// center and scale for free (system-architecture: Resizing the Canvas keeps
+/// center and scale).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ViewState {
+    pub center: Point2,
+    pub scale: f64,
+}
+
+impl ViewState {
+    /// The world ↔ screen mapping for `canvas`.
+    pub fn viewport(&self, canvas: Rect) -> Viewport {
+        let c = canvas.center();
+        let origin_x = f64::from(c.x) - self.scale * self.center.x;
+        let origin_y = f64::from(c.y) + self.scale * self.center.y;
+        Viewport::with_origin(self.scale, (origin_x, origin_y))
+    }
+
+    /// Multiply the scale by `factor` (clamped to `bounds`), keeping the world
+    /// location under `anchor` at the same screen position.
+    pub fn zoom(&mut self, canvas: Rect, anchor: Pos2, factor: f64, bounds: (f64, f64)) {
+        if !(factor.is_finite() && factor > 0.0) {
+            return;
+        }
+        let w = self.viewport(canvas).to_world(anchor);
+        let s = self.scale;
+        let s2 = (s * factor).clamp(bounds.0, bounds.1);
+        // center′ = w + (center − w)·(s / s′): w stays under the anchor.
+        self.center = w + (self.center - w) * (s / s2);
+        self.scale = s2;
+    }
+
+    /// Move every screen image by `delta` (screen units, y down).
+    pub fn pan(&mut self, delta: ScreenVec) {
+        self.center = Point2::new(
+            self.center.x - delta.x as f64 / self.scale,
+            self.center.y + delta.y as f64 / self.scale,
+        );
+    }
+
+    /// Clamp the scale into `bounds` around the Canvas center (bounds move
+    /// with the document scale).
+    pub fn clamp(&mut self, bounds: (f64, f64)) {
+        self.scale = self.scale.clamp(bounds.0, bounds.1);
+    }
+
+    /// The view that fits the world box `min`..`max` into `canvas` with
+    /// `margin` screen units per side, scale clamped to `bounds`.
+    pub fn fit(canvas: Rect, min: Point2, max: Point2, margin: f32, bounds: (f64, f64)) -> Self {
+        let vp = Viewport::fit(canvas, min, max, margin);
+        Self {
+            center: Point2::new(0.5 * (min.x + max.x), 0.5 * (min.y + max.y)),
+            scale: vp.scale.clamp(bounds.0, bounds.1),
+        }
+    }
+
+    /// Zoom as a percentage of print size.
+    pub fn percent(&self, print_scale: f64) -> f64 {
+        100.0 * self.scale / print_scale
     }
 }
 

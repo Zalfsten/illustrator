@@ -16,6 +16,7 @@ mod host_native;
 #[cfg(target_arch = "wasm32")]
 mod host_web;
 mod labels;
+mod navigation;
 mod platform;
 mod style_ui;
 mod viewport;
