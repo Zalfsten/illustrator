@@ -393,7 +393,9 @@ context: |
   start / New / Open / F via pending_fit at the next paint (update_view),
   so a resize keeps center and scale. navigation.rs: wheel_intent (Ctrl/Cmd
   zooms, Shift pans horizontally, WheelMode Automatic: line/page units zoom,
-  point units pan; session setting in the View menu), Event::Zoom pinch,
+  point units pan, and in the web build a large purely vertical point delta
+  is a notch; pans convert lines / pages to points; session setting in the
+  View menu; F fits only without modifiers), Event::Zoom pinch,
   middle-button drag pans; point drags start only with the primary button,
   and a view change during a drag re-targets it to the pointer.
   Selection (ui_model): App owns UiModel; the Select tool sends intents

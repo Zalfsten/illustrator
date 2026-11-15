@@ -34,6 +34,14 @@ Implementation: impls/rust, crate `sketch_ui` (see design.md). Run tests from `i
 - [x] 3.1 Update the `viewport` / `app.rs` lines in `openspec/config.yaml` (ViewState, pending fit, wheel classification, middle-button pan, primary-only point drags). Verify that `openspec validate viewport-navigation --strict` passes.
 - [x] 3.2 Run `cargo test --workspace`, `cargo clippy --workspace --all-targets -- -D warnings` and `scripts/check-wasm.sh` from `impls/rust`. Verify that all three succeed.
 
+## Review follow-ups (PR #106)
+
+- [x] R.1 Pans convert wheel lines (50 points) and pages (10 lines) to points, so Shift+wheel and the Pan mode move the view with a line-based wheel or touchpad.
+- [x] R.2 The notch rule applies only in the web build; natively a large vertical point delta stays a pan.
+- [x] R.3 `F` fits only without modifiers.
+- [x] R.4 `Viewport` keeps its origin in `f64`.
+- R.5 Touchscreen navigation (pinch, two-finger pan) is #107.
+
 ## Workflow follow-up
 
 - Archive the change after review; sync the `system-architecture` delta.

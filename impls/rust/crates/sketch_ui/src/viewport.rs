@@ -8,17 +8,21 @@ use eframe::egui::{Pos2, Rect, Vec2 as ScreenVec};
 pub struct Viewport {
     /// Screen units per world unit (uniform).
     pub scale: f64,
-    /// Screen position of world origin `(0, 0)`.
-    pub origin_screen: Pos2,
+    /// Screen position of world origin `(0, 0)`, in `f64`: zoomed in far from
+    /// the world origin it can be millions of screen units away, where `f32`
+    /// steps by whole pixels.
+    origin: (f64, f64),
 }
 
 impl Viewport {
     pub fn new(scale: f64, origin_screen: Pos2) -> Self {
+        Self::with_origin(scale, (f64::from(origin_screen.x), f64::from(origin_screen.y)))
+    }
+
+    /// [`Self::new`] with the origin's screen position in `f64`.
+    pub fn with_origin(scale: f64, origin: (f64, f64)) -> Self {
         assert!(scale > 0.0 && scale.is_finite());
-        Self {
-            scale,
-            origin_screen,
-        }
+        Self { scale, origin }
     }
 
     /// Fit `world` AABB into `canvas` with uniform scale and margin (logical points).
@@ -39,20 +43,20 @@ impl Viewport {
         // screen_cy = origin_y - scale * world_cy
         let origin_x = screen_cx - scale * world_cx;
         let origin_y = screen_cy + scale * world_cy;
-        Self::new(scale, Pos2::new(origin_x as f32, origin_y as f32))
+        Self::with_origin(scale, (origin_x, origin_y))
     }
 
     pub fn to_screen(self, p: Point2) -> Pos2 {
         Pos2::new(
-            (self.origin_screen.x as f64 + self.scale * p.x) as f32,
-            (self.origin_screen.y as f64 - self.scale * p.y) as f32,
+            (self.origin.0 + self.scale * p.x) as f32,
+            (self.origin.1 - self.scale * p.y) as f32,
         )
     }
 
     pub fn to_world(self, s: Pos2) -> Point2 {
         Point2::new(
-            (s.x as f64 - self.origin_screen.x as f64) / self.scale,
-            (self.origin_screen.y as f64 - s.y as f64) / self.scale,
+            (f64::from(s.x) - self.origin.0) / self.scale,
+            (self.origin.1 - f64::from(s.y)) / self.scale,
         )
     }
 
@@ -99,9 +103,9 @@ impl ViewState {
     /// The world ↔ screen mapping for `canvas`.
     pub fn viewport(&self, canvas: Rect) -> Viewport {
         let c = canvas.center();
-        let origin_x = c.x as f64 - self.scale * self.center.x;
-        let origin_y = c.y as f64 + self.scale * self.center.y;
-        Viewport::new(self.scale, Pos2::new(origin_x as f32, origin_y as f32))
+        let origin_x = f64::from(c.x) - self.scale * self.center.x;
+        let origin_y = f64::from(c.y) + self.scale * self.center.y;
+        Viewport::with_origin(self.scale, (origin_x, origin_y))
     }
 
     /// Multiply the scale by `factor` (clamped to `bounds`), keeping the world
