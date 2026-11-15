@@ -5,7 +5,7 @@ use std::ops::Range;
 use crate::geometry::{
     Caps, Chart, Geometry, GeometryCaps, GeometryId, GeometryRole, GeometryShell,
 };
-use crate::geometry_kinds::LabelAttrs;
+use crate::geometry_kinds::{FunctionAttrs, LabelAttrs};
 use crate::style::StyleRef;
 use crate::vector::Vector;
 
@@ -17,6 +17,7 @@ pub enum GeometryKind {
     Segment,
     Arc,
     Label,
+    Function,
 }
 
 /// Run `$body` with `$K` bound to the [`Geometry`] type of `$kind`.
@@ -36,6 +37,10 @@ macro_rules! with_kind {
             }
             $crate::geometry_kinds::GeometryKind::Label => {
                 type $K = $crate::geometry_kinds::Label;
+                $body
+            }
+            $crate::geometry_kinds::GeometryKind::Function => {
+                type $K = $crate::geometry_kinds::Function;
                 $body
             }
         }
@@ -64,6 +69,7 @@ pub enum KindAttrs {
     #[default]
     None,
     Label(LabelAttrs),
+    Function(FunctionAttrs),
 }
 
 /// Document-held geometry: shared shell, kind tag and kind attributes.

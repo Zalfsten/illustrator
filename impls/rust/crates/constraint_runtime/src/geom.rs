@@ -273,13 +273,26 @@ pub enum CurveParam {
     Normalized(f64),
     /// Constant-speed / arc-length fraction \(u \in \[0,1\]\).
     Uniform(f64),
+    /// The function variable `x` of a function curve, any finite value
+    /// (geometry-ir: Abscissa curve parameter); only for kinds with the
+    /// abscissa capability.
+    Abscissa(f64),
 }
 
 impl CurveParam {
-    /// Chart \(t\) when Normalized ≡ Uniform (line segments today).
+    /// Chart \(t\) when Normalized ≡ Uniform (every kind without the
+    /// abscissa capability).
+    ///
+    /// # Panics
+    /// For [`CurveParam::Abscissa`]: kinds with the abscissa capability match
+    /// it before asking for `t`, and the identity-based factories never hand
+    /// it to other kinds.
     pub fn chart_t(self) -> f64 {
         match self {
             CurveParam::Normalized(t) | CurveParam::Uniform(t) => t,
+            CurveParam::Abscissa(x) => {
+                unreachable!("abscissa {x} reached a kind without the abscissa capability")
+            }
         }
     }
 }

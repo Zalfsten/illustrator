@@ -103,7 +103,9 @@ context: |
   Rust module and unit-test layout (impls/rust):
   constraint_runtime splits concerns as follows:
   - geom: shared affine / scalar DOF types (Point2, Vec2, HeadingAngle,
-    TurnAngle, Length, CurveParam)
+    TurnAngle, Length, CurveParam: Normalized, Uniform, Abscissa(x) for
+    kinds with the abscissa capability; chart_t is unreachable for
+    Abscissa)
   - expr.rs: generic opaque Expr<F> with aliases PointExpr / VecExpr /
     LengthExpr / HeadingAngleExpr / TurnAngleExpr; evaluate /
     param_indices / param_count / accumulate_jacobian; VecExpr::jet +
@@ -139,7 +141,10 @@ context: |
       VecFormula, LengthFormula, HeadingFormula, TurnFormula) and opt-in
       factories CurveExprs / EndpointExprs, plus invariant capabilities
       LineExprs (direction), CircularExprs (center, radius |R|) and
-      AnchorExprs (origin); every capability is opt-in, curve included
+      AnchorExprs (origin), and abscissa (no trait: gates the curve
+      factories for CurveParam::Abscissa; Document::abscissa_valid checks
+      capability and that f evaluates at x without a domain error; the typed
+      CurveExprs factories are unchecked, add_constraint debug-asserts); every capability is opt-in, curve included
       (geometry_caps!(Segment: curve, endpoints, line)), and a kind
       declares them once with geometry_caps! (trait impls + runtime Caps);
       dynamic ids use Document::caps and Option-returning id-based
@@ -152,14 +157,23 @@ context: |
     and with_kind! dispatch); per kind file:
     chart_atoms! layout +
     geometry_caps! (opt-in factory traits + Caps) + impl Geometry
-    (Jacobians via set_scaled) with NAME_PREFIX (seg, arc). Kinds
+    (Jacobians via set_scaled) with NAME_PREFIX (seg, arc, lbl, fn). Kinds
     today: Segment (2×Point2), Arc (center Point2, Length radius ≥ 0 in
     committed State via Geometry::canonical on add / commit / attribute
     change, HeadingAngle
     start, TurnAngle sweep), Label (prefix lbl; origin Point2 + heading
     HeadingAngle; caps anchor + line, no curve; LabelAttrs: source,
     Markup, HAlign, VAlign, offset in pt in the label frame, size or
-    inherited). Document also holds DocumentSettings (scale mm per world
+    inherited), Function (prefix fn; origin Point2 + heading
+    HeadingAngle; caps curve + endpoints + anchor + line; FunctionAttrs:
+    expression in x, range x0 < x1, scale su, sv > 0, plus an Arc<ArcTable>
+    built by FunctionAttrs::new: arc length s(x) at nodes by adaptive
+    Gauss–Legendre, Hermite inverse x(s) refined to 1e-11·L, cap 65 536
+    intervals; chart t = arc-length fraction, points exact on the graph,
+    f evaluated with a thread-local eval_in scratch (allocation-free);
+    Jacobians only in O, θ, length has no columns; piece_bound by interval
+    Dual2 over the enclosing table nodes; shape via hermite_shape;
+    constraint_runtime depends on the expression crate). Document also holds DocumentSettings (scale mm per world
     unit, font_size pt, preamble) and Styles.
   - style.rs: Rgb, Dash, Arrow, StyleProps (any subset), StylePatch
     (Option<Option<T>>: leave / set / remove), Style (resolved; BUILT_IN
@@ -179,7 +193,8 @@ context: |
     length + curvature upper bounds per parameter piece);
     UNIFORM_CURVE kinds (segment, arc) in closed form (osculating-circle
     count, φmax capped at π, equal edges, minimal); other curves: demand
-    grid (64 cells) → equal shares, per-edge Green-function deviation bound
+    on an adaptive grid (64 cells, halved while a cell needs more than one
+    edge and halving lowers its demand) → equal shares, per-edge Green-function deviation bound
     over 4 sub-pieces + turning ≤ π/2, failing edges halved locally; cap
     MAX_MESH_EDGES (1024) per curve; endpoint hits use geometric
     start/end expressions only, and only for kinds with the endpoints
@@ -191,9 +206,10 @@ context: |
     counter); remove_geometry / remove_constraint return a Removal with
     the dropped names (cascade included).
   - address.rs: `<name>.<suffix>` addresses (start, end, center, at(t),
-    direction, tangent(t), normal(t), length, radius) resolved through
-    the id-based capability factories; point/vec/length_address print
-    expressions back.
+    direction, tangent(t), normal(t), length, radius; at/tangent/normal
+    also as (x=<x>) on abscissa geometries, AddressError::InvalidAbscissa)
+    resolved through the id-based capability factories; point/vec/length_address print
+    expressions back (abscissa as (x=…)).
   - point_classes.rs: congruence classes (transitive closure of
     Congruence, never by distance) and logical_points(filter), one
     LogicalPoint per class with a visible endpoint; structure-only, so
@@ -206,7 +222,9 @@ context: |
     gate and classification; Document::whole is the all-components scope.
   - constraint.rs: ConstraintKind (RESIDUAL_ARITY, NAME_PREFIX, param_connectivity,
     eval_residual, accumulate_jacobian(&mut DenseMatrix),
-    referenced_geometries as a deduplicated GeometryId list); ConstraintId
+    referenced_geometries as a deduplicated GeometryId list, curve_params
+    of the operands via PointExpr/VecExpr::curve_param, used by
+    Document::invalid_abscissa_users for the function `set` edit rule); ConstraintId
     + ConstraintEntry (ConstraintInst body).
   - constraint_kinds/: catalog.rs (closed ConstraintInst, generated from
     the kind list) + per-kind files (prefixes join, par, orth, fix,
@@ -251,7 +269,8 @@ context: |
   Document, InteractiveSolve, DragSession and undo/redo stacks of Document
   snapshots. Command enum addresses objects by name / address text;
   apply = snapshot, execute, structural solve for constraint commands,
-  commit or restore (CommandError incl. Unsatisfiable, Busy while
+  commit or restore (CommandError incl. Unsatisfiable, InvalidExpression
+  for function curves with parse position or unproven sub-range, Busy while
   dragging). drag_begin/to/end/cancel; a completed drag is one undo step.
   apply_group(Vec<Command>): commands in order, one snapshot, one undo
   step on success; the first failure restores the drawing and returns
@@ -259,13 +278,17 @@ context: |
   Contradictions are held per component: a conflicted (inconsistent)
   component is frozen, so a constraint touching it or a drag_begin in it
   fails with CommandError::Frozen; a constraint on consistent components
-  solves only the merged component (Unsatisfiable if it fails); a delete
+  solves only the merged component (Unsatisfiable if it fails); a `set`
+  whose kind has AttributeCommand::CHANGES_GEOMETRY (function curves)
+  checks frozen first and solves the component the same way, while label
+  `set` never solves; a delete
   inside a frozen component gives each surviving piece one solve.
   Session::new solves each inconsistent component once (rest stay
   frozen); Session::conflicts lists frozen components (names, residual).
-  file.rs: the native sketch file (FORMAT "illustrator-sketch", VERSION 3;
-  reads 1 to 3, migrate adds default settings for 1 and an empty `styles`
-  for 1 and 2, whose commands may carry no style fields):
+  file.rs: the native sketch file (FORMAT "illustrator-sketch", VERSION 4;
+  reads 1 to 4, migrate adds default settings for 1 and an empty `styles`
+  for 1 and 2, whose commands may carry no style fields; versions 1–3 may
+  not create function curves):
   Session::save writes settings, the style table (one style per line,
   `default` only when set) and the declarative list in a fixed layout (one
   command per line, byte-identical round trip); Session::load reads any JSON layout

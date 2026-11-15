@@ -14,7 +14,8 @@ fn capability_sets_match_kinds() {
 }
 
 /// Every geometry kind (extend with the catalog).
-const ALL_KINDS: [GeometryKind; 3] = [GeometryKind::Segment, GeometryKind::Arc, GeometryKind::Label];
+const ALL_KINDS: [GeometryKind; 4] =
+    [GeometryKind::Segment, GeometryKind::Arc, GeometryKind::Label, GeometryKind::Function];
 
 #[test]
 fn name_prefixes_are_valid_stems() {
@@ -114,5 +115,12 @@ fn curve_kinds_bound_their_pieces() {
                 assert!(total <= length + slack, "{kind:?}: {total} vs {length}");
             }
         });
+    }
+}
+
+#[test]
+fn only_function_curves_report_abscissa() {
+    for kind in ALL_KINDS {
+        assert_eq!(kind.caps().abscissa, kind == GeometryKind::Function, "{kind:?}");
     }
 }

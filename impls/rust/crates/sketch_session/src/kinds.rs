@@ -19,6 +19,7 @@ use crate::wire::{LenAddr, PointAddr, VecAddr};
 mod arc;
 mod equal_length;
 mod fix;
+mod function;
 mod join;
 mod label;
 mod parallel;
@@ -28,6 +29,7 @@ mod segment;
 pub use arc::ArcParams;
 pub use equal_length::LenPair;
 pub use fix::FixParams;
+pub use function::{FunctionParams, FunctionSet};
 pub use join::PointPair;
 pub use label::{LabelParams, LabelSet};
 pub use parallel::VecPair;
@@ -62,6 +64,11 @@ pub trait GeometryCommand: Geometry {
 pub trait AttributeCommand: GeometryCommand {
     /// Fields of `set` (all optional, `deny_unknown_fields`).
     type SetParams: Params;
+
+    /// Whether changing these attributes moves the curve's points, so `set`
+    /// must solve the component (sketch-commands: Setting geometric
+    /// attributes solves).
+    const CHANGES_GEOMETRY: bool = false;
 
     /// Whether `p` carries no attribute (rejected when read).
     fn is_empty(p: &Self::SetParams) -> bool;

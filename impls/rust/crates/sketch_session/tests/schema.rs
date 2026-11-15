@@ -78,7 +78,7 @@ fn command_schema_lists_every_operation_and_kind() {
             "{tag}"
         );
     }
-    assert_eq!(AttrSpec::TAGS, ["label"]);
+    assert_eq!(AttrSpec::TAGS, ["label", "function"]);
     let fixed = [
         "delete",
         "rename",

@@ -70,6 +70,12 @@ macro_rules! constraint_catalog {
                 }
             }
 
+            pub fn curve_params(&self) -> Vec<(GeometryId, crate::geom::CurveParam)> {
+                match self {
+                    $(Self::$kind(c) => c.curve_params(),)+
+                }
+            }
+
             pub fn references_geometry(&self, id: GeometryId) -> bool {
                 match self {
                     $(Self::$kind(c) => c.references_geometry(id),)+

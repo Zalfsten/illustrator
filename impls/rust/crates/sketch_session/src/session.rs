@@ -324,10 +324,39 @@ impl Session {
                 self.doc.rename(id, &new_name)?;
                 Ok(Outcome::default())
             }
-            // No solve and no frozen check: attributes never change values.
+            // Attributes that only describe (label text) never change values:
+            // no solve, no frozen check. Attributes that move a curve's points
+            // solve the component like a constraint command.
             Command::Set { name, attrs } => match self.object(&name)? {
                 ObjectId::Geometry(id) => {
+                    let solve = attrs.changes_geometry() && matches!(mode, Mode::Interactive);
+                    if solve {
+                        self.check_not_frozen(id)?;
+                    }
                     attrs.apply_to(&mut self.doc, id, &name)?;
+                    // An abscissa used by a constraint must stay valid; `apply`
+                    // restores the snapshot on this error.
+                    let users = self.doc.invalid_abscissa_users(id);
+                    if !users.is_empty() {
+                        let names: Vec<&str> = users
+                            .iter()
+                            .map(|&c| self.doc.constraint_name(c).expect("constraints are named"))
+                            .collect();
+                        return Err(CommandError::InvalidExpression {
+                            message: format!(
+                                "the abscissa addresses of {} would be invalid",
+                                names.join(", ")
+                            ),
+                        });
+                    }
+                    if solve {
+                        let scope = self.doc.component_of(id);
+                        self.interact
+                            .structural_scoped(&mut self.doc, &scope)
+                            .map_err(|e| CommandError::Unsatisfiable {
+                                residual: e.residual_norm,
+                            })?;
+                    }
                     Ok(Outcome::default())
                 }
                 ObjectId::Constraint(_) => Err(CommandError::WrongObjectType {

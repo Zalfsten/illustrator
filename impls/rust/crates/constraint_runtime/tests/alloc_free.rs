@@ -5,8 +5,9 @@ mod common;
 
 use common::staircase::staircase;
 use constraint_runtime::{
-    AssembledSystem, CurveExprs, EndpointExprs, Point2, Segment, SoftContribution,
-    SoftLengthFloor, SoftPointFollow, SystemEval, Vector,
+    AnchorExprs, AssembledSystem, Congruence, CurveExprs, CurveParam, Document, EndpointExprs, Function,
+    FunctionAttrs, GeometryRole, HeadingAngle, KindAttrs, LineExprs, Point2, Segment, SoftContribution,
+    SoftLengthFloor, SoftPointFollow, SystemEval, Vector, VectorsParallel,
 };
 #[path = "../src/test_alloc.rs"]
 mod test_alloc;
@@ -62,6 +63,42 @@ fn jacobian_and_residual_do_not_allocate() {
         }
     });
     assert_eq!(n, 0, "scoped evaluation allocated {n} times");
+}
+
+#[test]
+fn function_curve_evaluation_does_not_allocate() {
+    let mut doc = Document::new();
+    let attrs = FunctionAttrs::new("sin(x)", (0.0, std::f64::consts::TAU), (1.0, 1.0)).unwrap();
+    let f = doc.add_geometry_with::<Function>(
+        GeometryRole::Result,
+        (Point2::new(0.1, 0.2), HeadingAngle::new(0.05)),
+        KindAttrs::Function(attrs),
+    );
+    let s1 = doc.add_geometry::<Segment>(GeometryRole::Result, (Point2::new(-1.0, 0.0), Point2::new(0.0, 0.0)));
+    let s2 = doc.add_geometry::<Segment>(GeometryRole::Result, (Point2::new(6.3, 0.0), Point2::new(7.0, 1.0)));
+    doc.add_constraint(Congruence { a: Function::start_expr(f), b: Segment::end_expr(s1) });
+    doc.add_constraint(Congruence { a: Function::end_expr(f), b: Segment::start_expr(s2) });
+    doc.add_constraint(Congruence {
+        a: Function::on_curve_expr(f, CurveParam::Normalized(0.3)),
+        b: Segment::end_expr(s2),
+    });
+    doc.add_constraint(VectorsParallel { a: Function::direction_expr(f), b: Segment::direction_expr(s1) });
+    let points = [SoftPointFollow { point: Function::origin_expr(f), target: Point2::new(0.0, 0.0), weight: 1.0 }];
+    let lengths = [SoftLengthFloor { length: Function::length_expr(f), min_length: 1.0, weight: 1.0 }];
+    let sys = AssembledSystem::with_soft(&doc, &[], &points, &lengths);
+    let p = doc.clone_vector();
+    let mut r = Vector::zeros(sys.n_residuals());
+    let mut j = sys.new_jacobian();
+    // Warm-up fills the thread-local expression scratch.
+    sys.residual(&p, &mut r);
+    sys.jacobian(&p, &mut j);
+    let n = allocations(|| {
+        for _ in 0..5 {
+            sys.residual(&p, &mut r);
+            sys.jacobian(&p, &mut j);
+        }
+    });
+    assert_eq!(n, 0, "function curve evaluation allocated {n} times");
 }
 
 #[test]
