@@ -76,6 +76,12 @@ Implementation: impls/rust (see design.md), on top of `issue-91-ui-model-selecti
   - status prompt.
   - Checked by the user. The check moved the style settings out of the ribbon into the inspector ("Style for new geometry") and made the ribbon's group row scroll instead of wrap. A real ribbon (icons, priority-based overflow) is #109.
 
+## Review follow-ups (PR #110)
+
+- [x] R.1 Choosing a tool during a drag is refused (`Effect::Refused`), the tool shortcuts are ignored while a point drag or a selection box runs, and a tool change drops a box in progress. Before, a shortcut during a drag left the session dragging for good (every command `Busy`). Spec scenario and tests added.
+- [x] R.2 `hide_invisible` also empties hidden filled slots (system-architecture: Hiding objects deselects them).
+- [x] R.3 Removed the test-only `App::run` and `App::geometry_name`; the tests draw through the Segment tool.
+
 ## Workflow follow-up
 
 - Archive the change after review; sync the `ui-model` delta.

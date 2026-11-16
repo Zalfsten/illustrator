@@ -1,5 +1,5 @@
 use serde_json::Value;
-use sketch_session::{DeclCommand, GeometrySpec, SegmentParams, Session};
+use sketch_session::{DeclCommand, Session};
 
 use super::*;
 use crate::fake_files::FakeFiles;
@@ -151,22 +151,21 @@ fn drawing_box_does_not_depend_on_the_previous_view() {
     assert!(min.y < 0.0 && max.y > 1.0, "the arc's top lies inside the box: {coarse_view:?}");
 }
 
+/// Draw a segment with the Segment tool (two position picks), then back to Select.
+fn draw_segment(app: &mut App, a: Point2, b: Point2) {
+    app.intent(ui_model::Intent::ChooseTool(ToolKind::Segment));
+    for at in [a, b] {
+        app.intent(ui_model::Intent::Pick { at, tolerance: 0.1, mode: ui_model::PickMode::Replace });
+    }
+    assert!(app.status.starts_with("Added "), "{}", app.status);
+    app.intent(ui_model::Intent::Cancel);
+}
+
 #[test]
 fn new_gives_the_default_box_and_edits_do_not_refit() {
     let (mut app, _) = open_far_away();
     let fitted = app.world_box;
-    app.run(
-        Command::Create {
-            name: None,
-            role: GeometryRole::Result,
-            look: Default::default(),
-            geometry: GeometrySpec::Segment(SegmentParams {
-                start: Point2::new(0.0, 0.0),
-                end: Point2::new(1.0, 0.0),
-            }),
-        },
-        String::new(),
-    );
+    draw_segment(&mut app, Point2::new(0.0, 0.0), Point2::new(1.0, 0.0));
     assert_eq!(app.world_box, fitted, "an edit keeps the view");
     app.file_command(FileCommand::New);
     assert!(app.files.asking(), "the edit is unsaved");
@@ -472,18 +471,7 @@ fn edits_do_not_move_the_view() {
     let (mut app, _) = open_far_away();
     app.update_view(canvas_800());
     let view = app.view;
-    app.run(
-        Command::Create {
-            name: None,
-            role: GeometryRole::Result,
-            look: Default::default(),
-            geometry: GeometrySpec::Segment(SegmentParams {
-                start: Point2::new(0.0, 0.0),
-                end: Point2::new(1.0, 0.0),
-            }),
-        },
-        String::new(),
-    );
+    draw_segment(&mut app, Point2::new(0.0, 0.0), Point2::new(1.0, 0.0));
     app.update_view(canvas_800());
     assert_eq!(app.view, view);
 }
@@ -560,7 +548,7 @@ fn open_clears_the_selection() {
     let fake = FakeFiles::new(true);
     let mut app = App::with_files(fake.clone());
     let first = app.doc().geometries().values().next().unwrap().id();
-    let name = app.geometry_name(first).to_owned();
+    let name = app.doc().geometry_name(first).unwrap().to_owned();
     app.ui.selection_mut().select_name(app.session.document(), &name, ui_model::PickMode::Replace);
     assert!(!app.ui.selection().is_empty());
     app.file_command(FileCommand::Open);
@@ -711,4 +699,34 @@ fn a_tool_click_on_nothing_says_what_is_needed() {
     app.intent(ui_model::Intent::ChooseTool(ui_model::ToolKind::Join));
     app.tool_click(screen(&app, 0.0, 0.0));
     assert_eq!(app.status, "Join: needs a point");
+}
+
+/// A tool change during a point drag is refused, so the release still ends
+/// the drag in the Select tool (review of PR #110).
+#[test]
+fn tool_change_during_a_point_drag_is_refused() {
+    let mut app = far_on_canvas();
+    app.select_drag_start(screen(&app, 60.0, 30.0));
+    assert!(app.session.is_dragging());
+    app.intent(ui_model::Intent::ChooseTool(ToolKind::Join));
+    assert_eq!(app.ui.tool(), ToolKind::Select);
+    assert_eq!(app.status, "Finish the drag first");
+    let to = screen(&app, 62.0, 33.0);
+    app.select_drag_stop(Some(to), false);
+    assert!(!app.session.is_dragging(), "the release ended the drag");
+}
+
+/// A tool change drops a selection box in progress, so a later point drag is
+/// not mistaken for a box (review of PR #110).
+#[test]
+fn tool_change_drops_a_selection_box() {
+    let mut app = far_on_canvas();
+    app.select_drag_start(screen(&app, 39.0, 26.0));
+    assert!(app.rubber.is_some());
+    app.intent(ui_model::Intent::ChooseTool(ToolKind::Join));
+    assert!(app.rubber.is_none());
+    app.intent(ui_model::Intent::Cancel);
+    app.select_drag_start(screen(&app, 60.0, 30.0));
+    app.select_drag_stop(Some(screen(&app, 62.0, 33.0)), false);
+    assert!(!app.session.is_dragging(), "the point drag ended normally");
 }

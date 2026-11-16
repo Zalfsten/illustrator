@@ -134,6 +134,9 @@ impl UiModel {
     pub fn apply(&mut self, intent: Intent, session: &mut Session, scene: &Scene) -> Result<Effect, UiError> {
         let doc = session.document();
         match intent {
+            // A drag belongs to selecting; its release must reach the Select
+            // tool (review of PR #110).
+            Intent::ChooseTool(_) if session.is_dragging() => Ok(Effect::Refused("Finish the drag first".into())),
             Intent::ChooseTool(tool) => self.choose_tool(tool, session),
             Intent::Cancel => {
                 if self.tool == ToolKind::Select {
@@ -306,16 +309,28 @@ impl UiModel {
 
     /// After a presentation-mode change: drop geometries `filter` hides and
     /// points with no visible endpoint left in their class. Constraints stay.
+    /// Filled slots too: a hidden one empties the slots after it, as in
+    /// [`Self::reconcile`] (review of PR #110).
     pub fn hide_invisible(&mut self, doc: &Document, filter: MeshFilter) {
         let visible_points = doc.logical_points(filter);
+        let geometry_shown = |id: GeometryId| {
+            doc.geometries()
+                .get(id)
+                .is_some_and(|g| filter.include_construction || g.role() != constraint_runtime::GeometryRole::Construction)
+        };
+        let point_shown = |p: &PointExpr| visible_points.iter().any(|lp| lp.members.contains(p));
         self.selection.retain(|e| match e {
-            Entry::Geometry(id) => doc
-                .geometries()
-                .get(*id)
-                .is_some_and(|g| filter.include_construction || g.role() != constraint_runtime::GeometryRole::Construction),
+            Entry::Geometry(id) => geometry_shown(*id),
             Entry::Constraint(_) => true,
-            Entry::Point(p) => visible_points.iter().any(|lp| lp.members.contains(p)),
+            Entry::Point(p) => point_shown(p),
         });
+        if let Some(i) = self.filled.iter().position(|f| match f {
+            Filled::Position(_) => false,
+            Filled::Point(p) => !point_shown(p),
+            Filled::Geometry(id) => !geometry_shown(*id),
+        }) {
+            self.filled.truncate(i);
+        }
     }
 }
 

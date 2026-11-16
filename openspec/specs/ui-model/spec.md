@@ -135,7 +135,7 @@ A tool SHALL declare an ordered list of slots, each asking for one input by capa
 
 ### Requirement: Choosing a tool pre-fills its slots from the selection
 
-Choosing a tool SHALL move selection entries, in selection order, into the first empty slot whose capability they have; entries that fit no slot SHALL be ignored. The selection SHALL be empty afterwards. If every slot is filled, the tool SHALL issue its command at once.
+Choosing a tool SHALL move selection entries, in selection order, into the first empty slot whose capability they have; entries that fit no slot SHALL be ignored. The selection SHALL be empty afterwards. If every slot is filled, the tool SHALL issue its command at once. While a drag is in progress, choosing a tool SHALL be refused and SHALL change nothing.
 
 #### Scenario: Select first, then Parallel
 
@@ -147,6 +147,11 @@ Choosing a tool SHALL move selection entries, in selection order, into the first
 
 - **WHEN** only `seg1` is selected and the user chooses Parallel
 - **THEN** the first slot holds `seg1` and the tool waits for the second direction
+
+#### Scenario: No tool change during a drag
+
+- **WHEN** a point is being dragged and the user chooses Join
+- **THEN** the choice is refused, selecting stays active and the drag continues
 
 #### Scenario: Unfitting entries are ignored
 

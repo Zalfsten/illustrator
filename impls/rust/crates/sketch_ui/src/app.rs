@@ -741,6 +741,10 @@ impl App {
 
     /// Apply a UI-model intent against what the Canvas shows.
     fn intent(&mut self, intent: Intent) {
+        if matches!(intent, Intent::ChooseTool(_)) && !self.session.is_dragging() {
+            // A box belongs to the Select tool; a tool change drops it.
+            self.rubber = None;
+        }
         self.ui.set_look(self.current.look());
         let mesh = self.mesh();
         let scene = Scene {
@@ -860,7 +864,9 @@ impl App {
                 .find(|(key, _)| i.modifiers.is_none() && i.key_pressed(*key))
                 .map(|(_, tool)| *tool)
         });
-        if let Some(tool) = tool {
+        // Not while a point drag or a selection box runs: their release is
+        // handled by the Select tool only (review of PR #110).
+        if let Some(tool) = tool.filter(|_| self.rubber.is_none() && !self.session.is_dragging()) {
             self.intent(Intent::ChooseTool(tool));
         }
         if del {
@@ -896,15 +902,6 @@ impl App {
             };
             painter.circle_filled(self.viewport.to_screen(at), 4.5, SELECTION);
         }
-    }
-
-    /// Apply `cmd`; status `Added <name> <detail>` or the command error.
-    #[cfg(test)]
-    fn run(&mut self, cmd: Command, detail: String) {
-        self.step(cmd, |outcome| {
-            let name = outcome.created.unwrap_or_default();
-            format!("Added {name}{detail}")
-        });
     }
 
     /// Apply `cmd`; status from `done` or the command error.
@@ -944,11 +941,6 @@ impl App {
     /// Address of a picked point (`seg1.end`); handles are always addressable.
     fn address(&self, p: &PointExpr) -> String {
         self.doc().point_address(p).unwrap_or_else(|| "?".into())
-    }
-
-    #[cfg(test)]
-    fn geometry_name(&self, id: GeometryId) -> &str {
-        self.doc().geometry_name(id).unwrap_or("?")
     }
 
     /// `f` on what the Canvas shows, at the world image of `screen` with a

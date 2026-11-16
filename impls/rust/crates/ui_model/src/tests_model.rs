@@ -400,3 +400,35 @@ fn undo_drops_a_filled_slot_whose_object_is_gone() {
     ui.reconcile(s.document());
     assert!(ui.filled().is_empty());
 }
+
+/// A drag belongs to selecting: choosing a tool during it is refused, so the
+/// release still reaches the Select tool (review of PR #110).
+#[test]
+fn choosing_a_tool_during_a_drag_is_refused() {
+    let mut s = sample();
+    let mut ui = UiModel::default();
+    s.drag_begin("seg3.end").unwrap();
+    let e = run(&mut ui, &mut s, Intent::ChooseTool(ToolKind::Join));
+    assert!(matches!(e, Effect::Refused(_)), "{e:?}");
+    assert_eq!(ui.tool(), ToolKind::Select);
+    s.drag_cancel();
+    run(&mut ui, &mut s, Intent::ChooseTool(ToolKind::Join));
+    assert_eq!(ui.tool(), ToolKind::Join, "after the drag the tool can change");
+}
+
+/// Hiding a slot's object empties that slot (and the ones after it), as for
+/// the selection (review of PR #110).
+#[test]
+fn hiding_drops_filled_slots() {
+    let mut s = session(vec![
+        segment_as("aux", GeometryRole::Construction, (0.0, 2.0), (1.0, 2.0)),
+        segment("seg1", (0.0, 0.0), (1.0, 0.0)),
+    ]);
+    let mut ui = UiModel::default();
+    ui.selection_mut().select_name(s.document(), "aux", PickMode::Replace);
+    run(&mut ui, &mut s, Intent::ChooseTool(ToolKind::Parallel));
+    assert_eq!(ui.filled().len(), 1, "aux pre-filled");
+    ui.hide_invisible(s.document(), MeshFilter::RESULT_ONLY);
+    assert!(ui.filled().is_empty(), "the hidden line left its slot");
+    assert_eq!(ui.tool(), ToolKind::Parallel, "the tool stays");
+}
