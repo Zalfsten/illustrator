@@ -6,10 +6,12 @@
 pub mod model;
 pub mod pick;
 pub mod selection;
+pub mod tool;
 
-pub use model::{BoxMode, Effect, Intent, UiModel};
-pub use pick::{box_select, mesh_polylines, nearest_curve, nearest_endpoint, nearest_point, pick, Scene};
+pub use model::{BoxMode, Effect, Intent, UiError, UiModel};
+pub use pick::{box_select, mesh_polylines, nearest_curve, nearest_endpoint, nearest_line, nearest_point, pick, Scene};
 pub use selection::{entry_named, Entry, PickMode, Selection};
+pub use tool::{brush_command, Filled, SlotKind, ToolKind};
 
 #[cfg(test)]
 mod test_util;

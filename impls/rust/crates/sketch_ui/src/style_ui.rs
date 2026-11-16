@@ -79,22 +79,6 @@ impl CurrentStyle {
         }
     }
 
-    /// `set_style` that makes geometry `name` look like a new geometry drawn
-    /// now: the current style, switched-on overrides set, the others removed.
-    pub fn brush(&self, name: &str) -> Command {
-        let o = self.look().overrides;
-        Command::SetStyle {
-            name: name.to_owned(),
-            style: Some(self.style.clone()),
-            patch: StylePatch {
-                width: Some(o.width),
-                color: Some(o.color),
-                dash: Some(o.dash),
-                arrow: Some(o.arrow),
-            },
-        }
-    }
-
     /// Fall back to `default` when the current style is gone from `styles`.
     pub fn keep_valid(&mut self, styles: &Styles) {
         if !styles.contains(&self.style) {
@@ -102,27 +86,35 @@ impl CurrentStyle {
         }
     }
 
-    /// The toolbar's style row.
-    pub fn row(&mut self, ui: &mut egui::Ui, styles: &Styles) {
-        ui.label("Style:");
-        egui::ComboBox::from_id_salt("current_style")
-            .selected_text(self.style.as_str())
-            .show_ui(ui, |ui| {
-                for (name, _) in styles.iter() {
-                    ui.selectable_value(&mut self.style, name.to_owned(), name);
-                }
+    /// The inspector's "style for new geometry" grid: one row per property,
+    /// name (with its override switch) left, value right.
+    pub fn panel(&mut self, ui: &mut egui::Ui, styles: &Styles) {
+        egui::Grid::new("current_style_grid").num_columns(2).spacing([8.0, 6.0]).show(ui, |ui| {
+            ui.label("Style");
+            egui::ComboBox::from_id_salt("current_style")
+                .selected_text(self.style.as_str())
+                .show_ui(ui, |ui| {
+                    for (name, _) in styles.iter() {
+                        ui.selectable_value(&mut self.style, name.to_owned(), name);
+                    }
+                });
+            ui.end_row();
+            ui.checkbox(&mut self.width.on, "Width");
+            ui.add_enabled(self.width.on, width_drag(&mut self.width.value));
+            ui.end_row();
+            ui.checkbox(&mut self.color.on, "Colour");
+            ui.add_enabled_ui(self.color.on, |ui| color_button(ui, &mut self.color.value));
+            ui.end_row();
+            ui.checkbox(&mut self.dash.on, "Dash");
+            ui.add_enabled_ui(self.dash.on, |ui| {
+                choice(ui, "current_dash", &mut self.dash.value, &DASHES)
             });
-        ui.checkbox(&mut self.width.on, "width");
-        ui.add_enabled(self.width.on, width_drag(&mut self.width.value));
-        ui.checkbox(&mut self.color.on, "colour");
-        ui.add_enabled_ui(self.color.on, |ui| color_button(ui, &mut self.color.value));
-        ui.checkbox(&mut self.dash.on, "dash");
-        ui.add_enabled_ui(self.dash.on, |ui| {
-            choice(ui, "current_dash", &mut self.dash.value, &DASHES)
-        });
-        ui.checkbox(&mut self.arrow.on, "arrow");
-        ui.add_enabled_ui(self.arrow.on, |ui| {
-            choice(ui, "current_arrow", &mut self.arrow.value, &ARROWS)
+            ui.end_row();
+            ui.checkbox(&mut self.arrow.on, "Arrow");
+            ui.add_enabled_ui(self.arrow.on, |ui| {
+                choice(ui, "current_arrow", &mut self.arrow.value, &ARROWS)
+            });
+            ui.end_row();
         });
     }
 }

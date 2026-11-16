@@ -1,5 +1,5 @@
 use serde_json::Value;
-use sketch_session::{DeclCommand, Session};
+use sketch_session::{DeclCommand, GeometrySpec, SegmentParams, Session};
 
 use super::*;
 use crate::fake_files::FakeFiles;
@@ -91,8 +91,11 @@ const FAR_AWAY: &[u8] = br#"{"format": "illustrator-sketch", "version": 2, "scal
 fn open_far_away() -> (App, FakeFiles) {
     let fake = FakeFiles::new(true);
     let mut app = App::with_files(fake.clone());
-    app.pick_points.push(app.logical_points[0].representative);
-    app.segment_clicks.push(Point2::new(1.0, 1.0));
+    // A half-filled tool and a selection, both reset by Open.
+    app.intent(ui_model::Intent::ChooseTool(ui_model::ToolKind::Join));
+    let first = app.eval_point(&app.logical_points[0].representative);
+    app.tool_click(app.viewport.to_screen(first));
+    assert_eq!(app.ui.filled().len(), 1);
     app.file_command(FileCommand::Open);
     fake.open_file("far.sketch.json", FAR_AWAY);
     app.poll_files();
@@ -106,7 +109,8 @@ fn opened_file_replaces_the_drawing_and_resets_picks() {
     assert_eq!(app.mesh().edges.len(), 1);
     assert_eq!(app.doc().geometries().len(), 2);
     assert!(!app.session.can_undo());
-    assert!(app.pick_points.is_empty() && app.segment_clicks.is_empty());
+    assert_eq!(app.ui.tool(), ui_model::ToolKind::Select);
+    assert!(app.ui.filled().is_empty());
     assert_eq!(app.logical_points.len(), 2, "the segment's two ends");
 }
 
@@ -318,9 +322,9 @@ fn segment_tool_draws_with_the_current_style() {
         on: true,
         value: Rgb(0xc0, 0, 0),
     };
-    app.tool = Tool::Segment;
-    app.handle_click(app.viewport.to_screen(Point2::new(5.0, 5.0)));
-    app.handle_click(app.viewport.to_screen(Point2::new(6.0, 5.0)));
+    app.intent(ui_model::Intent::ChooseTool(ui_model::ToolKind::Segment));
+    app.tool_click(app.viewport.to_screen(Point2::new(5.0, 5.0)));
+    app.tool_click(app.viewport.to_screen(Point2::new(6.0, 5.0)));
     let name = app.status.strip_prefix("Added ").unwrap().to_owned();
     let text = exported(&app, &name);
     assert!(
@@ -336,8 +340,8 @@ fn brush_replaces_style_and_overrides() {
         &mut app,
         r##"{"op": "create", "kind": "segment", "name": "odd", "start": [5, 5], "end": [6, 5], "color": "#c00000", "dash": "dotted"}"##,
     );
-    app.tool = Tool::Brush;
-    app.handle_click(app.viewport.to_screen(Point2::new(5.5, 5.0)));
+    app.intent(ui_model::Intent::ChooseTool(ui_model::ToolKind::Brush));
+    app.tool_click(app.viewport.to_screen(Point2::new(5.5, 5.0)));
     assert_eq!(app.status, "Brushed odd");
     let text = exported(&app, "odd");
     assert!(
@@ -653,4 +657,41 @@ fn delete_with_a_point_deletes_its_curve() {
     app.intent(ui_model::Intent::Delete);
     assert_eq!(app.status, "Deleted far");
     assert!(app.doc().lookup("far").is_none());
+}
+
+// --- Tools (ui-model slots) ---
+
+#[test]
+fn select_two_segments_then_parallel() {
+    let mut app = far_on_canvas();
+    apply_json(
+        &mut app,
+        r#"{"op": "create", "kind": "segment", "name": "near", "start": [41, 28], "end": [44, 28]}"#,
+    );
+    app.rebuild_logical_points();
+    app.select_click(screen(&app, 50.0, 25.0), false);
+    app.select_click(screen(&app, 42.5, 28.0), true);
+    app.intent(ui_model::Intent::ChooseTool(ui_model::ToolKind::Parallel));
+    assert_eq!(app.status, "Added par1 (far, near)");
+    assert!(app.ui.selection().is_empty());
+    assert_eq!(app.ui.tool(), ui_model::ToolKind::Parallel);
+}
+
+#[test]
+fn esc_in_a_half_filled_tool_returns_to_select() {
+    let mut app = far_on_canvas();
+    app.intent(ui_model::Intent::ChooseTool(ui_model::ToolKind::Parallel));
+    app.tool_click(screen(&app, 50.0, 25.0));
+    assert_eq!(app.ui.prompt(app.doc()).as_deref(), Some("Parallel: far → pick a direction"));
+    app.intent(ui_model::Intent::Cancel);
+    assert_eq!(app.ui.tool(), ui_model::ToolKind::Select);
+    assert!(app.doc().constraints().is_empty());
+}
+
+#[test]
+fn a_tool_click_on_nothing_says_what_is_needed() {
+    let mut app = far_on_canvas();
+    app.intent(ui_model::Intent::ChooseTool(ui_model::ToolKind::Join));
+    app.tool_click(screen(&app, 0.0, 0.0));
+    assert_eq!(app.status, "Join: needs a point");
 }

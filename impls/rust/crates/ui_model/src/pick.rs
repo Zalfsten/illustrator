@@ -44,6 +44,35 @@ pub fn nearest_curve(scene: &Scene, at: Point2, tolerance: f64) -> Option<Geomet
     scene.mesh.hit_geometry(at, tolerance)
 }
 
+/// Nearest curve with a direction (a line) strictly within `tolerance`;
+/// nearer curves without one are skipped.
+pub fn nearest_line(doc: &Document, scene: &Scene, at: Point2, tolerance: f64) -> Option<GeometryId> {
+    let mut best = None;
+    let mut best_d = tolerance;
+    for e in &scene.mesh.edges {
+        if !doc.caps(e.geometry).is_some_and(|c| c.line) {
+            continue;
+        }
+        let d = distance_to_segment(at, e.a, e.b);
+        if d < best_d {
+            best_d = d;
+            best = Some(e.geometry);
+        }
+    }
+    best
+}
+
+fn distance_to_segment(p: Point2, a: Point2, b: Point2) -> f64 {
+    let (dx, dy) = (b.x - a.x, b.y - a.y);
+    let len2 = dx * dx + dy * dy;
+    let t = if len2 > 0.0 {
+        (((p.x - a.x) * dx + (p.y - a.y) * dy) / len2).clamp(0.0, 1.0)
+    } else {
+        0.0
+    };
+    distance(p, Point2::new(a.x + t * dx, a.y + t * dy))
+}
+
 /// What a pick at `at` selects: the nearest logical point, else the nearest curve.
 pub fn pick(doc: &Document, scene: &Scene, at: Point2, tolerance: f64) -> Option<Entry> {
     nearest_point(doc, scene, at, tolerance)
