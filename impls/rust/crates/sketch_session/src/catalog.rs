@@ -6,7 +6,7 @@
 //! error in the reverse mapping (`of`).
 
 use constraint_runtime::{
-    Arc, Congruence, ConstraintInst, Document, EqualLength, FixPoint, Geometry, GeometryId,
+    Arc, Congruence, ConstraintInst, Document, EqualLength, FixPoint, Function, Geometry, GeometryId,
     GeometryInst, GeometryKind, GeometryRole, Label, Segment, StyleRef, VectorsOrthogonal,
     VectorsParallel,
 };
@@ -57,6 +57,13 @@ macro_rules! command_catalog {
             pub fn tag(&self) -> &'static str {
                 match self {
                     $(Self::$a(_) => <$a as GeometryCommand>::TAG,)+
+                }
+            }
+
+            /// Whether applying these attributes moves the curve's points.
+            pub fn changes_geometry(&self) -> bool {
+                match self {
+                    $(Self::$a(_) => <$a as AttributeCommand>::CHANGES_GEOMETRY,)+
                 }
             }
 
@@ -265,7 +272,7 @@ macro_rules! command_catalog {
 }
 
 command_catalog! {
-    create: Segment, Arc, Label;
+    create: Segment, Arc, Label, Function;
     constrain: Congruence, VectorsParallel, VectorsOrthogonal, FixPoint, EqualLength;
-    set: Label;
+    set: Label, Function;
 }

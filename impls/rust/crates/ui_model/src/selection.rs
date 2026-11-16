@@ -29,8 +29,7 @@ impl Entry {
         match self {
             Entry::Geometry(id) => doc.geometries().contains(*id),
             Entry::Constraint(id) => doc.constraints().contains(*id),
-            // The address needs the point's geometry.
-            Entry::Point(p) => doc.point_address(p).is_some(),
+            Entry::Point(p) => doc.geometries().contains(p.referenced_geometry()),
         }
     }
 

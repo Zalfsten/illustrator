@@ -22,3 +22,15 @@ fn heading_minus_heading_is_turn() {
     assert_eq!((t + TurnAngle::new(0.25)).radians(), 1.75);
     assert_eq!((-t).radians(), -1.5);
 }
+
+#[test]
+fn chart_t_serves_normalized_and_uniform() {
+    assert_eq!(CurveParam::Normalized(0.25).chart_t(), 0.25);
+    assert_eq!(CurveParam::Uniform(0.75).chart_t(), 0.75);
+}
+
+#[test]
+#[should_panic(expected = "abscissa")]
+fn chart_t_rejects_abscissa() {
+    let _ = CurveParam::Abscissa(1.0).chart_t();
+}

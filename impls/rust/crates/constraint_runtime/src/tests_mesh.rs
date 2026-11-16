@@ -765,3 +765,15 @@ fn chord_turn_is_capped_at_a_half_turn() {
     // Tolerance above the radius: a near-full circle still gets two edges.
     assert_eq!(arc_edge_count(0.1, 2.0 * PI - 0.05, 0.5), 2);
 }
+
+/// A short sharp bend in a long grid cell: the cell's bound is the bend's
+/// curvature over the whole cell, so a fixed grid asked for about 1000 edges
+/// (and then checked none). The adaptive grid halves that cell.
+#[test]
+fn sharp_bend_in_a_long_cell_does_not_inflate_the_demand() {
+    let curve = Synth::piecewise(&[(50.0, 0.0), (0.001, 1000.0), (50.0, 0.0)]);
+    let eps = 1e-3;
+    let ts = curve.samples(eps, MAX_MESH_EDGES);
+    assert!(ts.len() - 1 < 64, "{} edges", ts.len() - 1);
+    curve.assert_within(&ts, eps, "sharp bend");
+}

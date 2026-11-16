@@ -20,6 +20,5 @@ default-members = [
     "crates/sketch_export",
     "crates/label_typst",
     "crates/ui_model",
-    "crates/ui_model",
     "crates/sketch_ui",
 ]

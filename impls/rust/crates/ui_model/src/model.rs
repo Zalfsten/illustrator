@@ -2,9 +2,10 @@
 //! model through intents; pick, box, delete the selection; tools with slots,
 //! pre-fill, picks, stay active, cancel, prompt).
 
+use std::collections::HashSet;
 use std::fmt;
 
-use constraint_runtime::{Document, GeometryId, MeshFilter, ObjectId, Point2, PointExpr, StyleRef};
+use constraint_runtime::{Document, GeometryId, MeshFilter, Point2, PointExpr, StyleRef};
 use sketch_session::{Command, CommandError, GroupError, Outcome, Session};
 
 use crate::pick::{box_select, nearest_curve, nearest_line, nearest_point, pick, Scene};
@@ -27,7 +28,9 @@ pub enum Intent {
     Pick { at: Point2, tolerance: f64, mode: PickMode },
     Box { a: Point2, b: Point2, mode: BoxMode },
     Clear,
-    /// Delete the selected geometries and constraints as one history step.
+    /// Delete the selected geometries and constraints as one history step; a
+    /// selected point deletes the curves shown on the Canvas with an endpoint
+    /// in its class.
     Delete,
     /// Make this the active tool; its slots fill from the selection.
     ChooseTool(ToolKind),
@@ -166,7 +169,7 @@ impl UiModel {
                 self.selection.clear();
                 Ok(Effect::Selection)
             }
-            Intent::Delete => Ok(self.delete(session)?),
+            Intent::Delete => Ok(self.delete(session, scene)?),
         }
     }
 
@@ -234,9 +237,14 @@ impl UiModel {
 
     /// Constraints first, then geometries: every name still exists at its
     /// turn (a geometry's cascade only removes constraints). A point adds
-    /// every curve with an endpoint in its congruence class.
-    fn delete(&mut self, session: &mut Session) -> Result<Effect, GroupError> {
+    /// every curve with an endpoint in its congruence class that the Canvas
+    /// shows: not curves through it (on-curve points), arc centers or label
+    /// origins, and not curves hidden by the presentation mode (ui-model:
+    /// Delete the selection; system-architecture: Hiding objects deselects
+    /// them).
+    fn delete(&mut self, session: &mut Session, scene: &Scene) -> Result<Effect, GroupError> {
         let doc = session.document();
+        let shown: HashSet<GeometryId> = scene.mesh.edges.iter().map(|e| e.geometry).collect();
         let entries = self.selection.entries();
         let mut names: Vec<String> = entries
             .iter()
@@ -249,7 +257,13 @@ impl UiModel {
         for e in entries {
             match e {
                 Entry::Geometry(id) => geometries.push(*id),
-                Entry::Point(p) => geometries.extend(doc.point_class(p).iter().filter_map(|q| geometry_of(doc, q))),
+                Entry::Point(p) => geometries.extend(
+                    doc.point_class(p)
+                        .iter()
+                        .filter(|q| is_endpoint(doc, q))
+                        .map(PointExpr::referenced_geometry)
+                        .filter(|g| shown.contains(g)),
+                ),
                 Entry::Constraint(_) => {}
             }
         }
@@ -305,14 +319,10 @@ impl UiModel {
     }
 }
 
-/// The geometry a point expression belongs to (the name part of its address).
-fn geometry_of(doc: &Document, p: &PointExpr) -> Option<GeometryId> {
-    let address = doc.point_address(p)?;
-    let name = address.split('.').next()?;
-    match doc.lookup(name)? {
-        ObjectId::Geometry(id) => Some(id),
-        ObjectId::Constraint(_) => None,
-    }
+/// Whether `p` is the start or end point of its geometry.
+fn is_endpoint(doc: &Document, p: &PointExpr) -> bool {
+    let g = p.referenced_geometry();
+    doc.start_expr(g).as_ref() == Some(p) || doc.end_expr(g).as_ref() == Some(p)
 }
 
 #[cfg(test)]

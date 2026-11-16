@@ -32,6 +32,10 @@ impl ConstraintKind for FixPoint {
         self.point.accumulate_jacobian(doc, p, j, 1.0);
     }
 
+    fn curve_params(&self) -> Vec<(GeometryId, crate::geom::CurveParam)> {
+        [self.point.curve_param()].into_iter().flatten().collect()
+    }
+
     fn referenced_geometries(&self) -> Vec<GeometryId> {
         vec![self.point.referenced_geometry()]
     }

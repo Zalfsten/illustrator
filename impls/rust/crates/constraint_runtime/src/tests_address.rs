@@ -240,3 +240,63 @@ fn origin_and_endpoints_need_their_capabilities() {
         );
     }
 }
+
+// --- Abscissa addresses (object-naming) -------------------------------------
+
+use crate::geom::CurveParam;
+use crate::geometry_kinds::{Function, FunctionAttrs, KindAttrs};
+
+/// [`doc`] plus `fn1` = sin(x) on [0, 2π] and `fn2` = sqrt(x) on [1, 4].
+fn doc_with_functions() -> (Document, GeometryId, GeometryId) {
+    let (mut doc, _, _) = doc();
+    let add = |doc: &mut Document, src: &str, range: (f64, f64)| {
+        doc.add_geometry_with::<Function>(
+            GeometryRole::Result,
+            (Point2::new(0.0, 0.0), HeadingAngle::new(0.0)),
+            KindAttrs::Function(FunctionAttrs::new(src, range, (1.0, 1.0)).unwrap()),
+        )
+    };
+    let f1 = add(&mut doc, "sin(x)", (0.0, std::f64::consts::TAU));
+    let f2 = add(&mut doc, "sqrt(x)", (1.0, 4.0));
+    (doc, f1, f2)
+}
+
+#[test]
+fn abscissa_addresses_resolve() {
+    let (doc, f1, _) = doc_with_functions();
+    assert_eq!(
+        resolve(&doc, "fn1.tangent(x=1)"),
+        Address::Vector(Function::tangent_expr(f1, CurveParam::Abscissa(1.0)))
+    );
+    assert_eq!(resolve(&doc, "fn1.at(x=8)"), Address::Point(Function::on_curve_expr(f1, CurveParam::Abscissa(8.0))));
+    assert_eq!(resolve(&doc, "fn1.normal(x=-0.5)"), Address::Vector(Function::normal_expr(f1, CurveParam::Abscissa(-0.5))));
+    assert_eq!(resolve(&doc, "fn1.at(0.4)"), Address::Point(Function::on_curve_expr(f1, CurveParam::Normalized(0.4))));
+}
+
+#[test]
+fn abscissa_addresses_print_and_round_trip() {
+    let (doc, f1, _) = doc_with_functions();
+    let p = Function::on_curve_expr(f1, CurveParam::Abscissa(-2.5));
+    let text = doc.point_address(&p).unwrap();
+    assert_eq!(text, "fn1.at(x=-2.5)");
+    assert_eq!(resolve(&doc, &text), Address::Point(p));
+    for v in [Function::tangent_expr(f1, CurveParam::Abscissa(0.1)), Function::normal_expr(f1, CurveParam::Abscissa(1e-7))] {
+        let text = doc.vec_address(&v).unwrap();
+        assert_eq!(resolve(&doc, &text), Address::Vector(v), "{text}");
+    }
+}
+
+#[test]
+fn abscissa_address_failures() {
+    let (doc, _, _) = doc_with_functions();
+    assert_eq!(
+        doc.resolve_address("seg1.at(x=1)"),
+        Err(AddressError::MissingCapability { name: "seg1".into(), capability: "abscissa" })
+    );
+    assert_eq!(doc.resolve_address("fn2.at(x=0)"), Err(AddressError::InvalidAbscissa { name: "fn2".into(), x: 0.0 }));
+    assert!(matches!(doc.resolve_address("fn1.at(x=inf)"), Err(AddressError::InvalidAbscissa { .. })));
+    for bad in ["fn1.at(u=1)", "fn1.at(x=)", "fn1.at(x=1", "fn1.length(x=1)", "fn1.tangent(y=2)"] {
+        assert_eq!(doc.resolve_address(bad), Err(AddressError::Malformed), "{bad}");
+    }
+    assert_eq!(doc.resolve_address("fn1.at(1.5)"), Err(AddressError::ParamOutOfRange(1.5)), "normalized still checked");
+}

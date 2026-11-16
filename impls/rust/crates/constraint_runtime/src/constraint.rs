@@ -8,6 +8,7 @@ use std::fmt::Debug;
 
 use crate::document::Document;
 use crate::expr::Expr;
+use crate::geom::CurveParam;
 use crate::geometry::{Formula, GeometryId};
 use crate::matrix::DenseMatrix;
 use crate::vector::Vector;
@@ -87,6 +88,12 @@ pub trait ConstraintKind: Clone + Debug + 'static {
 
     /// Geometry instances this constraint depends on (incidence / reverse index).
     fn referenced_geometries(&self) -> Vec<GeometryId>;
+
+    /// Curve parameters of the operands, with their geometries (empty for
+    /// kinds without on-curve, tangent or normal operands). Required, so a
+    /// new kind cannot silently bypass the abscissa edit rule
+    /// ([`Document::invalid_abscissa_users`]).
+    fn curve_params(&self) -> Vec<(GeometryId, CurveParam)>;
 
     /// True if this constraint references geometry `id` (orphan drop on remove).
     fn references_geometry(&self, id: GeometryId) -> bool {

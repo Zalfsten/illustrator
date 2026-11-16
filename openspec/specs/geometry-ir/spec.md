@@ -90,7 +90,7 @@ The normal at \(t\) SHALL be a planar perpendicular to that tangent obtained by 
 
 ### Requirement: Normalized chart is the canonical parameterization
 
-The normalized chart SHALL be the canonical parameterization of the curve's defining formula with its natural domain affinely mapped to \([0,1]\); equal steps in \(t\) NEED NOT correspond to equal arc length except for curves whose chart already has constant speed (for example a line segment).
+The normalized chart SHALL be the canonical parameterization of the curve's defining formula with its natural domain affinely mapped to \([0,1]\), unless the kind states that its normalized chart is the arc-length fraction (as the function curve does). Equal steps in \(t\) NEED NOT correspond to equal arc length except for curves whose chart already has constant speed (for example a line segment) or is the arc-length fraction.
 
 #### Scenario: Quarter of a segment
 
@@ -99,7 +99,7 @@ The normalized chart SHALL be the canonical parameterization of the curve's defi
 
 ### Requirement: Curve parameter kinds Normalized and Uniform
 
-The system SHALL address a location on a curve using a curve parameter that is either `Normalized` (\(t \in [0,1]\) in the canonical chart) or `Uniform` (\(u \in [0,1]\) such that equal increments of \(u\) correspond to equal arc length along the curve, i.e. arc-length fraction). A physical arc-length domain \(s \in [0, L]\) SHALL NOT be required in this capability. For a line segment, `Normalized` and `Uniform` SHALL yield the same point for the same numeric argument.
+The system SHALL address a location on a curve using a curve parameter: `Normalized` (\(t \in [0,1]\) in the canonical chart), `Uniform` (\(u \in [0,1]\), the arc-length fraction: equal increments of \(u\) give equal arc length) or, on a curve with the abscissa capability, `Abscissa` (see *Abscissa curve parameter*). A physical arc-length domain \(s \in [0, L]\) SHALL NOT be required. For a line segment, `Normalized` and `Uniform` SHALL yield the same point for the same numeric argument.
 
 #### Scenario: Uniform mid-parameter is arc-length midpoint on a segment
 
@@ -210,7 +210,7 @@ Full evaluation semantics for intersection and new tangency/incidence constraint
 
 ### Requirement: Geometry set includes curves with segment as proving kind
 
-The system SHALL treat parameterized curves as the primary geometry kind for path-like primitives. A line segment SHALL be a curve in this sense and SHALL remain supported. A circular arc SHALL also be a supported curve kind under this capability. Document SHALL store geometries as a sum of kinds (of which line segment, circular arc and label are required kinds in this slice). The curve capability SHALL be optional per kind: a label is a geometry without it.
+The system SHALL treat parameterized curves as the primary geometry kind for path-like primitives. A line segment SHALL be a curve in this sense and SHALL remain supported. Circular arcs and function curves SHALL also be supported curve kinds under this capability. Document SHALL store geometries as a sum of kinds (of which line segment, circular arc, function curve and label are required kinds in this slice). The curve capability SHALL be optional per kind: a label is a geometry without it.
 
 #### Scenario: Segment remains an admitted curve
 
@@ -745,7 +745,7 @@ Curves whose carrier is a circle SHALL be able to expose a circular capability. 
 
 ### Requirement: Capabilities are queryable by geometry identity
 
-For a geometry identity resolvable in Document, the system SHALL report which capabilities its kind has: curve, endpoints, line, circular, anchor. The capability set of a kind SHALL be fixed for that kind and SHALL be declared together with the kind's capability factories, so the reported set cannot diverge from the factories the kind provides. Querying an identity that is not resolvable SHALL report that the geometry does not exist.
+For a geometry identity resolvable in Document, the system SHALL report which capabilities its kind has: curve, endpoints, line, circular, anchor, abscissa. The capability set of a kind SHALL be fixed for that kind and SHALL be declared together with the kind's capability factories, so the reported set cannot diverge from the factories the kind provides. Querying an identity that is not resolvable SHALL report that the geometry does not exist.
 
 #### Scenario: Segment reports its capabilities
 
@@ -841,6 +841,135 @@ The system SHALL admit a **label** geometry kind in the same closed sum of kinds
 
 - **WHEN** a fix constraint is applied to a label's origin expression and the drawing is solved
 - **THEN** the label's origin satisfies the fix within solve tolerance
+
+### Requirement: Function curve is an admitted curve kind
+
+The system SHALL admit a **function curve** geometry kind: the graph of \(y = f(x)\) for \(x\) in a range \([x_0, x_1]\), \(x_0 < x_1\), drawn in a frame with origin location \(O\) and heading angle \(\theta\), scaled by \(s_u > 0\) along the frame's x axis and \(s_v > 0\) along its y axis. \(O\) and \(\theta\) SHALL be its continuous parameters. The expression \(f\) (expression-language, variable `x`), \(x_0\), \(x_1\), \(s_u\) and \(s_v\) SHALL be attributes.
+
+#### Scenario: Sine over one period
+
+- **WHEN** a function curve with \(f\) = `sin(x)`, range \([0, 2\pi]\), scales 1, origin (0, 0) and heading 0 is added
+- **THEN** its start point is (0, 0) and its end point is \((2\pi, 0)\)
+- **AND** its length expression evaluates to 7.6403955780 within \(10^{-9}\)
+
+#### Scenario: The frame rotates the graph
+
+- **WHEN** the same curve has heading \(\pi/2\)
+- **THEN** its end point is \((0, 2\pi)\)
+
+#### Scenario: Scales stretch the graph
+
+- **WHEN** a function curve with \(f\) = `x^2`, range \([0, 1]\), scales \(s_u = 2\), \(s_v = 3\), origin (1, 1) and heading 0 is added
+- **THEN** its end point is (3, 4)
+
+### Requirement: Function curve normalized parameter is the arc-length fraction
+
+For a function curve with total length \(L\), the point at normalized \(t\) SHALL be \(O + R(\theta)\,(s_u\,x,\; s_v\,f(x))\) for the \(x\) whose arc length from \(x_0\) along the scaled graph is \(t\,L\), within \(10^{-9} L\) in arc length. `Normalized` and `Uniform` SHALL yield the same point for the same numeric argument.
+
+#### Scenario: Midpoint of a sine period
+
+- **WHEN** the sine curve over \([0, 2\pi]\) with scales 1, origin (0, 0) and heading 0 is sampled at normalized \(t = 0.5\)
+- **THEN** the sample is \((\pi, 0)\)
+
+#### Scenario: Arc length up to a sample
+
+- **WHEN** the curve \(f\) = `x^2` on \([0, 1]\) is sampled at normalized \(t = 0.3\)
+- **THEN** the arc length of the graph from \(x_0\) to the sample is \(0.3\,L\) within \(10^{-9} L\)
+- **AND** the sample at `Uniform(0.3)` is the same point
+
+### Requirement: Function curve capabilities
+
+A function curve SHALL expose the curve capability, the endpoints capability (start at \(x_0\), end at \(x_1\)), the anchor capability with origin \(O\), the line capability with direction \(R(\theta)\,(1, 0)\), the unit vector of the frame's x axis, and the abscissa capability. It SHALL NOT expose the circular capability.
+
+#### Scenario: Origin and direction
+
+- **WHEN** a function curve has origin (2, 1) and heading 0.3
+- **THEN** its origin expression evaluates to (2, 1) and its direction expression to \((\cos 0.3, \sin 0.3)\)
+
+#### Scenario: No radius
+
+- **WHEN** a radius expression is requested for a function curve
+- **THEN** none can be built because the curve has no circular capability
+
+### Requirement: Function curves accept only smooth functions
+
+Creating a function curve, or changing its expression or range, SHALL succeed only if \(f\), \(f'\) and \(f''\) are proven finite on the whole closed range \([x_0, x_1]\) (expression-language domain check). Otherwise it SHALL be rejected, and an existing curve SHALL keep its attributes. A range whose end has a vertical tangent is therefore rejected.
+
+#### Scenario: Vertical tangent at a range end
+
+- **WHEN** a function curve with \(f\) = `sqrt(x)` on \([0, 1]\) is created
+- **THEN** creation is rejected
+
+#### Scenario: Pole inside the range
+
+- **WHEN** a function curve with \(f\) = `1/x` on \([-1, 1]\) is created
+- **THEN** creation is rejected
+
+#### Scenario: Smooth on a shifted range
+
+- **WHEN** a function curve with \(f\) = `sqrt(x)` on \([1, 4]\) is created
+- **THEN** creation succeeds
+
+### Requirement: Function curve attributes move only the local curve
+
+Changing a function curve's attributes SHALL NOT itself change \(O\) and \(\theta\); it SHALL change the curve's points accordingly. A solve, including the one that follows a geometry-changing `set` (sketch-commands), SHALL change only \(O\) and \(\theta\) of a function curve, never its attributes.
+
+#### Scenario: Longer range, same origin
+
+- **WHEN** the range of the sine curve with origin (0, 0) and heading 0 is changed from \([0, \pi]\) to \([0, 2\pi]\) on a curve without constraints
+- **THEN** its origin and heading are unchanged
+- **AND** its end point moves from \((\pi, 0)\) to \((2\pi, 0)\)
+
+### Requirement: Abscissa curve parameter
+
+On a function curve, the curve parameter `Abscissa(x)` SHALL address the point \(O + R(\theta)\,(s_u\,x,\; s_v\,f(x))\). The tangent at `Abscissa(x)` SHALL be the derivative with respect to \(x\), \(R(\theta)\,(s_u,\; s_v\,f'(x))\); the normal SHALL be that tangent turned a quarter to the left. Expressions with an abscissa parameter SHALL be point and free-vector expressions like any other, evaluated from the State.
+
+#### Scenario: Point and tangent at x = 1
+
+- **WHEN** the sine curve over \([0, 2\pi]\) with scales 1, origin (0, 0) and heading 0 is addressed at `Abscissa(1)`
+- **THEN** the point is \((1, \sin 1)\) and the tangent is \((1, \cos 1)\)
+
+#### Scenario: Same direction as the normalized tangent
+
+- **WHEN** the tangent at `Abscissa(1)` and the tangent at the normalized parameter of the same point are evaluated
+- **THEN** they point in the same direction and their lengths differ
+
+#### Scenario: Abscissa stays at its x when the range changes
+
+- **WHEN** the range of that curve changes from \([0, 2\pi]\) to \([0, \pi]\)
+- **THEN** the point at `Abscissa(1)` is still \((1, \sin 1)\)
+
+### Requirement: Abscissa parameters need the abscissa capability
+
+An expression with an `Abscissa` parameter SHALL be buildable by geometry identity only for a geometry that has the abscissa capability. For any other geometry, building it SHALL fail with a missing capability.
+
+#### Scenario: No abscissa on a segment
+
+- **WHEN** an on-curve expression with `Abscissa(0.5)` is requested for a segment
+- **THEN** none can be built because the segment has no abscissa capability
+
+### Requirement: Abscissa continues beyond the range
+
+An abscissa outside the function curve's range \([x_0, x_1]\) SHALL address the point of the graph's continuation at that \(x\), with the same formulas. A change of the range SHALL NOT change the point or tangent at an abscissa.
+
+#### Scenario: Point beyond the drawn range
+
+- **WHEN** the sine curve over \([0, 2\pi]\) with scales 1, origin (0, 0) and heading 0 is addressed at `Abscissa(8)`
+- **THEN** the point is \((8, \sin 8)\)
+
+### Requirement: Abscissa requires a defined function with finite slope
+
+An abscissa SHALL be valid only where evaluating \(f\) reports no domain error (expression-language), so \(f\), \(f'\) and \(f''\) are finite there. Building an expression at an invalid abscissa SHALL fail; at a point with a vertical tangent the normalized parameter has to be used instead.
+
+#### Scenario: Vertical tangent
+
+- **WHEN** an expression at `Abscissa(0)` is requested on a curve with \(f\) = `sqrt(x)` on \([1, 4]\)
+- **THEN** none can be built because the slope at \(x = 0\) is not finite
+
+#### Scenario: Undefined function
+
+- **WHEN** an expression at `Abscissa(-1)` is requested on a curve with \(f\) = `log(x)` on \([1, 2]\)
+- **THEN** none can be built because \(f\) is not defined at \(x = -1\)
 
 ### Requirement: Curves describe their exact shape
 

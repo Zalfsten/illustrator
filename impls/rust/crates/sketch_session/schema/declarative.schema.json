@@ -313,6 +313,115 @@
     {
       "additionalProperties": false,
       "properties": {
+        "arrow": {
+          "description": "Arrow heads: `\"none\"`, `\"start\"`, `\"end\"` or `\"both\"`.",
+          "enum": [
+            "none",
+            "start",
+            "end",
+            "both"
+          ],
+          "type": "string"
+        },
+        "color": {
+          "description": "sRGB colour #rrggbb.",
+          "pattern": "^#[0-9A-Fa-f]{6}$",
+          "type": "string"
+        },
+        "dash": {
+          "description": "Dash pattern: `\"solid\"`, `\"dashed\"`, `\"dotted\"` or `\"dashdot\"`.",
+          "enum": [
+            "solid",
+            "dashed",
+            "dotted",
+            "dashdot"
+          ],
+          "type": "string"
+        },
+        "expression": {
+          "description": "`f(x)` in the expression language (variable `x`).",
+          "type": "string"
+        },
+        "heading": {
+          "description": "Heading of the frame's x axis, radians from +x.",
+          "format": "double",
+          "type": "number"
+        },
+        "kind": {
+          "const": "function"
+        },
+        "name": {
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+          "type": "string"
+        },
+        "op": {
+          "const": "create"
+        },
+        "origin": {
+          "description": "Point [x, y].",
+          "items": {
+            "type": "number"
+          },
+          "maxItems": 2,
+          "minItems": 2,
+          "type": "array"
+        },
+        "range": {
+          "description": "`[x0, x1]` with `x0 < x1`.",
+          "items": {
+            "format": "double",
+            "type": "number"
+          },
+          "maxItems": 2,
+          "minItems": 2,
+          "type": "array"
+        },
+        "role": {
+          "description": "Geometry role: `\"result\"` or `\"construction\"`.",
+          "enum": [
+            "result",
+            "construction"
+          ],
+          "type": "string"
+        },
+        "scale": {
+          "description": "`[su, sv]`, both greater than zero; absent for `[1, 1]`.",
+          "items": {
+            "format": "double",
+            "type": "number"
+          },
+          "maxItems": 2,
+          "minItems": 2,
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "style": {
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+          "type": "string"
+        },
+        "width": {
+          "description": "Stroke width in pt, greater than zero.",
+          "exclusiveMinimum": 0,
+          "type": "number"
+        }
+      },
+      "required": [
+        "op",
+        "kind",
+        "name",
+        "origin",
+        "heading",
+        "expression",
+        "range"
+      ],
+      "title": "create function",
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
         "a": {
           "description": "Address of a point, e.g. seg1.end or arc1.center.",
           "type": "string"

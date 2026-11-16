@@ -55,7 +55,7 @@ fn saved_bytes_of_two_joined_segments() {
     let s = session(&[SEG1, SEG2, JOIN1]);
     let expected = r#"{
   "format": "illustrator-sketch",
-  "version": 3,
+  "version": 4,
   "scale": 10.0,
   "font_size": 10.0,
   "preamble": "",
@@ -74,7 +74,7 @@ fn saved_bytes_of_two_joined_segments() {
 fn saved_bytes_of_an_empty_drawing() {
     let s = Session::new(Document::new());
     let expected =
-        "{\n  \"format\": \"illustrator-sketch\",\n  \"version\": 3,\n  \"scale\": 10.0,\n  \"font_size\": 10.0,\n  \"preamble\": \"\",\n  \"styles\": {},\n  \"commands\": []\n}\n";
+        "{\n  \"format\": \"illustrator-sketch\",\n  \"version\": 4,\n  \"scale\": 10.0,\n  \"font_size\": 10.0,\n  \"preamble\": \"\",\n  \"styles\": {},\n  \"commands\": []\n}\n";
     assert_eq!(String::from_utf8(s.save().unwrap()).unwrap(), expected);
 }
 
@@ -167,8 +167,8 @@ fn other_json_is_an_unknown_format() {
 
 #[test]
 fn newer_version() {
-    match load_err(br#"{"format": "illustrator-sketch", "version": 4, "commands": []}"#) {
-        LoadError::UnsupportedVersion(v) => assert_eq!(v, "4"),
+    match load_err(br#"{"format": "illustrator-sketch", "version": 5, "commands": []}"#) {
+        LoadError::UnsupportedVersion(v) => assert_eq!(v, "5"),
         other => panic!("{other:?}"),
     }
     assert!(matches!(
@@ -348,12 +348,12 @@ fn minimal_version_2_file() {
 }
 
 #[test]
-fn version_1_loads_with_default_settings_and_saves_as_3() {
+fn version_1_loads_with_default_settings_and_saves_as_4() {
     let (s, _) = Session::load(&file(&[SEG1])).unwrap();
     assert_eq!(s.settings(), &constraint_runtime::DocumentSettings::default());
     assert_eq!(s.styles(), &Styles::default());
     let saved = String::from_utf8(s.save().unwrap()).unwrap();
-    assert!(saved.contains("\"version\": 3,"), "{saved}");
+    assert!(saved.contains("\"version\": 4,"), "{saved}");
 }
 
 #[test]
@@ -552,4 +552,47 @@ fn styled_drawing_round_trips_byte_identical() {
     assert_eq!(report, LoadReport::default());
     assert_eq!(loaded.styles(), styled_session().styles());
     assert_eq!(loaded.save().unwrap(), first);
+}
+
+// --- Version 4: function curves ---
+
+const SINE_CMD: &str = r#"{"op": "create", "kind": "function", "name": "fn1", "origin": [0, 0], "heading": 0, "expression": "sin(x)", "range": [0, 6.283185307179586]}"#;
+
+fn with_version(version: u64, commands: &str) -> Vec<u8> {
+    format!(
+        r#"{{"format": "illustrator-sketch", "version": {version}, "scale": 10, "font_size": 10, "preamble": "", "styles": {{}}, "commands": [{commands}]}}"#
+    )
+    .into_bytes()
+}
+
+#[test]
+fn version_3_file_loads_and_saves_as_4() {
+    let (s, _) = Session::load(&with_version(3, "")).unwrap();
+    let saved = String::from_utf8(s.save().unwrap()).unwrap();
+    assert!(saved.contains("\"version\": 4,"), "{saved}");
+}
+
+#[test]
+fn function_curve_in_version_3_is_rejected() {
+    match load_err(&with_version(3, SINE_CMD)) {
+        LoadError::Command { index: 0, error } => {
+            assert!(error.to_string().contains("needs version 4"), "{error}")
+        }
+        other => panic!("{other:?}"),
+    }
+    assert!(Session::load(&with_version(4, SINE_CMD)).is_ok());
+}
+
+#[test]
+fn function_curve_save_load_save_is_byte_identical() {
+    let (s, _) = Session::load(&with_version(4, &format!(
+        "{SINE_CMD}, {}",
+        r#"{"op": "create", "kind": "segment", "name": "seg1", "start": [6.283185307179586, 0], "end": [7, 1]}, {"op": "constrain", "kind": "join", "name": "join1", "a": "fn1.end", "b": "seg1.start"}"#
+    )))
+    .unwrap();
+    let first = s.save().unwrap();
+    let (t, _) = Session::load(&first).unwrap();
+    assert_eq!(t.save().unwrap(), first);
+    let text = String::from_utf8(first).unwrap();
+    assert!(text.contains(r#""expression":"sin(x)""#) && text.contains(r#""scale":[1.0,1.0]"#), "{text}");
 }

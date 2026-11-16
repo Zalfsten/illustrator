@@ -629,6 +629,23 @@ fn box_from_empty_space_selects_what_is_inside() {
     assert_eq!(selected(&app), "near, far");
 }
 
+/// The box start stays on the drawing when the view zooms during the box
+/// drag (review of PR #108).
+#[test]
+fn box_start_stays_on_the_drawing_when_zooming_during_the_drag() {
+    let mut app = far_on_canvas();
+    apply_json(
+        &mut app,
+        r#"{"op": "create", "kind": "segment", "name": "near", "start": [41, 28], "end": [44, 28]}"#,
+    );
+    app.rebuild_logical_points();
+    app.select_drag_start(screen(&app, 39.0, 26.0));
+    let anchor = screen(&app, 60.0, 30.0);
+    app.apply_intent(crate::navigation::NavIntent::Zoom { factor: 2.0 }, anchor);
+    app.select_drag_stop(Some(screen(&app, 46.0, 29.0)), false);
+    assert_eq!(selected(&app), "near");
+}
+
 #[test]
 fn delete_two_segments_is_one_undo_step() {
     let mut app = far_on_canvas();

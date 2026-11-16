@@ -32,11 +32,20 @@ fn ctrl_wheel_zooms_in_every_mode() {
 #[test]
 fn shift_wheel_pans_horizontally() {
     for mode in [WheelMode::Automatic, WheelMode::Zoom] {
-        assert_eq!(
-            wheel_intent(LINE, up(3.0), shift(), mode),
-            Some(NavIntent::Pan(Vec2::new(3.0, 0.0)))
-        );
+        assert_eq!(wheel_intent(POINT, up(30.0), shift(), mode), Some(NavIntent::Pan(Vec2::new(30.0, 0.0))));
+        // Lines are converted to points: one native notch pans 50 points,
+        // a Firefox notch (3 lines) 150 (review of PR #106).
+        assert_eq!(wheel_intent(LINE, up(1.0), shift(), mode), Some(NavIntent::Pan(Vec2::new(50.0, 0.0))));
+        assert_eq!(wheel_intent(LINE, up(3.0), shift(), mode), Some(NavIntent::Pan(Vec2::new(150.0, 0.0))));
     }
+}
+
+#[test]
+fn pans_convert_lines_and_pages_to_points() {
+    let none = Modifiers::NONE;
+    assert_eq!(wheel_intent(LINE, Vec2::new(0.5, -1.0), none, WheelMode::Pan), Some(NavIntent::Pan(Vec2::new(25.0, -50.0))));
+    assert_eq!(wheel_intent(PAGE, up(1.0), none, WheelMode::Pan), Some(NavIntent::Pan(up(500.0))));
+    assert_eq!(wheel_intent(POINT, up(7.0), none, WheelMode::Pan), Some(NavIntent::Pan(up(7.0))));
 }
 
 #[test]
@@ -55,7 +64,8 @@ fn mode_decides_without_modifiers() {
         let i = wheel_intent(unit, Vec2::new(2.0, 5.0), none, mode);
         assert_eq!(is_zoom(i), zooms, "{mode:?} {unit:?}");
         if !zooms {
-            assert_eq!(i, Some(NavIntent::Pan(Vec2::new(2.0, 5.0))));
+            let per = if unit == LINE { 50.0 } else { 1.0 };
+            assert_eq!(i, Some(NavIntent::Pan(Vec2::new(2.0, 5.0) * per)));
         }
     }
 }
@@ -94,19 +104,29 @@ fn one_event_zooms_at_most_one_notch() {
 }
 
 #[test]
-fn automatic_reads_large_vertical_points_as_a_wheel_notch() {
+fn automatic_reads_large_vertical_points_as_a_wheel_notch_in_the_browser() {
     let none = Modifiers::NONE;
     let auto = WheelMode::Automatic;
+    let browser = |d: Vec2, mode| wheel_intent_with(POINT, d, none, mode, true);
     // Chromium mouse wheel: 53 px (Linux) or 100–120 px per notch.
     for y in [53.0, -53.0, 100.0, 120.0, NOTCH_MIN_POINTS] {
-        assert!(is_zoom(wheel_intent(POINT, up(y), none, auto)), "{y}");
+        assert!(is_zoom(browser(up(y), auto)), "{y}");
     }
     // Touchpad: small or diagonal deltas pan.
     for d in [up(12.0), up(NOTCH_MIN_POINTS - 1.0), Vec2::new(1.0, 60.0)] {
-        assert_eq!(wheel_intent(POINT, d, none, auto), Some(NavIntent::Pan(d)), "{d:?}");
+        assert_eq!(browser(d, auto), Some(NavIntent::Pan(d)), "{d:?}");
     }
     // The explicit Pan mode still pans a notch.
-    assert_eq!(wheel_intent(POINT, up(100.0), none, WheelMode::Pan), Some(NavIntent::Pan(up(100.0))));
+    assert_eq!(browser(up(100.0), WheelMode::Pan), Some(NavIntent::Pan(up(100.0))));
+}
+
+/// Natively the unit is reliable: a fast vertical touchpad flick stays a pan
+/// (review of PR #106).
+#[test]
+fn native_points_always_pan_in_automatic_mode() {
+    let d = up(120.0);
+    assert_eq!(wheel_intent_with(POINT, d, Modifiers::NONE, WheelMode::Automatic, false), Some(NavIntent::Pan(d)));
+    assert_eq!(NOTCH_RULE, cfg!(target_arch = "wasm32"));
 }
 
 #[test]
