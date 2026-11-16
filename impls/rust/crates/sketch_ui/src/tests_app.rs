@@ -91,8 +91,11 @@ const FAR_AWAY: &[u8] = br#"{"format": "illustrator-sketch", "version": 2, "scal
 fn open_far_away() -> (App, FakeFiles) {
     let fake = FakeFiles::new(true);
     let mut app = App::with_files(fake.clone());
-    app.pick_points.push(app.logical_points[0].representative);
-    app.segment_clicks.push(Point2::new(1.0, 1.0));
+    // A half-filled tool and a selection, both reset by Open.
+    app.intent(ui_model::Intent::ChooseTool(ui_model::ToolKind::Join));
+    let first = app.eval_point(&app.logical_points[0].representative);
+    app.tool_click(app.viewport.to_screen(first));
+    assert_eq!(app.ui.filled().len(), 1);
     app.file_command(FileCommand::Open);
     fake.open_file("far.sketch.json", FAR_AWAY);
     app.poll_files();
@@ -106,7 +109,8 @@ fn opened_file_replaces_the_drawing_and_resets_picks() {
     assert_eq!(app.mesh().edges.len(), 1);
     assert_eq!(app.doc().geometries().len(), 2);
     assert!(!app.session.can_undo());
-    assert!(app.pick_points.is_empty() && app.segment_clicks.is_empty());
+    assert_eq!(app.ui.tool(), ui_model::ToolKind::Select);
+    assert!(app.ui.filled().is_empty());
     assert_eq!(app.logical_points.len(), 2, "the segment's two ends");
 }
 
@@ -147,22 +151,21 @@ fn drawing_box_does_not_depend_on_the_previous_view() {
     assert!(min.y < 0.0 && max.y > 1.0, "the arc's top lies inside the box: {coarse_view:?}");
 }
 
+/// Draw a segment with the Segment tool (two position picks), then back to Select.
+fn draw_segment(app: &mut App, a: Point2, b: Point2) {
+    app.intent(ui_model::Intent::ChooseTool(ToolKind::Segment));
+    for at in [a, b] {
+        app.intent(ui_model::Intent::Pick { at, tolerance: 0.1, mode: ui_model::PickMode::Replace });
+    }
+    assert!(app.status.starts_with("Added "), "{}", app.status);
+    app.intent(ui_model::Intent::Cancel);
+}
+
 #[test]
 fn new_gives_the_default_box_and_edits_do_not_refit() {
     let (mut app, _) = open_far_away();
     let fitted = app.world_box;
-    app.run(
-        Command::Create {
-            name: None,
-            role: GeometryRole::Result,
-            look: Default::default(),
-            geometry: GeometrySpec::Segment(SegmentParams {
-                start: Point2::new(0.0, 0.0),
-                end: Point2::new(1.0, 0.0),
-            }),
-        },
-        String::new(),
-    );
+    draw_segment(&mut app, Point2::new(0.0, 0.0), Point2::new(1.0, 0.0));
     assert_eq!(app.world_box, fitted, "an edit keeps the view");
     app.file_command(FileCommand::New);
     assert!(app.files.asking(), "the edit is unsaved");
@@ -318,9 +321,9 @@ fn segment_tool_draws_with_the_current_style() {
         on: true,
         value: Rgb(0xc0, 0, 0),
     };
-    app.tool = Tool::Segment;
-    app.handle_click(app.viewport.to_screen(Point2::new(5.0, 5.0)));
-    app.handle_click(app.viewport.to_screen(Point2::new(6.0, 5.0)));
+    app.intent(ui_model::Intent::ChooseTool(ui_model::ToolKind::Segment));
+    app.tool_click(app.viewport.to_screen(Point2::new(5.0, 5.0)));
+    app.tool_click(app.viewport.to_screen(Point2::new(6.0, 5.0)));
     let name = app.status.strip_prefix("Added ").unwrap().to_owned();
     let text = exported(&app, &name);
     assert!(
@@ -336,8 +339,8 @@ fn brush_replaces_style_and_overrides() {
         &mut app,
         r##"{"op": "create", "kind": "segment", "name": "odd", "start": [5, 5], "end": [6, 5], "color": "#c00000", "dash": "dotted"}"##,
     );
-    app.tool = Tool::Brush;
-    app.handle_click(app.viewport.to_screen(Point2::new(5.5, 5.0)));
+    app.intent(ui_model::Intent::ChooseTool(ui_model::ToolKind::Brush));
+    app.tool_click(app.viewport.to_screen(Point2::new(5.5, 5.0)));
     assert_eq!(app.status, "Brushed odd");
     let text = exported(&app, "odd");
     assert!(
@@ -468,18 +471,7 @@ fn edits_do_not_move_the_view() {
     let (mut app, _) = open_far_away();
     app.update_view(canvas_800());
     let view = app.view;
-    app.run(
-        Command::Create {
-            name: None,
-            role: GeometryRole::Result,
-            look: Default::default(),
-            geometry: GeometrySpec::Segment(SegmentParams {
-                start: Point2::new(0.0, 0.0),
-                end: Point2::new(1.0, 0.0),
-            }),
-        },
-        String::new(),
-    );
+    draw_segment(&mut app, Point2::new(0.0, 0.0), Point2::new(1.0, 0.0));
     app.update_view(canvas_800());
     assert_eq!(app.view, view);
 }
@@ -556,7 +548,7 @@ fn open_clears_the_selection() {
     let fake = FakeFiles::new(true);
     let mut app = App::with_files(fake.clone());
     let first = app.doc().geometries().values().next().unwrap().id();
-    let name = app.geometry_name(first).to_owned();
+    let name = app.doc().geometry_name(first).unwrap().to_owned();
     app.ui.selection_mut().select_name(app.session.document(), &name, ui_model::PickMode::Replace);
     assert!(!app.ui.selection().is_empty());
     app.file_command(FileCommand::Open);
@@ -670,4 +662,71 @@ fn delete_with_a_point_deletes_its_curve() {
     app.intent(ui_model::Intent::Delete);
     assert_eq!(app.status, "Deleted far");
     assert!(app.doc().lookup("far").is_none());
+}
+
+// --- Tools (ui-model slots) ---
+
+#[test]
+fn select_two_segments_then_parallel() {
+    let mut app = far_on_canvas();
+    apply_json(
+        &mut app,
+        r#"{"op": "create", "kind": "segment", "name": "near", "start": [41, 28], "end": [44, 28]}"#,
+    );
+    app.rebuild_logical_points();
+    app.select_click(screen(&app, 50.0, 25.0), false);
+    app.select_click(screen(&app, 42.5, 28.0), true);
+    app.intent(ui_model::Intent::ChooseTool(ui_model::ToolKind::Parallel));
+    assert_eq!(app.status, "Added par1 (far, near)");
+    assert!(app.ui.selection().is_empty());
+    assert_eq!(app.ui.tool(), ui_model::ToolKind::Parallel);
+}
+
+#[test]
+fn esc_in_a_half_filled_tool_returns_to_select() {
+    let mut app = far_on_canvas();
+    app.intent(ui_model::Intent::ChooseTool(ui_model::ToolKind::Parallel));
+    app.tool_click(screen(&app, 50.0, 25.0));
+    assert_eq!(app.ui.prompt(app.doc()).as_deref(), Some("Parallel: far → pick a direction"));
+    app.intent(ui_model::Intent::Cancel);
+    assert_eq!(app.ui.tool(), ui_model::ToolKind::Select);
+    assert!(app.doc().constraints().is_empty());
+}
+
+#[test]
+fn a_tool_click_on_nothing_says_what_is_needed() {
+    let mut app = far_on_canvas();
+    app.intent(ui_model::Intent::ChooseTool(ui_model::ToolKind::Join));
+    app.tool_click(screen(&app, 0.0, 0.0));
+    assert_eq!(app.status, "Join: needs a point");
+}
+
+/// A tool change during a point drag is refused, so the release still ends
+/// the drag in the Select tool (review of PR #110).
+#[test]
+fn tool_change_during_a_point_drag_is_refused() {
+    let mut app = far_on_canvas();
+    app.select_drag_start(screen(&app, 60.0, 30.0));
+    assert!(app.session.is_dragging());
+    app.intent(ui_model::Intent::ChooseTool(ToolKind::Join));
+    assert_eq!(app.ui.tool(), ToolKind::Select);
+    assert_eq!(app.status, "Finish the drag first");
+    let to = screen(&app, 62.0, 33.0);
+    app.select_drag_stop(Some(to), false);
+    assert!(!app.session.is_dragging(), "the release ended the drag");
+}
+
+/// A tool change drops a selection box in progress, so a later point drag is
+/// not mistaken for a box (review of PR #110).
+#[test]
+fn tool_change_drops_a_selection_box() {
+    let mut app = far_on_canvas();
+    app.select_drag_start(screen(&app, 39.0, 26.0));
+    assert!(app.rubber.is_some());
+    app.intent(ui_model::Intent::ChooseTool(ToolKind::Join));
+    assert!(app.rubber.is_none());
+    app.intent(ui_model::Intent::Cancel);
+    app.select_drag_start(screen(&app, 60.0, 30.0));
+    app.select_drag_stop(Some(screen(&app, 62.0, 33.0)), false);
+    assert!(!app.session.is_dragging(), "the point drag ended normally");
 }

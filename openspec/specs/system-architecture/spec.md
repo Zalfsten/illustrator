@@ -286,7 +286,7 @@ The App SHALL provide a presentation mode that shows **result geometries only** 
 
 ### Requirement: Hiding objects deselects them
 
-When a change of the presentation mode hides selected objects, the App SHALL remove them from the selection, so that actions on the selection do not reach objects the user can no longer see on the Canvas. A logical point SHALL leave the selection when none of its class's endpoints remains visible.
+When a change of the presentation mode hides selected objects or objects in the active tool's slots, the App SHALL remove them from the selection and empty those slots, so that actions on the selection do not reach objects the user can no longer see on the Canvas. A logical point SHALL leave the selection when none of its class's endpoints remains visible.
 
 #### Scenario: Switching to result only deselects construction
 

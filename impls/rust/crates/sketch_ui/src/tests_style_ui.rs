@@ -32,7 +32,7 @@ fn brush_sets_every_property() {
         },
         ..CurrentStyle::default()
     };
-    let Command::SetStyle { name, style, patch } = c.brush("seg1") else {
+    let Command::SetStyle { name, style, patch } = ui_model::brush_command("seg1", &c.look()) else {
         panic!("not a set_style");
     };
     assert_eq!(

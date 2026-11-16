@@ -88,3 +88,23 @@ impl Shown {
         crate::pick::Scene { mesh: &self.mesh, points: &self.points }
     }
 }
+
+/// A quarter arc around `center` with radius 1, named `name`.
+pub fn arc(name: &str, center: (f64, f64)) -> Command {
+    Command::Create {
+        name: Some(name.into()),
+        role: GeometryRole::Result,
+        look: Default::default(),
+        geometry: GeometrySpec::Arc(sketch_session::ArcParams {
+            center: Point2::new(center.0, center.1),
+            radius: 1.0,
+            start_heading: 0.0,
+            sweep: std::f64::consts::FRAC_PI_2,
+        }),
+    }
+}
+
+/// Filled slot of the object or point address `name`.
+pub fn filled(s: &Session, name: &str) -> crate::tool::Filled {
+    crate::tool::Filled::from_entry(&entry(s, name)).unwrap()
+}

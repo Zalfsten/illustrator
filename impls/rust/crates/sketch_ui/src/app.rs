@@ -13,10 +13,10 @@ use eframe::egui::{self, epaint, Color32, Event, PointerButton, Pos2, Rect, Sens
 use label_layout::TypesetterState;
 use sketch_export::Format;
 use sketch_session::{
-    Command, ConstraintSpec, FixParams, GeometrySpec, PointPair, SegmentParams, Session, VecPair,
+    Command, Session,
 };
 
-use ui_model::{mesh_polylines, BoxMode, Effect as UiEffect, Entry, Intent, PickMode, Scene, UiModel};
+use ui_model::{mesh_polylines, BoxMode, Effect as UiEffect, Entry, Filled, Intent, PickMode, Scene, ToolKind, UiModel};
 
 use crate::export::{ExportJob, JobStep, WAITING};
 use crate::files::{Answer, Effect, FileCommand, FileState, Step};
@@ -26,17 +26,24 @@ use crate::style_ui::{CurrentStyle, StylesWindow};
 use crate::navigation::{wheel_intent, zoom_label, NavIntent, WheelMode};
 use crate::viewport::{print_scale, world_box, zoom_bounds, ViewState, Viewport};
 
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum Tool {
-    Select,
-    Segment,
-    Join,
-    Parallel,
-    Orthogonal,
-    FixPoint,
-    /// Give a curve the current style and overrides.
-    Brush,
+/// Ribbon tab (UI plan #90); only SKETCH has tools so far.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum RibbonTab {
+    Sketch,
+    Labels,
+    Functions,
+    Design,
 }
+
+/// Tool shortcuts (without modifiers; F is Fit, Esc is Cancel).
+const TOOL_KEYS: [(egui::Key, ToolKind); 6] = [
+    (egui::Key::L, ToolKind::Segment),
+    (egui::Key::J, ToolKind::Join),
+    (egui::Key::P, ToolKind::Parallel),
+    (egui::Key::O, ToolKind::Orthogonal),
+    (egui::Key::X, ToolKind::Fix),
+    (egui::Key::B, ToolKind::Brush),
+];
 
 /// UI session: result-only vs include construction (Mesh + handles share one filter).
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -95,11 +102,11 @@ pub struct App {
     /// world units, so it stays on the drawing when the view zooms or pans
     /// during the drag.
     rubber: Option<Point2>,
-    tool: Tool,
+    ribbon_tab: RibbonTab,
+    /// Browser (left) and inspector (right) panels shown (View → Panels).
+    show_browser: bool,
+    show_inspector: bool,
     presentation: PresentationMode,
-    pick_points: Vec<PointExpr>,
-    pick_geoms: Vec<GeometryId>,
-    segment_clicks: Vec<Point2>,
     status: String,
     last_error: Option<String>,
     /// Grabbable points (congruence classes); rebuilt after structural changes.
@@ -246,11 +253,10 @@ impl App {
             session,
             ui: UiModel::default(),
             rubber: None,
-            tool: Tool::Select,
+            ribbon_tab: RibbonTab::Sketch,
+            show_browser: true,
+            show_inspector: true,
             presentation,
-            pick_points: Vec::new(),
-            pick_geoms: Vec::new(),
-            segment_clicks: Vec::new(),
             status: "Sample filleted right angle (world y-up) — drag a free end. Toggle construction to see helper."
                 .into(),
             last_error: None,
@@ -356,9 +362,6 @@ impl App {
     fn replaced(&mut self) {
         self.ui.clear();
         self.rubber = None;
-        self.pick_points.clear();
-        self.pick_geoms.clear();
-        self.segment_clicks.clear();
         self.labels = LabelCache::new();
         self.rebuild_logical_points();
         self.fit_drawing();
@@ -397,6 +400,143 @@ impl App {
         self.viewport = self.view.viewport(self.canvas);
     }
 
+    /// The Edit menu: undo and redo.
+    fn edit_menu(&mut self, ui: &mut egui::Ui) {
+        ui.menu_button("Edit", |ui| {
+            if ui.add_enabled(self.session.can_undo(), egui::Button::new("Undo")).clicked() {
+                if self.session.undo().is_ok() {
+                    self.status = "Undone".into();
+                    self.last_error = None;
+                    self.history_changed();
+                }
+                ui.close_menu();
+            }
+            if ui.add_enabled(self.session.can_redo(), egui::Button::new("Redo")).clicked() {
+                if self.session.redo().is_ok() {
+                    self.status = "Redone".into();
+                    self.last_error = None;
+                    self.history_changed();
+                }
+                ui.close_menu();
+            }
+        });
+    }
+
+    /// Tab row and the active tab's groups. Tool buttons send `ChooseTool`.
+    fn ribbon(&mut self, ui: &mut egui::Ui) {
+        ui.horizontal(|ui| {
+            for (tab, text) in [
+                (RibbonTab::Sketch, "SKETCH"),
+                (RibbonTab::Labels, "LABELS"),
+                (RibbonTab::Functions, "FUNCTIONS"),
+                (RibbonTab::Design, "DESIGN"),
+            ] {
+                ui.selectable_value(&mut self.ribbon_tab, tab, egui::RichText::new(text).strong());
+            }
+        });
+        // A narrow window scrolls the group row instead of cutting it off.
+        egui::ScrollArea::horizontal().id_salt("ribbon_groups").show(ui, |ui| {
+            ui.horizontal(|ui| match self.ribbon_tab {
+                RibbonTab::Sketch => {
+                    let mut chosen = None;
+                    let active = self.ui.tool();
+                    let mut group = |ui: &mut egui::Ui, title: &str, tools: &[(ToolKind, &str)]| {
+                        ui.group(|ui| {
+                            ui.vertical(|ui| {
+                                ui.small(title);
+                                ui.horizontal(|ui| {
+                                    for (tool, text) in tools {
+                                        if ui.selectable_label(active == *tool, *text).clicked() {
+                                            chosen = Some(*tool);
+                                        }
+                                    }
+                                });
+                            });
+                        });
+                    };
+                    group(ui, "SELECT", &[(ToolKind::Select, "Select")]);
+                    group(ui, "CREATE", &[(ToolKind::Segment, "Segment (L)")]);
+                    group(
+                        ui,
+                        "CONSTRAIN",
+                        &[
+                            (ToolKind::Join, "Join (J)"),
+                            (ToolKind::Parallel, "Parallel (P)"),
+                            (ToolKind::Orthogonal, "Orthogonal (O)"),
+                            (ToolKind::Fix, "Fix (X)"),
+                        ],
+                    );
+                    ui.group(|ui| {
+                        ui.vertical(|ui| {
+                            ui.small("STYLE");
+                            ui.horizontal(|ui| {
+                                if ui.selectable_label(active == ToolKind::Brush, "Brush (B)").clicked() {
+                                    chosen = Some(ToolKind::Brush);
+                                }
+                                if ui.button("Styles…").clicked() {
+                                    self.styles_window.open = !self.styles_window.open;
+                                }
+                            });
+                        });
+                    });
+                    if let Some(tool) = chosen {
+                        self.intent(Intent::ChooseTool(tool));
+                    }
+                }
+                RibbonTab::Labels => {
+                    ui.weak("Label tools — coming with #63.");
+                }
+                RibbonTab::Functions => {
+                    ui.weak("Function curves — coming with #84.");
+                }
+                RibbonTab::Design => {
+                    ui.weak("Design — later.");
+                }
+            });
+        });
+    }
+
+    /// Inspector: the style for new geometry and Brush (the current look);
+    /// properties of the selection follow with #93.
+    fn inspector(&mut self, ui: &mut egui::Ui) {
+        ui.heading("Inspector");
+        egui::ScrollArea::vertical().show(ui, |ui| {
+            egui::CollapsingHeader::new("Style for new geometry")
+                .default_open(true)
+                .show(ui, |ui| {
+                    self.current.panel(ui, self.session.styles());
+                    if ui.button("Styles…").clicked() {
+                        self.styles_window.open = !self.styles_window.open;
+                    }
+                });
+            ui.separator();
+            ui.weak("Properties of the selection — coming with #93.");
+        });
+    }
+
+    /// Zoom · tool prompt or selection · status; label status and errors below.
+    fn status_line(&self, ui: &mut egui::Ui) {
+        ui.horizontal(|ui| {
+            ui.label(zoom_label(self.view.percent(print_scale(self.session.settings()))));
+            ui.separator();
+            let doc = self.session.document();
+            if let Some(prompt) = self.ui.prompt(doc) {
+                ui.strong(prompt);
+                ui.separator();
+            } else if !self.ui.selection().is_empty() {
+                ui.label(format!("Selected: {}", self.ui.selection().describe(doc)));
+                ui.separator();
+            }
+            ui.label(&self.status);
+        });
+        if let Some((s, color)) = &self.label_status {
+            ui.colored_label(*color, s);
+        }
+        if let Some(err) = &self.last_error {
+            ui.colored_label(Color32::RED, err);
+        }
+    }
+
     /// The View menu: fit, print size, and the wheel / scroll setting.
     fn view_menu(&mut self, ui: &mut egui::Ui) {
         ui.menu_button("View", |ui| {
@@ -408,6 +548,18 @@ impl App {
                 self.zoom_to_print_size();
                 ui.close_menu();
             }
+            ui.separator();
+            ui.label("Show:");
+            let mut mode = self.presentation;
+            ui.radio_value(&mut mode, PresentationMode::ResultOnly, "Result only");
+            ui.radio_value(&mut mode, PresentationMode::IncludeConstruction, "Include construction");
+            if mode != self.presentation {
+                self.set_presentation(mode);
+            }
+            ui.separator();
+            ui.label("Panels:");
+            ui.checkbox(&mut self.show_browser, "Browser");
+            ui.checkbox(&mut self.show_inspector, "Inspector");
             ui.separator();
             ui.label("Wheel / scroll:");
             for (mode, text) in [
@@ -589,6 +741,11 @@ impl App {
 
     /// Apply a UI-model intent against what the Canvas shows.
     fn intent(&mut self, intent: Intent) {
+        if matches!(intent, Intent::ChooseTool(_)) && !self.session.is_dragging() {
+            // A box belongs to the Select tool; a tool change drops it.
+            self.rubber = None;
+        }
+        self.ui.set_look(self.current.look());
         let mesh = self.mesh();
         let scene = Scene {
             mesh: &mesh,
@@ -604,7 +761,19 @@ impl App {
             Ok(UiEffect::Nothing) if intent == Intent::Delete => {
                 self.status = "Nothing selected to delete".into();
             }
-            Ok(UiEffect::Selection | UiEffect::Nothing) => {}
+            Ok(UiEffect::Issued(outcome)) => {
+                self.last_error = None;
+                let detail = self.ui.last_detail();
+                self.status = if self.ui.tool() == ToolKind::Brush {
+                    format!("Brushed {detail}")
+                } else {
+                    format!("Added {}{detail}", outcome.created.unwrap_or_default())
+                };
+                self.files.refresh(&self.session, self.platform.files());
+                self.rebuild_logical_points();
+            }
+            Ok(UiEffect::Refused(why)) => self.status = why,
+            Ok(UiEffect::Selection | UiEffect::Slot | UiEffect::Nothing) => {}
             Err(e) => {
                 self.last_error = Some(e.to_string());
                 self.status = format!("Rejected — drawing unchanged. {e}");
@@ -619,6 +788,15 @@ impl App {
             at: self.viewport.to_world(screen),
             tolerance: self.viewport.px_to_world(PICK_RADIUS_PX),
             mode,
+        });
+    }
+
+    /// Click with a tool other than Select: offer the position to its next slot.
+    fn tool_click(&mut self, screen: Pos2) {
+        self.intent(Intent::Pick {
+            at: self.viewport.to_world(screen),
+            tolerance: self.viewport.px_to_world(PICK_RADIUS_PX),
+            mode: PickMode::Replace,
         });
     }
 
@@ -663,8 +841,9 @@ impl App {
         self.ui.reconcile(self.session.document());
     }
 
-    /// Esc clears the selection (and drops a box in progress), Delete /
-    /// Backspace deletes it; not while a text field has the keyboard.
+    /// Esc cancels the tool or clears the selection (and drops a box in
+    /// progress), Delete / Backspace deletes the selection, L / J / P / O / X
+    /// / B choose tools; not while a text field has the keyboard.
     fn selection_keys(&mut self, ctx: &egui::Context, canvas: &egui::Response) {
         if !canvas_has_keyboard(ctx, canvas) {
             return;
@@ -677,17 +856,32 @@ impl App {
         });
         if esc {
             self.rubber = None;
-            self.intent(Intent::Clear);
+            self.intent(Intent::Cancel);
+        }
+        let tool = ctx.input(|i| {
+            TOOL_KEYS
+                .iter()
+                .find(|(key, _)| i.modifiers.is_none() && i.key_pressed(*key))
+                .map(|(_, tool)| *tool)
+        });
+        // Not while a point drag or a selection box runs: their release is
+        // handled by the Select tool only (review of PR #110).
+        if let Some(tool) = tool.filter(|_| self.rubber.is_none() && !self.session.is_dragging()) {
+            self.intent(Intent::ChooseTool(tool));
         }
         if del {
             self.intent(Intent::Delete);
         }
     }
 
-    /// Halo under selected curves and rings around selected points.
+    /// Halo under selected curves and rings around selected points; filled
+    /// tool slots: halo for geometries, dots for points and positions.
     fn paint_selection(&self, painter: &egui::Painter, mesh: &Mesh) {
         let doc = self.doc();
-        let selected = |id: GeometryId| self.ui.selection().entries().contains(&Entry::Geometry(id));
+        let filled = self.ui.filled();
+        let selected = |id: GeometryId| {
+            self.ui.selection().entries().contains(&Entry::Geometry(id)) || filled.contains(&Filled::Geometry(id))
+        };
         for (id, polyline) in mesh_polylines(mesh) {
             if selected(id) {
                 let pts: Vec<Pos2> = polyline.iter().map(|p| self.viewport.to_screen(*p)).collect();
@@ -700,14 +894,14 @@ impl App {
                 painter.circle_stroke(at, 9.0, Stroke::new(2.5_f32, SELECTION));
             }
         }
-    }
-
-    /// Apply `cmd`; status `Added <name> <detail>` or the command error.
-    fn run(&mut self, cmd: Command, detail: String) {
-        self.step(cmd, |outcome| {
-            let name = outcome.created.unwrap_or_default();
-            format!("Added {name}{detail}")
-        });
+        for f in filled {
+            let at = match f {
+                Filled::Position(p) => *p,
+                Filled::Point(p) => p.evaluate(doc, doc.vector()),
+                Filled::Geometry(_) => continue,
+            };
+            painter.circle_filled(self.viewport.to_screen(at), 4.5, SELECTION);
+        }
     }
 
     /// Apply `cmd`; status from `done` or the command error.
@@ -749,18 +943,6 @@ impl App {
         self.doc().point_address(p).unwrap_or_else(|| "?".into())
     }
 
-    fn geometry_name(&self, id: GeometryId) -> &str {
-        self.doc().geometry_name(id).unwrap_or("?")
-    }
-
-    /// `<name>.direction` of a picked line (checked by the caller).
-    fn direction_address(&self, id: GeometryId) -> String {
-        self.doc()
-            .direction_expr(id)
-            .and_then(|e| self.doc().vec_address(&e))
-            .unwrap_or_else(|| "?".into())
-    }
-
     /// `f` on what the Canvas shows, at the world image of `screen` with a
     /// world tolerance of `radius_px` screen pixels.
     fn hit<T>(&self, screen: Pos2, radius_px: f64, f: impl FnOnce(&Document, &Scene, Point2, f64) -> T) -> T {
@@ -777,111 +959,8 @@ impl App {
         self.hit(screen, radius_px, ui_model::nearest_point)
     }
 
-    fn hit_end(&self, screen: Pos2, radius_px: f64) -> Option<PointExpr> {
-        self.hit(screen, radius_px, |_, scene, at, tol| ui_model::nearest_endpoint(scene, at, tol))
-    }
-
     fn hit_edge(&self, screen: Pos2, radius_px: f64) -> Option<GeometryId> {
         self.hit(screen, radius_px, |_, scene, at, tol| ui_model::nearest_curve(scene, at, tol))
-    }
-
-    fn handle_click(&mut self, screen: Pos2) {
-        let world = self.viewport.to_world(screen);
-        match self.tool {
-            Tool::Segment => {
-                self.segment_clicks.push(world);
-                if self.segment_clicks.len() >= 2 {
-                    let a = self.segment_clicks[0];
-                    let b = self.segment_clicks[1];
-                    self.segment_clicks.clear();
-                    let cmd = Command::Create {
-                        name: None,
-                        role: GeometryRole::Result,
-                        look: self.current.look(),
-                        geometry: GeometrySpec::Segment(SegmentParams { start: a, end: b }),
-                    };
-                    self.run(cmd, String::new());
-                } else {
-                    self.status = "Segment: click second endpoint".into();
-                }
-            }
-            Tool::Join => {
-                if let Some(expr) = self.hit_end(screen, 12.0) {
-                    self.pick_points.push(expr);
-                    if self.pick_points.len() >= 2 {
-                        let a = self.address(&self.pick_points[0]);
-                        let b = self.address(&self.pick_points[1]);
-                        self.pick_points.clear();
-                        let detail = format!(" ({a} = {b})");
-                        let join = ConstraintSpec::Congruence(PointPair {
-                            a: a.into(),
-                            b: b.into(),
-                        });
-                        self.run(constrain(join), detail);
-                    } else {
-                        self.status = format!("Join: {} → pick second point", self.address(&expr));
-                    }
-                }
-            }
-            Tool::Parallel | Tool::Orthogonal => {
-                if let Some(id) = self.hit_edge(screen, 24.0) {
-                    // Lines only: the direction is a curve invariant; arcs have none.
-                    if !self.doc().caps(id).is_some_and(|c| c.line) {
-                        self.status = "Parallel/Orthogonal needs two line segments".into();
-                        return;
-                    }
-                    self.pick_geoms.push(id);
-                    if self.pick_geoms.len() >= 2 {
-                        let detail = format!(
-                            " ({}, {})",
-                            self.geometry_name(self.pick_geoms[0]),
-                            self.geometry_name(self.pick_geoms[1])
-                        );
-                        let a = self.direction_address(self.pick_geoms[0]);
-                        let b = self.direction_address(self.pick_geoms[1]);
-                        self.pick_geoms.clear();
-                        let pair = VecPair {
-                            a: a.into(),
-                            b: b.into(),
-                        };
-                        let spec = if self.tool == Tool::Parallel {
-                            ConstraintSpec::VectorsParallel(pair)
-                        } else {
-                            ConstraintSpec::VectorsOrthogonal(pair)
-                        };
-                        self.run(constrain(spec), detail);
-                    } else {
-                        let tool = if self.tool == Tool::Parallel {
-                            "Parallel"
-                        } else {
-                            "Orthogonal"
-                        };
-                        self.status =
-                            format!("{tool}: {} → pick second line", self.geometry_name(id));
-                    }
-                }
-            }
-            Tool::FixPoint => {
-                if let Some(expr) = self.hit_point(screen, 12.0) {
-                    let target = self.eval_point(&expr);
-                    let point = self.address(&expr);
-                    let detail = format!(" ({point})");
-                    let fix = ConstraintSpec::FixPoint(FixParams {
-                        point: point.into(),
-                        target,
-                    });
-                    self.run(constrain(fix), detail);
-                }
-            }
-            Tool::Brush => {
-                if let Some(id) = self.hit_edge(screen, 12.0) {
-                    let name = self.geometry_name(id).to_owned();
-                    let cmd = self.current.brush(&name);
-                    self.step(cmd, |_| format!("Brushed {name}"));
-                }
-            }
-            Tool::Select => {}
-        }
     }
 }
 
@@ -890,14 +969,6 @@ impl App {
 /// enough: in egui it is true for any focused widget, the Canvas included.
 fn canvas_has_keyboard(ctx: &egui::Context, canvas: &egui::Response) -> bool {
     ctx.memory(|m| m.focused()).is_none_or(|id| id == canvas.id)
-}
-
-/// Constraint command with an automatic name.
-fn constrain(constraint: ConstraintSpec) -> Command {
-    Command::Constrain {
-        name: None,
-        constraint,
-    }
 }
 
 /// The fixed look of construction geometry: colour and width in points.
@@ -1100,85 +1171,42 @@ impl eframe::App for App {
         }
         // The question is modal: tools and Canvas wait for the answer.
         let idle = !self.files.asking();
-        egui::TopBottomPanel::top("tools").show(ctx, |ui| {
+        self.current.keep_valid(self.session.styles());
+        egui::TopBottomPanel::top("menu").show(ctx, |ui| {
             if !idle {
                 ui.disable();
             }
-            ui.horizontal(|ui| {
+            egui::menu::bar(ui, |ui| {
                 match self.file_menu(ui) {
                     Some(MenuItem::File(cmd)) => self.file_command(cmd),
                     Some(MenuItem::Export(format)) => self.start_export(format),
                     None => {}
                 }
+                self.edit_menu(ui);
                 self.view_menu(ui);
-                ui.separator();
-                ui.label("Tool:");
-                ui.selectable_value(&mut self.tool, Tool::Select, "Select/Drag");
-                ui.selectable_value(&mut self.tool, Tool::Segment, "Segment");
-                ui.selectable_value(&mut self.tool, Tool::Join, "Join");
-                ui.selectable_value(&mut self.tool, Tool::Parallel, "Parallel");
-                ui.selectable_value(&mut self.tool, Tool::Orthogonal, "Orthogonal");
-                ui.selectable_value(&mut self.tool, Tool::FixPoint, "FixPoint");
-                ui.selectable_value(&mut self.tool, Tool::Brush, "Brush");
-                let undo = ui.add_enabled(self.session.can_undo(), egui::Button::new("Undo"));
-                if undo.clicked() && self.session.undo().is_ok() {
-                    self.status = "Undone".into();
-                    self.last_error = None;
-                    self.history_changed();
-                }
-                let redo = ui.add_enabled(self.session.can_redo(), egui::Button::new("Redo"));
-                if redo.clicked() && self.session.redo().is_ok() {
-                    self.status = "Redone".into();
-                    self.last_error = None;
-                    self.history_changed();
-                }
-                if ui.button("Clear picks").clicked() {
-                    self.pick_points.clear();
-                    self.pick_geoms.clear();
-                    self.segment_clicks.clear();
-                }
             });
-            ui.horizontal(|ui| {
-                ui.label("Show:");
-                let prev = self.presentation;
-                ui.selectable_value(
-                    &mut self.presentation,
-                    PresentationMode::ResultOnly,
-                    "Result only",
-                );
-                ui.selectable_value(
-                    &mut self.presentation,
-                    PresentationMode::IncludeConstruction,
-                    "Include construction",
-                );
-                if self.presentation != prev {
-                    let mode = std::mem::replace(&mut self.presentation, prev);
-                    self.set_presentation(mode);
-                }
-            });
-            ui.horizontal(|ui| {
-                self.current.keep_valid(self.session.styles());
-                self.current.row(ui, self.session.styles());
-                if ui.button("Styles…").clicked() {
-                    self.styles_window.open = !self.styles_window.open;
-                }
-            });
-            ui.horizontal(|ui| {
-                ui.label(zoom_label(self.view.percent(print_scale(self.session.settings()))));
-                ui.separator();
-                if !self.ui.selection().is_empty() {
-                    ui.label(format!("Selected: {}", self.ui.selection().describe(self.session.document())));
-                    ui.separator();
-                }
-                ui.label(&self.status);
-            });
-            if let Some((s, color)) = &self.label_status {
-                ui.colored_label(*color, s);
-            }
-            if let Some(err) = &self.last_error {
-                ui.colored_label(Color32::RED, err);
-            }
         });
+        egui::TopBottomPanel::top("ribbon").show(ctx, |ui| {
+            if !idle {
+                ui.disable();
+            }
+            self.ribbon(ui);
+        });
+        egui::TopBottomPanel::bottom("status").show(ctx, |ui| self.status_line(ui));
+        if self.show_browser {
+            egui::SidePanel::left("browser").resizable(true).default_width(180.0).show(ctx, |ui| {
+                ui.heading("Browser");
+                ui.weak("Objects by name — coming with #92.");
+            });
+        }
+        if self.show_inspector {
+            egui::SidePanel::right("inspector").resizable(true).default_width(220.0).show(ctx, |ui| {
+                if !idle {
+                    ui.disable();
+                }
+                self.inspector(ui);
+            });
+        }
 
         egui::CentralPanel::default().show(ctx, |ui| {
             // Canvas: Mesh (world) → Viewport → screen; drag → Interact in world.
@@ -1242,15 +1270,7 @@ impl eframe::App for App {
                     Color32::from_rgb(30, 100, 200),
                 );
             }
-            for p in &self.segment_clicks {
-                painter.circle_filled(
-                    self.viewport.to_screen(*p),
-                    4.0,
-                    Color32::from_rgb(200, 120, 40),
-                );
-            }
-
-            if self.tool == Tool::Select {
+            if self.ui.tool() == ToolKind::Select {
                 let modifiers = ctx.input(|i| i.modifiers);
                 let extend = modifiers.shift || modifiers.command || modifiers.ctrl;
                 // Only the primary button drags points or boxes; the middle button pans.
@@ -1293,9 +1313,9 @@ impl eframe::App for App {
                         self.select_click(pos, extend);
                     }
                 }
-            } else if response.clicked() {
+            } else if response.clicked_by(PointerButton::Primary) {
                 if let Some(pos) = response.interact_pointer_pos() {
-                    self.handle_click(pos);
+                    self.tool_click(pos);
                 }
             }
         });

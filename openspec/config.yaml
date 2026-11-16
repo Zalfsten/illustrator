@@ -328,6 +328,17 @@ context: |
   constraint deletes, then geometry deletes (a point adds the shown curves
   with an endpoint in its congruence class);
   hide_invisible(doc, filter) on a presentation-mode change.
+  tool.rs: ToolKind (Select, Segment, Join, Parallel, Orthogonal, Fix,
+  Brush) with slots() of SlotKind (Position, Point, Direction = caps.line,
+  Curve = caps.curve), Filled (Position / Point / Geometry), command(doc,
+  filled, look) -> (Command, detail) with the same addresses as before,
+  brush_command. UiModel also holds tool, filled slots and look (set_look
+  from the front end); Intent::ChooseTool pre-fills from the selection in
+  order (then clears it) and issues when complete; Pick in a tool fills the
+  next slot (nearest_point / nearest_line / nearest_curve / the position;
+  Refused on a miss or a repeat); a finished tool stays active; Cancel ends
+  the tool or clears the selection; prompt(doc) "Parallel: seg1 → pick a
+  direction"; Effect Issued / Slot / Refused, UiError Group / Command.
   expression (wasm-capable, no dependencies, geometry-free): the
   expression-language spec. lexer.rs / parser.rs (hand-written precedence
   climbing; MATLAB subset, ParseError with byte span, nesting limit 128,
@@ -428,7 +439,21 @@ context: |
   keyboard focus); hit tests build a Scene on demand; rebuild_logical_points
   reconciles the selection, replaced clears it, set_presentation calls
   hide_invisible; selected curves get a halo under their stroke, selected
-  points a ring, the status row lists "Selected: …".
+  points a ring, the status line lists "Selected: …".
+  Tools (ui_model slots): tool buttons and L / J / P / O / X / B send
+  ChooseTool, Esc sends Cancel (under canvas_has_keyboard), non-Select
+  clicks send Pick (12 px); App::intent calls set_look(CurrentStyle::look)
+  first and maps Issued / Refused / UiError to "Added <name><detail>",
+  "Brushed <name>", the refusal, "Rejected — drawing unchanged. …"; filled
+  slots get the halo (geometries) or dots (points, positions).
+  Layout: menu bar (File, Edit: Undo / Redo, View: Fit, Print size, Show,
+  Panels, Wheel / scroll), ribbon (tabs SKETCH / LABELS / FUNCTIONS /
+  DESIGN; SKETCH groups SELECT / CREATE / CONSTRAIN / STYLE = Brush +
+  Styles…, group row in a horizontal ScrollArea), left Browser placeholder
+  (#92), right Inspector with "Style for new geometry" (CurrentStyle::panel
+  grid; selection properties follow with #93),
+  bottom status line (zoom · tool prompt or selection · status; label
+  status and errors below).
   Prefer sibling files once a module has unit tests: src/<module>.rs for
   production code and src/tests_<module>.rs for that module's unit tests,
   declared with `#[cfg(test)] #[path = "tests_<module>.rs"] mod tests_<module>;`
